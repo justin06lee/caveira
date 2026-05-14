@@ -53,3 +53,41 @@ func TestScheduleLinearFits(t *testing.T) {
 		t.Errorf("Squashes: got %d, want 0", len(res.Squashes))
 	}
 }
+
+func TestScheduleScalesToFit(t *testing.T) {
+	dag := makeLinearDAG([]int{60, 60, 60}) // 180 unscaled
+	durations := map[string]int{"A": 60, "B": 60, "C": 60}
+	windowStart := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	windowEnd := windowStart.Add(90 * time.Minute)
+
+	res, err := Schedule(dag, durations, windowStart, windowEnd)
+	if err != nil {
+		t.Fatalf("Schedule: %v", err)
+	}
+	if res.Scale >= 1.0 {
+		t.Errorf("expected scaling, got Scale=%v", res.Scale)
+	}
+	last := res.NewTimes["C"]
+	if last.After(windowEnd) {
+		t.Errorf("schedule overran window: last=%v end=%v", last, windowEnd)
+	}
+}
+
+func TestScheduleScalingFloorIsHalf(t *testing.T) {
+	// 600 unscaled minutes; window 60. Required scale 0.1, but floor is 0.5.
+	dag := makeLinearDAG([]int{60, 60, 60, 60, 60, 60, 60, 60, 60, 60})
+	durations := map[string]int{}
+	for i := 0; i < 10; i++ {
+		oid := string(rune('A' + i))
+		durations[oid] = 60
+	}
+	windowStart := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	windowEnd := windowStart.Add(60 * time.Minute)
+
+	res, err := Schedule(dag, durations, windowStart, windowEnd)
+	// At floor s=0.5, span is still 300 minutes > 60. Squashing (Task 11)
+	// will handle this. For now, expect error.
+	if err == nil {
+		t.Fatalf("expected error before squashing implemented, got res=%v", res)
+	}
+}

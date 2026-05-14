@@ -29,18 +29,43 @@ func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd ti
 	if !windowStart.Before(windowEnd) {
 		return nil, fmt.Errorf("window start must precede end")
 	}
+	windowSize := windowEnd.Sub(windowStart)
 
 	res, span, err := runSchedule(dag, durations, windowStart, 1.0)
 	if err != nil {
 		return nil, err
 	}
-	windowSize := windowEnd.Sub(windowStart)
 	if span <= windowSize {
-		res.Scale = 1.0
 		return res, nil
 	}
-	// scaling / squashing added in Tasks 10/11
-	return res, fmt.Errorf("schedule does not fit; scaling not implemented yet")
+
+	// Linear scale candidate. Span scales near-linearly with s.
+	s := float64(windowSize) / float64(span)
+	if s < 0.5 {
+		s = 0.5
+	}
+	// Try a few decrements to absorb rounding error.
+	for attempt := 0; attempt < 5; attempt++ {
+		res, span, err = runSchedule(dag, durations, windowStart, s)
+		if err != nil {
+			return nil, err
+		}
+		if span <= windowSize {
+			return res, nil
+		}
+		if s <= 0.5 {
+			break
+		}
+		s -= 0.01
+		if s < 0.5 {
+			s = 0.5
+		}
+	}
+	if span <= windowSize {
+		return res, nil
+	}
+	// Squashing implemented in Task 11.
+	return nil, fmt.Errorf("schedule does not fit even at scale=0.5; squashing not implemented yet")
 }
 
 // runSchedule computes one pass given a fixed scale factor.
