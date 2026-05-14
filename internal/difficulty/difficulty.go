@@ -1,5 +1,7 @@
 package difficulty
 
+import "math/rand"
+
 // Difficulty is a coarse rating of a commit's expected duration.
 type Difficulty int
 
@@ -83,4 +85,13 @@ func Bucket(score int, isMerge bool) Difficulty {
 	default:
 		return Substantial
 	}
+}
+
+// Draw returns a duration in minutes for the given difficulty, sampling
+// uniformly from [base-deviation, base+deviation] (inclusive on both ends).
+func Draw(d Difficulty, rng *rand.Rand) int {
+	dev := d.Deviation()
+	// uniform_int_inclusive(-dev, +dev)
+	offset := rng.Intn(2*dev+1) - dev
+	return d.Base() + offset
 }
