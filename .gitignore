@@ -1,0 +1,9 @@
+# Binaries
+/caveira
+/cav
+/bin/
+
+# Test artifacts
+*.test
+*.out
+coverage.txt
