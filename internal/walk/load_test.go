@@ -24,3 +24,25 @@ func TestLoad_Linear(t *testing.T) {
 		t.Errorf("mid stats: lines=%d files=%d new=%d", mid.LinesChanged, mid.FilesTouched, mid.NewFiles)
 	}
 }
+
+func TestLoad_BranchedMerged(t *testing.T) {
+	repo, oids := MakeFixtureBranchedMerged(t)
+	dag, err := Load(repo)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(dag.All()) != 6 {
+		t.Fatalf("expected 6 commits (A B C D E M), got %d", len(dag.All()))
+	}
+	m := dag.Get(oids["M"])
+	if !m.IsMerge {
+		t.Errorf("M must be marked as merge")
+	}
+	if m.LinesChanged != 0 || m.FilesTouched != 0 || m.NewFiles != 0 {
+		t.Errorf("merge diff stats must be zero, got lines=%d files=%d new=%d",
+			m.LinesChanged, m.FilesTouched, m.NewFiles)
+	}
+	if len(m.Parents) != 2 {
+		t.Errorf("M must have 2 parents, got %d", len(m.Parents))
+	}
+}
