@@ -51,15 +51,18 @@ func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd ti
 		return res, nil
 	}
 
-	// Squash linear edges until it fits.
+	// Squash linear edges until it fits; fall back to linearizing branch points.
 	var squashes []Squash
 	for span > windowSize {
 		edge, ok := pickSquashEdge(work, d)
 		if !ok {
-			return nil, fmt.Errorf("cannot fit history: no linear edges left and linearization not yet implemented; widen window")
+			if !linearizeOnce(work, d) {
+				return nil, fmt.Errorf("cannot fit history into window even after maximum merging; widen the window (span=%v window=%v)", span, windowSize)
+			}
+		} else {
+			applySquash(work, d, edge)
+			squashes = append(squashes, edge)
 		}
-		applySquash(work, d, edge)
-		squashes = append(squashes, edge)
 		res, span, err = runSchedule(work, d, windowStart, 0.5)
 		if err != nil {
 			return nil, err
@@ -236,4 +239,80 @@ func scaledDuration(d int, scale float64) int {
 		v = 1
 	}
 	return v
+}
+
+// linearizeOnce finds a branch point and collapses its smallest sibling
+// branch into the larger one, producing one fewer parallel branch. Returns
+// false if no such operation is possible.
+func linearizeOnce(d *walk.DAG, durations map[string]int) bool {
+	for _, p := range d.All() {
+		kids := d.Children(p.OID)
+		if len(kids) < 2 {
+			continue
+		}
+		type weighted struct {
+			oid    string
+			weight int
+		}
+		var ws []weighted
+		for _, k := range kids {
+			ws = append(ws, weighted{oid: k, weight: branchWeight(d, durations, k)})
+		}
+		smallest := ws[0]
+		for _, w := range ws[1:] {
+			if w.weight < smallest.weight {
+				smallest = w
+			}
+		}
+		var absorber string
+		for _, w := range ws {
+			if w.oid != smallest.oid {
+				absorber = w.oid
+				break
+			}
+		}
+		small := d.Get(smallest.oid)
+		abs := d.Get(absorber)
+		if small == nil || abs == nil {
+			continue
+		}
+		mergedDur := durations[abs.OID]
+		if durations[small.OID] > mergedDur {
+			mergedDur = durations[small.OID]
+			copyMetadataFrom(abs, small)
+		}
+		// abs survives. abs's parents and children stay; small's
+		// children are reattached as children of abs.
+		for _, child := range d.Children(small.OID) {
+			c := d.Get(child)
+			for i, par := range c.Parents {
+				if par == small.OID {
+					c.Parents[i] = abs.OID
+				}
+			}
+		}
+		durations[abs.OID] = mergedDur
+		d.Remove(small.OID)
+		return true
+	}
+	return false
+}
+
+func branchWeight(d *walk.DAG, durations map[string]int, start string) int {
+	weight := 0
+	cur := start
+	for cur != "" {
+		weight += durations[cur]
+		kids := d.Children(cur)
+		if len(kids) != 1 {
+			break
+		}
+		next := d.Get(kids[0])
+		if len(next.Parents) != 1 {
+			break
+		}
+		cur = kids[0]
+		_ = next
+	}
+	return weight
 }

@@ -116,3 +116,39 @@ func TestScheduleSquashesLinearEdges(t *testing.T) {
 		}
 	}
 }
+
+func TestScheduleLinearizesDAGWhenNoLinearEdges(t *testing.T) {
+	// Diamond: A -> B, A -> C, B -> D, C -> D. No purely linear edges.
+	d := walk.NewDAG()
+	d.Add(&walk.Commit{OID: "A", IsRoot: true})
+	d.Add(&walk.Commit{OID: "B", Parents: []string{"A"}})
+	d.Add(&walk.Commit{OID: "C", Parents: []string{"A"}})
+	d.Add(&walk.Commit{OID: "D", Parents: []string{"B", "C"}})
+
+	durations := map[string]int{"A": 60, "B": 60, "C": 60, "D": 60}
+	windowStart := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	windowEnd := windowStart.Add(30 * time.Minute)
+
+	res, err := Schedule(d, durations, windowStart, windowEnd)
+	if err != nil {
+		t.Fatalf("Schedule: %v", err)
+	}
+	for oid, tt := range res.NewTimes {
+		if tt.After(windowEnd) {
+			t.Errorf("commit %s ends %v past window end %v", oid, tt, windowEnd)
+		}
+	}
+}
+
+func TestScheduleHardFailsWhenWindowImpossiblyNarrow(t *testing.T) {
+	d := walk.NewDAG()
+	d.Add(&walk.Commit{OID: "A", IsRoot: true})
+	durations := map[string]int{"A": 60}
+	windowStart := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	windowEnd := windowStart.Add(1 * time.Second)
+
+	_, err := Schedule(d, durations, windowStart, windowEnd)
+	if err == nil {
+		t.Fatal("expected hard-fail error")
+	}
+}
