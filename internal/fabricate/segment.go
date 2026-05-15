@@ -44,7 +44,10 @@ func SplitSegments(content []byte) []Segment {
 			continue
 		}
 		// Coalesce: if this candidate segment is too short and is not the last,
-		// keep extending by deferring the cut.
+		// keep extending by deferring the cut. Skipping the append while leaving
+		// start unadvanced is what makes the next boundary measure from the same
+		// start, so the following iteration extends this segment instead of
+		// emitting a new one.
 		if end-start < minSegmentLines && end != len(lines) {
 			continue
 		}

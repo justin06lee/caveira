@@ -38,6 +38,32 @@ func TestSplitSegments_IndicesContiguous(t *testing.T) {
 	}
 }
 
+func TestSplitSegments_CoalescesShortBlocks(t *testing.T) {
+	const numBlocks = 30
+	var input []byte
+	for i := 0; i < numBlocks; i++ {
+		input = append(input, []byte("l\n\n")...)
+	}
+
+	segs := SplitSegments(input)
+
+	if len(segs) >= numBlocks {
+		t.Fatalf("expected coalescing: got %d segments for %d blocks", len(segs), numBlocks)
+	}
+	for i, s := range segs {
+		if i == len(segs)-1 {
+			continue // final segment absorbs the remainder
+		}
+		if s.EndLine-s.StartLine < minSegmentLines {
+			t.Fatalf("segment %d spans %d lines, want >= %d",
+				i, s.EndLine-s.StartLine, minSegmentLines)
+		}
+	}
+	if got := concat(segs); !bytes.Equal(got, input) {
+		t.Fatalf("concat(segments) = %q, want %q", got, input)
+	}
+}
+
 func TestSplitSegments_EmptyFileOneSegment(t *testing.T) {
 	segs := SplitSegments([]byte(""))
 	if len(segs) != 1 {
