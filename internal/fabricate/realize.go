@@ -196,8 +196,10 @@ func segLineCount(s Segment) int {
 // the message carries no (scope) — common and valid for LLM plans — it falls
 // back to the changed file paths: the first change under a non-root directory
 // names the feature (via featureDir + basenameDir, mirroring how
-// FlurrySequence labels features). A commit touching only root files keeps an
-// empty Feature so it correctly stays on master in reshapeRats.
+// FlurrySequence labels features). A commit spanning multiple feature
+// directories is labeled by its first non-root path; the realizer does not
+// split such a commit. A commit touching only root files keeps an empty
+// Feature so it correctly stays on master in reshapeRats.
 func featureOf(pcv PlanCommitView) string {
 	if scope := scopeOf(pcv.Message); scope != "" {
 		return scope

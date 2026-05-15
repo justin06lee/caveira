@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,7 +99,7 @@ func TestIntegration_LLM_ClaudeCode_SingleAuthor(t *testing.T) {
 	subjects := gitLogSubjects(t, src)
 	if len(subjects) != len(files) {
 		t.Fatalf("expected %d commits from the LLM plan, got %d:\n%s",
-			len(files), len(subjects), bytes.Join(subjectBytes(subjects), []byte("\n")))
+			len(files), len(subjects), strings.Join(subjects, "\n"))
 	}
 	for _, name := range files {
 		want := "feat: add " + name
@@ -111,7 +112,7 @@ func TestIntegration_LLM_ClaudeCode_SingleAuthor(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("missing planned commit %q in rewritten log:\n%s",
-				want, bytes.Join(subjectBytes(subjects), []byte("\n")))
+				want, strings.Join(subjects, "\n"))
 		}
 	}
 }
@@ -211,13 +212,4 @@ func gitLogSubjects(t *testing.T, repoDir string) []string {
 		}
 	}
 	return subjects
-}
-
-// subjectBytes converts subjects to [][]byte for bytes.Join in error messages.
-func subjectBytes(subjects []string) [][]byte {
-	b := make([][]byte, len(subjects))
-	for i, s := range subjects {
-		b[i] = []byte(s)
-	}
-	return b
 }
