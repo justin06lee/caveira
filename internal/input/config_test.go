@@ -63,7 +63,7 @@ func TestConfig_Validate_FabricateFlagDependencies(t *testing.T) {
 		{"pig without pigs", func(c *Config) { c.Fabricate = true; c.Flurry = true; c.PigIdentities = []string{"x"} }, "--pig requires --pigs"},
 		{"rat without rats", func(c *Config) { c.Fabricate = true; c.Flurry = true; c.RatIdentities = []string{"x"} }, "--rat requires --rats"},
 		{"pigs and rats together", func(c *Config) { c.Fabricate = true; c.Flurry = true; c.PigsN = 2; c.RatsN = 2 }, "mutually exclusive"},
-		{"fabricate without flurry", func(c *Config) { c.Fabricate = true }, "requires --flurry"},
+		{"fabricate without base engine", func(c *Config) { c.Fabricate = true }, "requires a base engine"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -77,6 +77,63 @@ func TestConfig_Validate_FabricateFlagDependencies(t *testing.T) {
 				t.Errorf("expected %q in error, got: %v", tc.want, err)
 			}
 		})
+	}
+}
+
+func baseValidConfig() *Config {
+	return &Config{
+		Repo:     "/tmp/x",
+		Start:    time.Date(2026, 5, 14, 13, 0, 0, 0, time.UTC),
+		End:      time.Date(2026, 5, 14, 17, 0, 0, 0, time.UTC),
+		WindowTZ: time.UTC,
+	}
+}
+
+func TestValidate_LLMProviderIsValidBaseEngine(t *testing.T) {
+	c := baseValidConfig()
+	c.Fabricate = true
+	c.Provider = "groq"
+	if err := c.Validate(); err != nil {
+		t.Fatalf("expected --fabricate --groq to validate, got: %v", err)
+	}
+}
+
+func TestValidate_NoBaseEngineRejected(t *testing.T) {
+	c := baseValidConfig()
+	c.Fabricate = true
+	err := c.Validate()
+	if err == nil || !strings.Contains(err.Error(), "--flurry") {
+		t.Fatalf("expected error listing base engines, got: %v", err)
+	}
+}
+
+func TestValidate_TwoBaseEnginesRejected(t *testing.T) {
+	c := baseValidConfig()
+	c.Fabricate = true
+	c.Flurry = true
+	c.Provider = "groq"
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected mutually-exclusive error for --flurry + --groq")
+	}
+}
+
+func TestValidate_ModelRequiresLLMEngine(t *testing.T) {
+	c := baseValidConfig()
+	c.Fabricate = true
+	c.Flurry = true
+	c.Model = "some-model"
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected --model to be rejected with --flurry")
+	}
+}
+
+func TestValidate_LLMComposesWithRats(t *testing.T) {
+	c := baseValidConfig()
+	c.Fabricate = true
+	c.Provider = "claude-code"
+	c.RatsN = 3
+	if err := c.Validate(); err != nil {
+		t.Fatalf("expected --claude-code --rats 3 to validate, got: %v", err)
 	}
 }
 
