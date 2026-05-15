@@ -193,6 +193,8 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 		return 1
 	}
 
+	origCommitCount := len(plan.Commits)
+
 	durations, diffs := schedule.BuildDurations(dag, rng)
 	res, err := schedule.Schedule(dag, durations, cfg.Start, cfg.End)
 	if err != nil {
@@ -200,12 +202,25 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 		return 1
 	}
 
-	// In fabricate mode, squashing fabricated commits defeats the purpose.
-	// If the window is so narrow the scheduler had to squash, refuse and tell
-	// the user to widen it rather than silently merging fabricated commits.
+	// When the window is too narrow the scheduler squashes linear edges to
+	// make the history fit. Pigs histories are purely linear, so we can
+	// faithfully replay those squashes onto the Plan and write the squashed
+	// (surviving) history. Single and rats modes refuse instead, since
+	// squashing fabricated commits there defeats the purpose.
 	if len(res.Squashes) > 0 {
-		fmt.Fprintf(errOut, "error: the time window is too small for %d fabricated commits; widen --start/--end\n", len(plan.Commits))
-		return 1
+		if mode == "pigs" {
+			ops := make([]fabricate.SquashOp, len(res.Squashes))
+			for i, sq := range res.Squashes {
+				ops[i] = fabricate.SquashOp{Parent: sq.Parent, Child: sq.Child}
+			}
+			if err := fabricate.SquashPlan(plan, ops, durations); err != nil {
+				fmt.Fprintln(errOut, "error: fabricate squash:", err)
+				return 1
+			}
+		} else {
+			fmt.Fprintf(errOut, "error: the time window is too small for %d fabricated commits; widen --start/--end (or use --pigs, which squashes to fit)\n", origCommitCount)
+			return 1
+		}
 	}
 
 	if cfg.DryRun {
@@ -260,8 +275,8 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 		pushed = true
 	}
 
-	before := len(plan.Commits)
-	after := before
+	before := origCommitCount
+	after := len(plan.Commits)
 	span := windowSpan(res, cfg.Start)
 	report.WriteSummary(out, srcPath, srcPath, deadPath, before, after, span, cfg.End.Sub(cfg.Start), res.Scale, len(res.Squashes), pushed)
 	return 0

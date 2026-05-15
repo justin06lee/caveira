@@ -160,6 +160,74 @@ func TestIntegration_Fabricate_DropsSourceBranches(t *testing.T) {
 	}
 }
 
+func TestIntegration_FabricatePigs_SquashesToFitTinyWindow(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not on PATH")
+	}
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "src")
+	mustGit(t, dir, "init", repo)
+	mustGit(t, repo, "config", "user.email", "t@e.com")
+	mustGit(t, repo, "config", "user.name", "T")
+	// Enough files across distinct directories that flurry produces several
+	// commits, so the tiny window forces the scheduler to squash.
+	for _, d := range []string{"a", "b", "c", "d", "e"} {
+		if err := os.MkdirAll(filepath.Join(repo, d), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, d, "x.go"), []byte("package "+d+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, d, "x_test.go"), []byte("package "+d+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "commit", "-m", "initial")
+
+	// A deliberately tiny window: 30 minutes. Flurry produces ~13 commits
+	// that need roughly two hours un-squashed, so the scheduler must squash
+	// heavily (down to ~3 commits) but the squashed history still fits.
+	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	cfg := &input.Config{
+		Repo:          repo,
+		Start:         start,
+		End:           start.Add(30 * time.Minute),
+		WindowTZ:      time.UTC,
+		Fabricate:     true,
+		Flurry:        true,
+		PigsN:         2,
+		PigIdentities: []string{"Alice <a@x.com>", "Bob <b@x.com>"},
+		Seed:          1,
+		HasSeed:       true,
+	}
+	var out, errOut bytes.Buffer
+	code := Pipeline(cfg, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("expected pigs run to squash and succeed (exit 0), got exit %d; stderr=%s", code, errOut.String())
+	}
+
+	// verifyTreeMatch already ran inside Pipeline, so a passing exit means the
+	// squashed history reproduced the source tree exactly.
+	logOut, err := exec.Command("git", "-C", repo, "log", "--oneline").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log: %v\n%s", err, logOut)
+	}
+	if len(bytes.TrimSpace(logOut)) == 0 {
+		t.Fatalf("result repo has no commits:\n%s", logOut)
+	}
+	n := bytes.Count(bytes.TrimSpace(logOut), []byte("\n")) + 1
+	// Flurry produces ~13 commits un-squashed; the tiny window must have
+	// squashed the history down to noticeably fewer.
+	if n >= 13 {
+		t.Errorf("expected squashing to reduce the commit count below the un-squashed ~13, got %d", n)
+	}
+	t.Logf("squashed pigs history has %d commit(s)", n)
+}
+
 func TestIntegration_FabricateLLM_HardErrorNoFallback(t *testing.T) {
 	dir := t.TempDir()
 	script := "#!/bin/sh\ncat >/dev/null\necho 'provider exploded' >&2\nexit 1\n"
