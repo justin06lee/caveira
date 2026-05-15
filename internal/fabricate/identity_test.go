@@ -2,6 +2,8 @@ package fabricate
 
 import (
 	"testing"
+
+	"github.com/justin06lee/caveira/internal/walk"
 )
 
 func TestParseIdentity_Valid(t *testing.T) {
@@ -38,5 +40,19 @@ func TestParseIdentity_Invalid(t *testing.T) {
 		if _, err := ParseIdentity(in); err == nil {
 			t.Errorf("expected error for %q", in)
 		}
+	}
+}
+
+func TestDiscoverIdentities(t *testing.T) {
+	repo, _ := walk.MakeFixtureLinear(t, 3, []int{1, 1, 1})
+	got, err := DiscoverIdentities(repo)
+	if err != nil {
+		t.Fatalf("DiscoverIdentities: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 unique identity, got %d: %+v", len(got), got)
+	}
+	if got[0].Name != "Test" || got[0].Email != "test@example.com" {
+		t.Errorf("unexpected identity: %+v", got[0])
 	}
 }
