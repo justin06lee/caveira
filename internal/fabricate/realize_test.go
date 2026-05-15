@@ -2,6 +2,7 @@ package fabricate
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/go-git/go-git/v5/plumbing/filemode"
@@ -48,11 +49,13 @@ func TestRealize_WholeFilesMatchSource(t *testing.T) {
 }
 
 func TestRealize_LayeredFileEndsExact(t *testing.T) {
-	content := "l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\nl11\nl12\nl13\nl14\nl15\nl16\nl17\n"
+	// Two blank-line-delimited blocks of >=8 non-blank lines each, so
+	// SplitSegments cuts at the blank line into at least 2 segments.
+	content := strings.Repeat("code line\n", 10) + "\n" + strings.Repeat("more code line\n", 10)
 	src := srcFile("big.go", content)
 	nSeg := len(src.Segments)
 	if nSeg < 2 {
-		t.Skipf("fixture needs >=2 segments, got %d", nSeg)
+		t.Fatalf("fixture must yield >=2 segments, got %d", nSeg)
 	}
 	plan := &llm.Plan{Commits: []llm.PlanCommit{
 		{Message: "feat: scaffold", Type: "feat", Changes: []llm.Change{{Path: "big.go", Segments: []int{0}}}},
