@@ -171,6 +171,38 @@ func TestRealize_Deterministic(t *testing.T) {
 	}
 }
 
+func TestRealize_DerivesFeatureFromPath(t *testing.T) {
+	// A plan whose messages carry no conventional-commit (scope). The realizer
+	// must derive each commit's Feature from its changed file paths so that
+	// reshapeRats can still split the base into feature branches.
+	srcs := []SourceFile{
+		srcFile("internal/walk/load.go", "package walk\n"),
+		srcFile("internal/cli/main.go", "package cli\n"),
+		srcFile("go.mod", "module x\n"),
+	}
+	plan := &llm.Plan{Commits: []llm.PlanCommit{
+		{Message: "feat: add internal/walk/load.go", Type: "feat",
+			Changes: []llm.Change{{Path: "internal/walk/load.go", AllSegments: true}}},
+		{Message: "feat: add internal/cli/main.go", Type: "feat",
+			Changes: []llm.Change{{Path: "internal/cli/main.go", AllSegments: true}}},
+		{Message: "chore: pin module", Type: "chore",
+			Changes: []llm.Change{{Path: "go.mod", AllSegments: true}}},
+	}}
+	base, err := Realize(srcs, plan)
+	if err != nil {
+		t.Fatalf("Realize: %v", err)
+	}
+	if len(base) != 3 {
+		t.Fatalf("want 3 commits, got %d", len(base))
+	}
+	want := []string{"walk", "cli", ""}
+	for i, w := range want {
+		if base[i].Feature != w {
+			t.Errorf("commit %d: Feature = %q, want %q", i, base[i].Feature, w)
+		}
+	}
+}
+
 func TestRealize_OutOfOrderSegments(t *testing.T) {
 	// A single multi-segment file. Commit 0 takes a LATER segment index and
 	// commit 1 takes segment 0; the final cumulative content must still be

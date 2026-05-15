@@ -132,7 +132,7 @@ func Realize(sources []SourceFile, plan *llm.Plan) ([]SynthCommit, error) {
 	cum := map[string]map[int]bool{}
 	out := make([]SynthCommit, 0, len(commits))
 	for ci, pcv := range commits {
-		sc := SynthCommit{ID: ci, Message: pcv.Message, Feature: scopeOf(pcv.Message)}
+		sc := SynthCommit{ID: ci, Message: pcv.Message, Feature: featureOf(pcv)}
 		if ci > 0 {
 			sc.Parents = []int{ci - 1}
 		}
@@ -189,6 +189,25 @@ func segLineCount(s Segment) int {
 		return 1
 	}
 	return n
+}
+
+// featureOf derives a commit's Feature label. It first honors an explicit
+// conventional-commit scope in the message ("feat(walk): ..." -> "walk"). When
+// the message carries no (scope) — common and valid for LLM plans — it falls
+// back to the changed file paths: the first change under a non-root directory
+// names the feature (via featureDir + basenameDir, mirroring how
+// FlurrySequence labels features). A commit touching only root files keeps an
+// empty Feature so it correctly stays on master in reshapeRats.
+func featureOf(pcv PlanCommitView) string {
+	if scope := scopeOf(pcv.Message); scope != "" {
+		return scope
+	}
+	for _, fc := range pcv.Changes {
+		if dir := featureDir(fc.path); dir != "." {
+			return basenameDir(dir)
+		}
+	}
+	return ""
 }
 
 // scopeOf extracts the conventional-commit scope from a message, e.g.
