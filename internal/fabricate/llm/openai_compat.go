@@ -76,7 +76,10 @@ func (p *openAICompatProvider) GeneratePlan(ctx context.Context, prompt string) 
 		return "", fmt.Errorf("%s: request failed: %w", p.name, err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("%s: reading response body: %w", p.name, err)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("%s: HTTP %d: %s", p.name, resp.StatusCode, truncate(string(body), 300))
 	}
