@@ -60,6 +60,74 @@ func TestWriteToRepo_SyntheticContentBlob(t *testing.T) {
 	}
 }
 
+func TestWriteToRepo_DropsPreexistingRefs(t *testing.T) {
+	src := newEmptyRepo(t)
+	dst := newEmptyRepo(t)
+
+	// Simulate refs copied verbatim by Duplicate: branches and a
+	// remote-tracking ref that are NOT part of the fabricated plan.
+	staleHash := plumbing.NewHash("1111111111111111111111111111111111111111")
+	stale := []plumbing.ReferenceName{
+		"refs/heads/old-feature",
+		"refs/remotes/origin/master",
+	}
+	for _, name := range stale {
+		if err := dst.Storer.SetReference(plumbing.NewHashReference(name, staleHash)); err != nil {
+			t.Fatalf("seed ref %s: %v", name, err)
+		}
+	}
+
+	content := []byte("package main\n\nfunc main() {}\n")
+	h := plumbing.ComputeHash(plumbing.BlobObject, content)
+	plan := &Plan{
+		Commits: []SynthCommit{
+			{
+				ID:      0,
+				Author:  Identity{Name: "A", Email: "a@x.com"},
+				Message: "feat: add main",
+				Added: []FileRef{
+					{Path: "main.go", Content: content, Blob: h, Mode: filemode.Regular},
+				},
+			},
+		},
+		Refs:    map[string]int{"refs/heads/master": 0},
+		HEAD:    0,
+		HeadRef: "refs/heads/master",
+	}
+	times := map[string]time.Time{SyntheticOID(0): time.Now()}
+
+	if _, err := WriteToRepo(src, dst, plan, times); err != nil {
+		t.Fatalf("WriteToRepo: %v", err)
+	}
+
+	want := map[string]bool{"refs/heads/master": true}
+	refs, err := dst.References()
+	if err != nil {
+		t.Fatalf("dst.References: %v", err)
+	}
+	got := map[string]bool{}
+	_ = refs.ForEach(func(r *plumbing.Reference) error {
+		if r.Name() == plumbing.HEAD {
+			return nil
+		}
+		got[r.Name().String()] = true
+		return nil
+	})
+	for _, name := range stale {
+		if got[name.String()] {
+			t.Errorf("stale ref %s still present after WriteToRepo", name)
+		}
+	}
+	if !got["refs/heads/master"] {
+		t.Errorf("plan ref refs/heads/master missing after WriteToRepo")
+	}
+	for name := range got {
+		if !want[name] {
+			t.Errorf("unexpected ref %s present; only plan refs + HEAD should remain", name)
+		}
+	}
+}
+
 func TestWriteToRepo_PigsLinear(t *testing.T) {
 	repo := newFixtureRepo(t, map[string]string{
 		"README.md":             "# x\n",

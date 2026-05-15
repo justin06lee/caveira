@@ -242,6 +242,7 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 	if err := resetWorktreeToHead(stagePath); err != nil {
 		fmt.Fprintln(errOut, "warn: reset worktree:", err)
 	}
+	_ = exec.Command("git", "-C", stagePath, "reflog", "expire", "--expire=now", "--all").Run()
 	_ = exec.Command("git", "-C", stagePath, "gc", "--prune=now").Run()
 
 	deadPath, err := repo.Swap(srcPath, stagePath)
