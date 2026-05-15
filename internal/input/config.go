@@ -2,6 +2,7 @@ package input
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -17,6 +18,14 @@ type Config struct {
 	PushProtected bool
 	WindowTZ      *time.Location
 	OutDir        string
+
+	// Fabricate-mode fields (Phase 1)
+	Fabricate     bool
+	Flurry        bool
+	PigsN         int      // 0 = not set
+	RatsN         int      // 0 = not set
+	PigIdentities []string // raw strings from --pig flags, parsed in fabricate.ParseIdentity
+	RatIdentities []string // raw strings from --rat flags
 }
 
 // Validate returns an error if the configuration is unusable.
@@ -29,6 +38,26 @@ func (c *Config) Validate() error {
 	}
 	if !c.Start.Before(c.End) {
 		return errors.New("--start must be strictly before --end")
+	}
+
+	fabFlagsUsed := c.Flurry || c.PigsN > 0 || c.RatsN > 0 || len(c.PigIdentities) > 0 || len(c.RatIdentities) > 0
+	if fabFlagsUsed && !c.Fabricate {
+		return errors.New("--flurry, --pigs, --rats, --pig, --rat all require --fabricate")
+	}
+	if c.Fabricate && !c.Flurry {
+		return errors.New("--fabricate requires --flurry (LLM providers are Phase 2)")
+	}
+	if c.PigsN > 0 && c.RatsN > 0 {
+		return errors.New("--pigs and --rats are mutually exclusive")
+	}
+	if len(c.PigIdentities) > 0 && c.PigsN == 0 {
+		return errors.New("--pig requires --pigs N")
+	}
+	if len(c.RatIdentities) > 0 && c.RatsN == 0 {
+		return errors.New("--rat requires --rats N")
+	}
+	if c.PigsN < 0 || c.RatsN < 0 {
+		return fmt.Errorf("--pigs/--rats must be >= 1")
 	}
 	return nil
 }

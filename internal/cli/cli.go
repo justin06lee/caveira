@@ -49,6 +49,13 @@ func newRootCmd(name string) *cobra.Command {
 		pushProt  bool
 		windowTZ  string
 		outDir    string
+
+		fabricateFlag bool
+		flurryFlag    bool
+		pigsN         int
+		ratsN         int
+		pigIDs        []string
+		ratIDs        []string
 	)
 
 	cmd := &cobra.Command{
@@ -60,7 +67,11 @@ func newRootCmd(name string) *cobra.Command {
 
   ` + name + ` --repo https://github.com/u/myrepo.git \
       --start "tomorrow 9am" --end "tomorrow 5pm" \
-      --seed 42 --dry-run`,
+      --seed 42 --dry-run
+
+  ` + name + ` --repo /path/to/myrepo --fabricate --flurry \
+      --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
+      --pigs 3`,
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			tz, err := time.LoadLocation(windowTZ)
@@ -87,6 +98,12 @@ func newRootCmd(name string) *cobra.Command {
 				PushProtected: pushProt,
 				WindowTZ:      tz,
 				OutDir:        outDir,
+				Fabricate:     fabricateFlag,
+				Flurry:        flurryFlag,
+				PigsN:         pigsN,
+				RatsN:         ratsN,
+				PigIdentities: pigIDs,
+				RatIdentities: ratIDs,
 			}
 			if err := cfg.Validate(); err != nil {
 				return err
@@ -108,6 +125,14 @@ func newRootCmd(name string) *cobra.Command {
 	cmd.Flags().BoolVar(&pushProt, "push-protected", false, "allow pushing main/master")
 	cmd.Flags().StringVar(&windowTZ, "window-tz", "Local", "IANA timezone for --start/--end")
 	cmd.Flags().StringVar(&outDir, "out-dir", "", "parent directory for URL clones (default $CWD)")
+
+	cmd.Flags().BoolVar(&fabricateFlag, "fabricate", false, "synthesize a new commit history instead of retiming the source")
+	cmd.Flags().BoolVar(&flurryFlag, "flurry", false, "use the NLP-only fabricator (requires --fabricate)")
+	cmd.Flags().IntVar(&pigsN, "pigs", 0, "chaotic single-branch fabricator with N people (requires --fabricate)")
+	cmd.Flags().IntVar(&ratsN, "rats", 0, "branched fabricator with N people (requires --fabricate)")
+	cmd.Flags().StringArrayVar(&pigIDs, "pig", nil, "pig identity as \"Name <email>\"; repeatable (requires --pigs)")
+	cmd.Flags().StringArrayVar(&ratIDs, "rat", nil, "rat identity as \"Name <email>\"; repeatable (requires --rats)")
+
 	_ = cmd.MarkFlagRequired("repo")
 	_ = cmd.MarkFlagRequired("start")
 	_ = cmd.MarkFlagRequired("end")

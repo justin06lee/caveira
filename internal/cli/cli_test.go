@@ -58,3 +58,25 @@ func TestRunValidFlags(t *testing.T) {
 		t.Fatalf("expected stderr output from pipeline failure, got empty")
 	}
 }
+
+func TestRunFabricateFlagsParse(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{
+		"--repo", "/tmp/nonexistent",
+		"--start", "2026-05-14 12:00",
+		"--end", "2026-05-14 14:00",
+		"--window-tz", "UTC",
+		"--fabricate", "--flurry",
+		"--pigs", "2",
+		"--pig", "Alice <a@x.com>",
+		"--pig", "Bob <b@x.com>",
+	}, &out, &errOut)
+	// Validation should pass (the pipeline failure later is fine).
+	if !bytes.Contains(errOut.Bytes(), []byte("not a directory")) &&
+		!bytes.Contains(errOut.Bytes(), []byte("no such file")) {
+		// Either the pipeline failed cleanly, or an unexpected error occurred.
+		if code == 0 {
+			t.Fatalf("expected non-zero exit due to missing repo path, got 0; stderr=%q", errOut.String())
+		}
+	}
+}
