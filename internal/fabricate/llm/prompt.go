@@ -6,10 +6,12 @@ import (
 )
 
 // SegmentInfo describes one segment of a file for the prompt's segment map.
+// The line range is half-open: StartLine is inclusive, EndLine is exclusive,
+// matching how segments are produced elsewhere.
 type SegmentInfo struct {
 	Index     int
-	StartLine int
-	EndLine   int
+	StartLine int // inclusive
+	EndLine   int // exclusive
 }
 
 // FileInput is one source file presented to the LLM.
