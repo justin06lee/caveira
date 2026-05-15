@@ -52,8 +52,15 @@ func newRootCmd(name string) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:          name,
-		Short:        "Rewrite a repo's commit timestamps to fit a chosen time window",
+		Use:   name,
+		Short: "Rewrite a repo's commit timestamps to fit a chosen time window",
+		Example: "  " + name + ` --repo /path/to/myrepo \
+      --start "2026-05-14 13:00" \
+      --end   "2026-05-14 17:00"
+
+  ` + name + ` --repo https://github.com/u/myrepo.git \
+      --start "tomorrow 9am" --end "tomorrow 5pm" \
+      --seed 42 --dry-run`,
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			tz, err := time.LoadLocation(windowTZ)
