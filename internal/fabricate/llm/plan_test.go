@@ -42,3 +42,28 @@ func TestParsePlan_EmptyCommitsRejected(t *testing.T) {
 		t.Fatal("expected error for a plan with no commits")
 	}
 }
+
+func TestParsePlan_MissingSegmentsDefaultsToAll(t *testing.T) {
+	raw := `{"commits":[{"message":"chore: x","type":"chore","changes":[{"path":"go.mod"}]}]}`
+	p, err := ParsePlan(raw)
+	if err != nil {
+		t.Fatalf("ParsePlan: %v", err)
+	}
+	if !p.Commits[0].Changes[0].AllSegments {
+		t.Fatal("expected AllSegments true when segments key is absent")
+	}
+}
+
+func TestParsePlan_BracesInsideStringLiteral(t *testing.T) {
+	const message = "fix: handle } and { in parser"
+	jsonObject := `{"commits":[{"message":"` + message +
+		`","type":"fix","changes":[{"path":"x.go","segments":"all"}]}]}`
+	raw := "Here:\n" + jsonObject + "\nthanks"
+	p, err := ParsePlan(raw)
+	if err != nil {
+		t.Fatalf("ParsePlan: %v", err)
+	}
+	if got := p.Commits[0].Message; got != message {
+		t.Fatalf("message = %q, want %q", got, message)
+	}
+}

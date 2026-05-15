@@ -96,7 +96,7 @@ func decodeSegments(raw json.RawMessage, ch *Change) error {
 	}
 	var idx []int
 	if err := json.Unmarshal(raw, &idx); err != nil {
-		return fmt.Errorf("segments must be \"all\" or an integer array")
+		return fmt.Errorf("segments must be \"all\" or an integer array: %w", err)
 	}
 	ch.Segments = idx
 	return nil
