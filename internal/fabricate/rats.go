@@ -11,6 +11,11 @@ import (
 
 const offBranchForkProb = 0.30
 
+const (
+	conflictFixProb       = 0.20 // probability of a conflict-fix scar after a merge
+	conflictFixBranchProb = 0.40 // probability the scar is a fix-branch (conditional on conflictFixProb firing)
+)
+
 // BuildRatsPlan produces a Plan for rats mode. In this initial version each
 // feature gets its own branch off master, branches merge in feature order.
 // Tasks 12 and 13 add emergent off-branch forking and conflict scars.
@@ -115,6 +120,45 @@ func BuildRatsPlan(repo *git.Repository, ids []Identity, rng *rand.Rand) (*Plan,
 			}
 		}
 		openBranchTips = newOpen
+
+		// Conflict-fix scar
+		if rng.Float64() < conflictFixProb {
+			featName := strings.TrimPrefix(b.branchName, "refs/heads/feat/")
+			if rng.Float64() < conflictFixBranchProb {
+				// Spawn a fix branch with 1 small commit and merge it back.
+				fixID := len(commits)
+				commits = append(commits, SynthCommit{
+					ID:        fixID,
+					Parents:   []int{masterTip},
+					Author:    b.rat,
+					Committer: b.rat,
+					Message:   fmt.Sprintf("fix: resolve conflict in %s", featName),
+				})
+				fixBranchName := fmt.Sprintf("refs/heads/fix/%s", featName)
+				refs[fixBranchName] = fixID
+				mergeFixID := len(commits)
+				commits = append(commits, SynthCommit{
+					ID:        mergeFixID,
+					Parents:   []int{masterTip, fixID},
+					Author:    b.rat,
+					Committer: b.rat,
+					Message:   fmt.Sprintf("Merge branch 'fix/%s' into master", featName),
+					IsMerge:   true,
+				})
+				masterTip = mergeFixID
+			} else {
+				// Inline conflict-fix commit on master.
+				fixID := len(commits)
+				commits = append(commits, SynthCommit{
+					ID:        fixID,
+					Parents:   []int{masterTip},
+					Author:    b.rat,
+					Committer: b.rat,
+					Message:   fmt.Sprintf("fix: resolve conflict in %s", featName),
+				})
+				masterTip = fixID
+			}
+		}
 	}
 
 	refs[defaultBranch] = masterTip

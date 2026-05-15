@@ -101,3 +101,29 @@ func TestRatsMode_OffBranchForkAtSomeSeed(t *testing.T) {
 		t.Errorf("expected at least one seed across 50 trials to fork off another branch")
 	}
 }
+
+func TestRatsMode_ConflictFixScarAtSomeSeed(t *testing.T) {
+	files := map[string]string{}
+	for _, dir := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		files[dir+"/x.go"] = "package " + dir + "\n"
+	}
+	repo := newFixtureRepo(t, files)
+	ids := []Identity{{Name: "Solo", Email: "solo@x.com"}}
+	sawConflictFix := false
+	for s := int64(0); s < 50; s++ {
+		rng := rand.New(rand.NewSource(s))
+		plan, _ := BuildRatsPlan(repo, ids, rng)
+		for _, c := range plan.Commits {
+			if strings.HasPrefix(c.Message, "fix: resolve conflict") {
+				sawConflictFix = true
+				break
+			}
+		}
+		if sawConflictFix {
+			break
+		}
+	}
+	if !sawConflictFix {
+		t.Errorf("expected at least one seed across 50 trials to inject a conflict-fix commit")
+	}
+}
