@@ -38,6 +38,7 @@ func FlurrySequence(repo *git.Repository, id Identity, rng *rand.Rand) ([]SynthC
 				Committer: id,
 				Message:   CodeMessage(feat.Dir, rng),
 				Added:     feat.Code,
+				Feature:   basenameDir(feat.Dir),
 			}
 			commits = append(commits, c)
 			prev = idx
@@ -51,6 +52,7 @@ func FlurrySequence(repo *git.Repository, id Identity, rng *rand.Rand) ([]SynthC
 				Committer: id,
 				Message:   TestMessage(feat.Dir, rng),
 				Added:     feat.Test,
+				Feature:   basenameDir(feat.Dir),
 			}
 			commits = append(commits, c)
 			prev = idx

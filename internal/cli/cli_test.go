@@ -14,8 +14,11 @@ func TestRunHelp(t *testing.T) {
 	if !bytes.Contains(out.Bytes(), []byte("Usage:")) {
 		t.Fatalf("expected help output to include 'Usage:', got: %s", out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Rewrite a repo's commit timestamps")) {
-		t.Fatalf("expected help output to include the Short description, got: %s", out.String())
+	if !bytes.Contains(out.Bytes(), []byte("commit timestamps to fit a chosen time")) {
+		t.Fatalf("expected help output to describe retiming commit timestamps, got: %s", out.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("NOT bit-reproducible")) {
+		t.Fatalf("expected help output to include the LLM reproducibility note, got: %s", out.String())
 	}
 }
 
@@ -78,5 +81,38 @@ func TestRunFabricateFlagsParse(t *testing.T) {
 		if code == 0 {
 			t.Fatalf("expected non-zero exit due to missing repo path, got 0; stderr=%q", errOut.String())
 		}
+	}
+}
+
+func TestRunLLMFlagsParse(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{
+		"--repo", "/tmp/nonexistent-llm",
+		"--start", "2026-05-14 12:00",
+		"--end", "2026-05-14 14:00",
+		"--window-tz", "UTC",
+		"--fabricate", "--groq",
+		"--model", "test-model",
+		"--llm-timeout", "30s",
+	}, &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit (missing repo), got 0; stderr=%q", errOut.String())
+	}
+	if bytes.Contains(errOut.Bytes(), []byte("base engine")) {
+		t.Fatalf("flags should have parsed past validation; stderr=%q", errOut.String())
+	}
+}
+
+func TestRunFabricateNoBaseEngineRejected(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{
+		"--repo", "/tmp/x",
+		"--start", "2026-05-14 12:00",
+		"--end", "2026-05-14 14:00",
+		"--window-tz", "UTC",
+		"--fabricate",
+	}, &out, &errOut)
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --fabricate has no base engine")
 	}
 }

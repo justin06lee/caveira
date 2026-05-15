@@ -6,6 +6,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/justin06lee/caveira/internal/input"
 )
 
 func TestIntegration_FabricateFlurry_SingleAuthor(t *testing.T) {
@@ -94,5 +97,58 @@ func TestIntegration_FabricatePigs_TwoAuthors(t *testing.T) {
 	logOut, _ := exec.Command("git", "-C", repo, "log", "--pretty=%an %ae").CombinedOutput()
 	if !bytes.Contains(logOut, []byte("a@x.com")) || !bytes.Contains(logOut, []byte("b@x.com")) {
 		t.Errorf("expected both authors in destination log:\n%s", logOut)
+	}
+}
+
+// makeFixtureRepoDir builds a real on-disk git repo with one commit and
+// returns its path.
+func makeFixtureRepoDir(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not on PATH")
+	}
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "src")
+	mustGit(t, dir, "init", repo)
+	mustGit(t, repo, "config", "user.email", "t@e.com")
+	mustGit(t, repo, "config", "user.name", "T")
+	if err := os.MkdirAll(filepath.Join(repo, "internal/walk"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "internal/walk/load.go"), []byte("package walk\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "commit", "-m", "initial")
+	return repo
+}
+
+func TestIntegration_FabricateLLM_HardErrorNoFallback(t *testing.T) {
+	dir := t.TempDir()
+	script := "#!/bin/sh\ncat >/dev/null\necho 'provider exploded' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "claude"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	src := makeFixtureRepoDir(t)
+	cfg := &input.Config{
+		Repo:      src,
+		Start:     time.Now().Add(-4 * time.Hour),
+		End:       time.Now(),
+		WindowTZ:  time.UTC,
+		Fabricate: true,
+		Provider:  "claude-code",
+	}
+	var out, errOut bytes.Buffer
+	code := Pipeline(cfg, &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit; stderr=%q", errOut.String())
+	}
+	if !bytes.Contains(errOut.Bytes(), []byte("claude-code")) {
+		t.Fatalf("error should name the failed provider; stderr=%q", errOut.String())
 	}
 }

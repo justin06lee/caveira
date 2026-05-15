@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/justin06lee/caveira/internal/difficulty"
 	"github.com/justin06lee/caveira/internal/fabricate"
+	"github.com/justin06lee/caveira/internal/fabricate/llm"
 	"github.com/justin06lee/caveira/internal/input"
 	"github.com/justin06lee/caveira/internal/repo"
 	"github.com/justin06lee/caveira/internal/report"
@@ -162,7 +164,26 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 	}
 
 	rng := rngFor(cfg)
-	plan, dag, err := fabricate.Generate(srcRepo, ids, mode, rng)
+	var (
+		plan *fabricate.Plan
+		dag  *walk.DAG
+		err  error
+	)
+	if cfg.Provider != "" {
+		provider, perr := llm.NewProvider(cfg.Provider, llm.Options{
+			Model:   cfg.Model,
+			Timeout: cfg.LLMTimeout,
+			Seed:    cfg.Seed,
+			HasSeed: cfg.HasSeed,
+		})
+		if perr != nil {
+			fmt.Fprintln(errOut, "error:", perr)
+			return 1
+		}
+		plan, dag, err = fabricate.GenerateLLM(srcRepo, ids, mode, provider, rng)
+	} else {
+		plan, dag, err = fabricate.Generate(srcRepo, ids, mode, rng)
+	}
 	if err != nil {
 		fmt.Fprintln(errOut, "error: fabricate generate:", err)
 		return 1
@@ -213,6 +234,11 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 		return 1
 	}
 
+	if err := verifyTreeMatch(srcRepo, stageRepo); err != nil {
+		fmt.Fprintln(errOut, "error: fabricated tree does not match source:", err)
+		return 1
+	}
+
 	if err := resetWorktreeToHead(stagePath); err != nil {
 		fmt.Fprintln(errOut, "warn: reset worktree:", err)
 	}
@@ -238,6 +264,35 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 	span := windowSpan(res, cfg.Start)
 	report.WriteSummary(out, srcPath, srcPath, deadPath, before, after, span, cfg.End.Sub(cfg.Start), res.Scale, len(res.Squashes), pushed)
 	return 0
+}
+
+// verifyTreeMatch confirms the rewritten repo's HEAD tree equals the source
+// repo's HEAD tree — a defensive backstop for fabrication correctness.
+func verifyTreeMatch(src, dst *git.Repository) error {
+	srcTree, err := headTreeHash(src)
+	if err != nil {
+		return fmt.Errorf("source head tree: %w", err)
+	}
+	dstTree, err := headTreeHash(dst)
+	if err != nil {
+		return fmt.Errorf("rewritten head tree: %w", err)
+	}
+	if srcTree != dstTree {
+		return fmt.Errorf("tree %s != %s", dstTree, srcTree)
+	}
+	return nil
+}
+
+func headTreeHash(r *git.Repository) (plumbing.Hash, error) {
+	head, err := r.Head()
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	commit, err := r.CommitObject(head.Hash())
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	return commit.TreeHash, nil
 }
 
 // singleAuthorIdentity reads git config user.{name,email} via the system git

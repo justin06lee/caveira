@@ -5,10 +5,60 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-git/go-billy/v5/memfs"
+	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
+	"github.com/go-git/go-git/v5/storage/memory"
 
 	"github.com/justin06lee/caveira/internal/rewrite"
 )
+
+// newEmptyRepo builds an empty in-memory git repo with no commits.
+func newEmptyRepo(t *testing.T) *git.Repository {
+	t.Helper()
+	repo, err := git.Init(memory.NewStorage(), memfs.New())
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	return repo
+}
+
+func TestWriteToRepo_SyntheticContentBlob(t *testing.T) {
+	src := newEmptyRepo(t)
+	dst := newEmptyRepo(t)
+
+	content := []byte("package main\n\nfunc main() {}\n")
+	h := plumbing.ComputeHash(plumbing.BlobObject, content)
+
+	plan := &Plan{
+		Commits: []SynthCommit{
+			{
+				ID:      0,
+				Author:  Identity{Name: "A", Email: "a@x.com"},
+				Message: "feat: add main",
+				Added: []FileRef{
+					{Path: "main.go", Content: content, Blob: h, Mode: filemode.Regular},
+				},
+			},
+		},
+		Refs:    map[string]int{"refs/heads/master": 0},
+		HEAD:    0,
+		HeadRef: "refs/heads/master",
+	}
+	times := map[string]time.Time{SyntheticOID(0): time.Now()}
+
+	if _, err := WriteToRepo(src, dst, plan, times); err != nil {
+		t.Fatalf("WriteToRepo: %v", err)
+	}
+	obj, err := dst.Storer.EncodedObject(plumbing.BlobObject, h)
+	if err != nil {
+		t.Fatalf("synthetic blob not written to dst: %v", err)
+	}
+	if obj.Size() != int64(len(content)) {
+		t.Fatalf("blob size = %d, want %d", obj.Size(), len(content))
+	}
+}
 
 func TestWriteToRepo_PigsLinear(t *testing.T) {
 	repo := newFixtureRepo(t, map[string]string{

@@ -10,8 +10,9 @@ import (
 )
 
 // PlanToDAG converts a Plan into a walk.DAG. Each SynthCommit becomes a
-// walk.Commit with OID = SyntheticOID(id). Diff stats are computed from the
-// Added FileRefs by reading the source repo's blob sizes.
+// walk.Commit with OID = SyntheticOID(id). Diff stats come from the commit's
+// explicit Stats when set, otherwise they are computed from the Added FileRefs
+// by reading the source repo's blob sizes.
 func PlanToDAG(srcRepo *git.Repository, plan *Plan) (*walk.DAG, error) {
 	dag := walk.NewDAG()
 	for _, sc := range plan.Commits {
@@ -20,14 +21,18 @@ func PlanToDAG(srcRepo *git.Repository, plan *Plan) (*walk.DAG, error) {
 			parents = append(parents, SyntheticOID(p))
 		}
 		lines, files, newFiles := 0, 0, 0
-		for _, fr := range sc.Added {
-			blob, err := srcRepo.BlobObject(fr.Blob)
-			if err != nil {
-				return nil, err
+		if sc.Stats != nil {
+			lines, files, newFiles = sc.Stats.Lines, sc.Stats.Files, sc.Stats.NewFiles
+		} else {
+			for _, fr := range sc.Added {
+				blob, err := srcRepo.BlobObject(fr.Blob)
+				if err != nil {
+					return nil, err
+				}
+				lines += countBlobLines(blob)
+				files++
+				newFiles++
 			}
-			lines += countBlobLines(blob)
-			files++
-			newFiles++
 		}
 		dag.Add(&walk.Commit{
 			OID:          SyntheticOID(sc.ID),
