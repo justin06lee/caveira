@@ -84,10 +84,35 @@ func TestScheduleScalingFloorIsHalf(t *testing.T) {
 	windowStart := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	windowEnd := windowStart.Add(60 * time.Minute)
 
+	_, err := Schedule(dag, durations, windowStart, windowEnd)
+	// At floor s=0.5, span is still 300 minutes > 60. With squashing now in
+	// place (Task 11), the schedule fits, so success is expected.
+	if err != nil {
+		t.Fatalf("after squashing should fit, got %v", err)
+	}
+}
+
+func TestScheduleSquashesLinearEdges(t *testing.T) {
+	dag := makeLinearDAG([]int{60, 60, 60, 60, 60, 60, 60, 60, 60, 60})
+	durations := map[string]int{}
+	for i := 0; i < 10; i++ {
+		oid := string(rune('A' + i))
+		durations[oid] = 60
+	}
+	windowStart := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	windowEnd := windowStart.Add(60 * time.Minute)
+
 	res, err := Schedule(dag, durations, windowStart, windowEnd)
-	// At floor s=0.5, span is still 300 minutes > 60. Squashing (Task 11)
-	// will handle this. For now, expect error.
-	if err == nil {
-		t.Fatalf("expected error before squashing implemented, got res=%v", res)
+	if err != nil {
+		t.Fatalf("Schedule: %v", err)
+	}
+	if len(res.Squashes) == 0 {
+		t.Fatalf("expected at least one squash, got 0")
+	}
+	// All surviving commits' last time must be within the window.
+	for oid, tt := range res.NewTimes {
+		if tt.After(windowEnd) {
+			t.Errorf("commit %s ends at %v, past window end %v", oid, tt, windowEnd)
+		}
 	}
 }
