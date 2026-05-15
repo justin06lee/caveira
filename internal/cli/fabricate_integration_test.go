@@ -112,9 +112,15 @@ func makeFixtureRepoDir(t *testing.T) string {
 	mustGit(t, dir, "init", repo)
 	mustGit(t, repo, "config", "user.email", "t@e.com")
 	mustGit(t, repo, "config", "user.name", "T")
-	_ = os.MkdirAll(filepath.Join(repo, "internal/walk"), 0755)
-	_ = os.WriteFile(filepath.Join(repo, "README.md"), []byte("# x\n"), 0644)
-	_ = os.WriteFile(filepath.Join(repo, "internal/walk/load.go"), []byte("package walk\n"), 0644)
+	if err := os.MkdirAll(filepath.Join(repo, "internal/walk"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "internal/walk/load.go"), []byte("package walk\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	mustGit(t, repo, "add", "-A")
 	mustGit(t, repo, "commit", "-m", "initial")
 	return repo
@@ -128,7 +134,7 @@ func TestIntegration_FabricateLLM_HardErrorNoFallback(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	src := makeFixtureRepoDir(t) // existing helper that builds a real repo dir
+	src := makeFixtureRepoDir(t)
 	cfg := &input.Config{
 		Repo:      src,
 		Start:     time.Now().Add(-4 * time.Hour),
