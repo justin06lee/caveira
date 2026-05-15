@@ -12,6 +12,11 @@ type Result struct {
 	NewTimes map[string]time.Time // oid -> new author/committer time
 	Scale    float64              // 1.0 if no scaling applied
 	Squashes []Squash             // empty if no squashes applied
+	// DAG is the (possibly mutated) work DAG reflecting any squashes or
+	// linearizations applied during scheduling. Callers that need to walk
+	// the surviving commits (e.g. rewrite.Apply) should iterate this DAG
+	// rather than the original caller-supplied one.
+	DAG *walk.DAG
 }
 
 // Squash describes a single squash operation: child c is merged into parent p.
@@ -39,6 +44,7 @@ func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd ti
 		return nil, err
 	}
 	if span <= windowSize {
+		res.DAG = work
 		return res, nil
 	}
 
@@ -48,6 +54,7 @@ func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd ti
 		return nil, err
 	}
 	if span <= windowSize {
+		res.DAG = work
 		return res, nil
 	}
 
@@ -69,6 +76,7 @@ func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd ti
 		}
 	}
 	res.Squashes = squashes
+	res.DAG = work
 	return res, nil
 }
 
@@ -186,10 +194,10 @@ func applySquash(d *walk.DAG, durations map[string]int, s Squash) {
 	}
 	durations[c.OID] = dur
 
-	// Remove the parent and re-add the survivor to refresh children index.
+	// Remove the parent; this also strips p.OID from any commits that had it
+	// as a parent and rebuilds the children index. Grandchildren retain the
+	// survivor (c.OID) as their parent, so the chain stays intact.
 	d.Remove(p.OID)
-	d.Remove(c.OID)
-	d.Add(survivor)
 }
 
 func copyMetadataFrom(dst, src *walk.Commit) {
@@ -282,14 +290,23 @@ func linearizeOnce(d *walk.DAG, durations map[string]int) bool {
 			copyMetadataFrom(abs, small)
 		}
 		// abs survives. abs's parents and children stay; small's
-		// children are reattached as children of abs.
+		// children are reattached as children of abs, deduping in case
+		// they already had abs as a parent (e.g. diamond shapes).
 		for _, child := range d.Children(small.OID) {
 			c := d.Get(child)
-			for i, par := range c.Parents {
+			seen := map[string]bool{}
+			var np []string
+			for _, par := range c.Parents {
 				if par == small.OID {
-					c.Parents[i] = abs.OID
+					par = abs.OID
 				}
+				if seen[par] {
+					continue
+				}
+				seen[par] = true
+				np = append(np, par)
 			}
+			c.Parents = np
 		}
 		durations[abs.OID] = mergedDur
 		d.Remove(small.OID)

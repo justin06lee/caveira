@@ -61,6 +61,11 @@ func InMemoryClone(src *git.Repository) (*git.Repository, error) {
 // It rewrites parents to point at new OIDs, preserves tree hashes (taking
 // the child's tree on a squash), and sets new author/committer timestamps.
 func Apply(src, dst *git.Repository, dag *walk.DAG, res *schedule.Result) (map[string]plumbing.Hash, error) {
+	// Prefer the post-squash DAG from Schedule if available; otherwise fall
+	// back to the caller-supplied DAG (e.g. when no scheduling was performed).
+	if res != nil && res.DAG != nil {
+		dag = res.DAG
+	}
 	order, err := dag.TopologicalOrder()
 	if err != nil {
 		return nil, err
