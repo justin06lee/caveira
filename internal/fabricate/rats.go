@@ -16,9 +16,9 @@ const (
 	conflictFixBranchProb = 0.40 // probability the scar is a fix-branch (conditional on conflictFixProb firing)
 )
 
-// BuildRatsPlan produces a Plan for rats mode. In this initial version each
-// feature gets its own branch off master, branches merge in feature order.
-// Tasks 12 and 13 add emergent off-branch forking and conflict scars.
+// BuildRatsPlan produces a Plan for rats mode: each feature becomes a branch,
+// branches can fork off other still-open branches (emergent topology), and
+// merges occasionally leave conflict-fix scars. All randomness is seeded by rng.
 func BuildRatsPlan(repo *git.Repository, ids []Identity, rng *rand.Rand) (*Plan, error) {
 	if len(ids) == 0 {
 		return nil, errors.New("BuildRatsPlan: at least one identity required")
@@ -97,9 +97,7 @@ func BuildRatsPlan(repo *git.Repository, ids []Identity, rng *rand.Rand) (*Plan,
 		branches = append(branches, featureBranch{rat: rat, branchName: branchName, tip: branchTip})
 	}
 
-	// Phase 2: merge each branch into master in feature order. Once a branch
-	// is merged it is no longer "open" (though phase 1 is already done, this
-	// keeps the bookkeeping honest for future tasks).
+	// Phase 2: merge each branch into master in feature order.
 	for _, b := range branches {
 		mergeID := len(commits)
 		feat := strings.TrimPrefix(b.branchName, "refs/heads/feat/")
@@ -112,14 +110,6 @@ func BuildRatsPlan(repo *git.Repository, ids []Identity, rng *rand.Rand) (*Plan,
 			IsMerge:   true,
 		})
 		masterTip = mergeID
-
-		newOpen := openBranchTips[:0]
-		for _, t := range openBranchTips {
-			if t != b.tip {
-				newOpen = append(newOpen, t)
-			}
-		}
-		openBranchTips = newOpen
 
 		// Conflict-fix scar
 		if rng.Float64() < conflictFixProb {

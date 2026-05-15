@@ -2,7 +2,6 @@ package input
 
 import (
 	"errors"
-	"fmt"
 	"time"
 )
 
@@ -56,8 +55,11 @@ func (c *Config) Validate() error {
 	if len(c.RatIdentities) > 0 && c.RatsN == 0 {
 		return errors.New("--rat requires --rats N")
 	}
-	if c.PigsN < 0 || c.RatsN < 0 {
-		return fmt.Errorf("--pigs/--rats must be >= 1")
+	if c.PigsN < 0 {
+		return errors.New("--pigs must be >= 1")
+	}
+	if c.RatsN < 0 {
+		return errors.New("--rats must be >= 1")
 	}
 	return nil
 }
