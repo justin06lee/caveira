@@ -106,8 +106,8 @@ func Pipeline(cfg *input.Config, out, errOut io.Writer) int {
 		pushed = true
 	}
 
-	before := len(dag.All()) + len(res.Squashes)
-	after := len(dag.All())
+	before := len(dag.All())
+	after := before - len(res.Squashes)
 	span := windowSpan(res, cfg.Start)
 	report.WriteSummary(out, deadPath, srcPath, deadPath, before, after, span, cfg.End.Sub(cfg.Start), res.Scale, len(res.Squashes), pushed)
 	return 0
