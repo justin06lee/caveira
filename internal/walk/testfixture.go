@@ -66,9 +66,9 @@ func nameOfCommit(i int) string {
 
 // MakeFixtureBranchedMerged builds a repo with this shape:
 //
-//   A -- B -- C ---- M
-//         \         /
-//          D ----- E
+//	A -- B -- C ---- M
+//	      \         /
+//	       D ----- E
 //
 // All commits modify a single file unique to that commit.
 // Returns repo plus the OIDs in {A,B,C,D,E,M} order.
