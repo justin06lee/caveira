@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/justin06lee/caveira/internal/input"
@@ -15,7 +16,7 @@ func Run() int {
 }
 
 func RunWithArgs(args []string, stdout, stderr io.Writer) int {
-	cmd := newRootCmd()
+	cmd := newRootCmd(invocationName())
 	cmd.SetArgs(args)
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
@@ -26,7 +27,18 @@ func RunWithArgs(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func newRootCmd() *cobra.Command {
+func invocationName() string {
+	if len(os.Args) == 0 {
+		return "caveira"
+	}
+	name := filepath.Base(os.Args[0])
+	if name == "" || name == "." || name == "/" {
+		return "caveira"
+	}
+	return name
+}
+
+func newRootCmd(name string) *cobra.Command {
 	var (
 		repoFlag  string
 		startFlag string
@@ -40,7 +52,7 @@ func newRootCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:          "caveira",
+		Use:          name,
 		Short:        "Rewrite a repo's commit timestamps to fit a chosen time window",
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -74,7 +86,7 @@ func newRootCmd() *cobra.Command {
 			}
 			code := Pipeline(cfg, c.OutOrStdout(), c.ErrOrStderr())
 			if code != 0 {
-				return fmt.Errorf("caveira exited with code %d", code)
+				return fmt.Errorf("%s exited with code %d", name, code)
 			}
 			return nil
 		},

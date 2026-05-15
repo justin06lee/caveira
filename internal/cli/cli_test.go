@@ -11,8 +11,25 @@ func TestRunHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0 on --help, got %d; stderr=%q", code, errOut.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("caveira")) {
-		t.Fatalf("expected help output to mention 'caveira', got: %s", out.String())
+	if !bytes.Contains(out.Bytes(), []byte("Usage:")) {
+		t.Fatalf("expected help output to include 'Usage:', got: %s", out.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Rewrite a repo's commit timestamps")) {
+		t.Fatalf("expected help output to include the Short description, got: %s", out.String())
+	}
+}
+
+func TestNewRootCmd_UsesGivenName(t *testing.T) {
+	var out, errOut bytes.Buffer
+	cmd := newRootCmd("cav")
+	cmd.SetArgs([]string{"--help"})
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Usage:\n  cav")) {
+		t.Fatalf("expected Usage line to use 'cav', got: %s", out.String())
 	}
 }
 
