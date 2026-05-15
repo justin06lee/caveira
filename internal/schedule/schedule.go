@@ -329,7 +329,6 @@ func branchWeight(d *walk.DAG, durations map[string]int, start string) int {
 			break
 		}
 		cur = kids[0]
-		_ = next
 	}
 	return weight
 }

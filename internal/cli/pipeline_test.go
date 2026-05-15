@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 // TestPipeline_LinearDryRun runs the full pipeline against a temp git repo
@@ -44,7 +43,6 @@ func TestPipeline_LinearDryRun(t *testing.T) {
 	if !bytes.Contains(out.Bytes(), []byte("Span:")) {
 		t.Fatalf("expected dry-run output to include Span; got: %s", out.String())
 	}
-	_ = time.Now
 }
 
 func mustGit(t *testing.T, dir string, args ...string) {

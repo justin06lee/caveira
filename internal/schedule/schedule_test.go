@@ -10,7 +10,7 @@ import (
 func makeLinearDAG(durations []int) *walk.DAG {
 	d := walk.NewDAG()
 	prev := ""
-	for i, _ := range durations {
+	for i := range durations {
 		oid := string(rune('A' + i))
 		c := &walk.Commit{OID: oid}
 		if prev != "" {

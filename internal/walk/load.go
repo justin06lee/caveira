@@ -6,7 +6,6 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/storer"
 )
 
 // Load walks every ref of repo, collects all reachable commits, computes
@@ -95,7 +94,6 @@ func walkFrom(repo *git.Repository, start *object.Commit, dag *DAG, visited map[
 			NewFiles:     newFiles,
 		})
 	}
-	_ = storer.ErrStop // silence unused import in some setups
 	return nil
 }
 

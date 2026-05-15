@@ -116,7 +116,7 @@ func Pipeline(cfg *input.Config, out, errOut io.Writer) int {
 	before := len(dag.All())
 	after := before - len(res.Squashes)
 	span := windowSpan(res, cfg.Start)
-	report.WriteSummary(out, deadPath, srcPath, deadPath, before, after, span, cfg.End.Sub(cfg.Start), res.Scale, len(res.Squashes), pushed)
+	report.WriteSummary(out, srcPath, srcPath, deadPath, before, after, span, cfg.End.Sub(cfg.Start), res.Scale, len(res.Squashes), pushed)
 	return 0
 }
 
@@ -156,7 +156,7 @@ func rowsFor(dag *walk.DAG, durations map[string]int, diffs map[string]difficult
 			Difficulty: diffs[oid],
 			Duration:   durations[oid],
 			OldTime:    c.AuthorDate,
-			NewTime:    res.NewTimes[oid],
+			NewTime:    res.NewTimes[oid].In(c.AuthorDate.Location()),
 		}
 		rows = append(rows, row)
 	}
