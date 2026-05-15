@@ -2,6 +2,8 @@ package fabricate
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
@@ -58,4 +60,17 @@ type Plan struct {
 // SyntheticOID converts an int ID to the string OID used in walk.DAG.
 func SyntheticOID(id int) string {
 	return fmt.Sprintf("synth-%d", id)
+}
+
+// parseSyntheticOID parses "synth-N" into the integer N.
+func parseSyntheticOID(oid string) (int, error) {
+	const prefix = "synth-"
+	if !strings.HasPrefix(oid, prefix) {
+		return 0, fmt.Errorf("not a synthetic OID")
+	}
+	n, err := strconv.Atoi(strings.TrimPrefix(oid, prefix))
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }
