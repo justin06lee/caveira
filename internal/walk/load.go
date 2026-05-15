@@ -89,6 +89,7 @@ func walkFrom(repo *git.Repository, start *object.Commit, dag *DAG, visited map[
 			AuthorDate:   c.Author.When,
 			IsMerge:      c.NumParents() > 1,
 			IsRoot:       c.NumParents() == 0,
+			Signed:       c.PGPSignature != "",
 			LinesChanged: lines,
 			FilesTouched: files,
 			NewFiles:     newFiles,

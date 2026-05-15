@@ -51,6 +51,13 @@ func Pipeline(cfg *input.Config, out, errOut io.Writer) int {
 		return 1
 	}
 
+	for _, c := range dag.All() {
+		if c.Signed {
+			fmt.Fprintln(errOut, "warning: source contains GPG-signed commits; signatures will be dropped in the rewrite")
+			break
+		}
+	}
+
 	rng := rngFor(cfg)
 	durations, diffs := schedule.BuildDurations(dag, rng)
 

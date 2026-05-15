@@ -17,6 +17,7 @@ type Commit struct {
 	AuthorDate   time.Time
 	IsMerge      bool
 	IsRoot       bool
+	Signed       bool
 	LinesChanged int
 	FilesTouched int
 	NewFiles     int
