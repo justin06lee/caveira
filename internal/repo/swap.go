@@ -6,7 +6,8 @@ import (
 )
 
 // FindNextDead returns the first non-existing path among:
-//   <orig>.dead, <orig>.dead.1, <orig>.dead.2, ...
+//
+//	<orig>.dead, <orig>.dead.1, <orig>.dead.2, ...
 func FindNextDead(orig string) string {
 	candidate := orig + ".dead"
 	if _, err := os.Stat(candidate); os.IsNotExist(err) {

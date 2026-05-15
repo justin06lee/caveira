@@ -33,9 +33,9 @@ var fourDigitYearRe = regexp.MustCompile(`\b\d{4}\b`)
 func parseAbsolute(s string, tz *time.Location, now time.Time) (time.Time, error) {
 	datePart := s
 	var (
-		hasTime  bool
-		hour     int
-		minute   int
+		hasTime bool
+		hour    int
+		minute  int
 	)
 
 	if loc := ampmSuffixRe.FindStringSubmatchIndex(s); loc != nil {

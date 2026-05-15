@@ -59,6 +59,12 @@ cav --repo https://github.com/u/myrepo.git \
 | `--push-protected` |          | Allow `--push` to touch `main` / `master`                 |
 | `--window-tz`      |          | IANA timezone for parsing `--start`/`--end` (default `Local`) |
 | `--out-dir`        |          | Parent dir for URL clones (default `$CWD`)                |
+| `--fabricate`      |          | Synthesize a new commit history instead of retiming the source |
+| `--flurry`         |          | NLP-only fabricator (requires `--fabricate`)              |
+| `--pigs N`         |          | Chaotic single-branch fabrication with N people           |
+| `--rats N`         |          | Branched fabrication with N people                        |
+| `--pig "Name <email>"` |      | A pig identity; repeatable (requires `--pigs`)            |
+| `--rat "Name <email>"` |      | A rat identity; repeatable (requires `--rats`)            |
 
 Run `caveira --help` for the live flag reference.
 
@@ -80,6 +86,40 @@ Run `caveira --help` for the live flag reference.
 
 Full design: [`docs/superpowers/specs/2026-05-14-caveira-design.md`](docs/superpowers/specs/2026-05-14-caveira-design.md).
 
+## Fabrication mode (preview)
+
+`--fabricate` synthesizes a new commit history from scratch using the source
+repo's HEAD tree as the target. `--flurry` is the NLP-only fabricator (no LLM):
+it groups files by top-level directory, classifies each file as chore / code /
+test, and emits a sequence of `chore: …`, `feat(<dir>): …`, `test(<dir>): …`
+commits that end at the source's exact HEAD tree.
+
+```bash
+# Single-author (uses git config user.*)
+caveira --repo /path/to/myrepo --fabricate --flurry \
+        --start "2026-05-14 09:00" --end "2026-05-14 17:00"
+
+# Three pigs: chaotic single-branch with author RR, noise commits, message typos
+caveira --repo /path/to/myrepo --fabricate --flurry \
+        --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
+        --pigs 3 \
+        --pig "Alice <a@x.com>" --pig "Bob <b@x.com>" --pig "Carol <c@x.com>"
+
+# Two rats: emergent feature branches, off-branch forks, occasional conflict-fix scars
+caveira --repo /path/to/myrepo --fabricate --flurry \
+        --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
+        --rats 2 \
+        --rat "Alice <a@x.com>" --rat "Bob <b@x.com>"
+```
+
+If `--pigs N` or `--rats N` is set and fewer than N identities are supplied via
+`--pig` / `--rat`, Caveira scans the `.git` history for additional identities
+and prompts interactively for any still missing. If too many are found, it
+shows a picker.
+
+LLM-backed fabricators (Groq, Claude Code as a subprocess, Codex, NVIDIA,
+OpenCode) are Phase 2 of this feature.
+
 ## Notes & limitations
 
 - Author and committer name/email are preserved. Both timestamps are rewritten
@@ -91,6 +131,12 @@ Full design: [`docs/superpowers/specs/2026-05-14-caveira-design.md`](docs/superp
 - Merge commits are forced to the `trivial` bucket regardless of score.
 - If `<name>.dead` already exists, the original is auto-versioned to
   `.dead.1`, `.dead.2`, etc.
+- In `--fabricate` mode, the synthesized history reproduces the source's exact
+  final tree; the original commits and their messages are discarded. If the
+  time window is too small to fit the fabricated commits, Caveira refuses
+  rather than squashing them — widen `--start`/`--end`.
+- `--pigs` and `--rats` are mutually exclusive. Without either, `--fabricate`
+  uses a single author from `git config user.*`.
 
 ## Development
 
