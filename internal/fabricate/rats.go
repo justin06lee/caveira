@@ -65,9 +65,10 @@ func splitBase(base []SynthCommit) (chore []SynthCommit, runs []featureRun) {
 // reshapeRats reshapes a linear base sequence into the rats emergent topology:
 // each featureRun becomes a branch (forking from master or another open
 // branch), branches merge back into master, and merges may leave conflict-fix
-// scars. Commit IDs and parents are reassigned by this function. It does not
-// mutate the caller's base slice elements: each SynthCommit is copied by value
-// before its fields are reassigned, so the contract matches reshapePigs.
+// scars. Commit IDs and parents are reassigned by this function. Unlike
+// reshapePigs and reshapeSingle, it does not mutate the caller's base slice
+// elements: each SynthCommit is copied by value before its fields are
+// reassigned.
 func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, error) {
 	if len(base) == 0 {
 		return nil, errors.New("reshapeRats: empty base sequence")

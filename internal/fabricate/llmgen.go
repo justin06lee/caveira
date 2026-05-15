@@ -114,7 +114,8 @@ func reshapeBase(base []SynthCommit, ids []Identity, mode string, rng *rand.Rand
 	}
 }
 
-// reshapeSingle assigns one identity to a linear base sequence unchanged.
+// reshapeSingle assigns one identity and linear IDs/parents to a base
+// sequence, mutating the caller's base slice elements in place.
 func reshapeSingle(base []SynthCommit, id Identity) *Plan {
 	for i := range base {
 		base[i].ID = i

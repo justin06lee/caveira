@@ -33,7 +33,8 @@ func BuildPigsPlan(repo *git.Repository, ids []Identity, rng *rand.Rand) (*Plan,
 // reshapePigs reshapes a linear base sequence for pigs mode: round-robin
 // authors across real commits, typos on every message, and ~noiseRate noise
 // commits injected between adjacent real commits. The base sequence's commit
-// IDs and parents are reassigned; callers need not pre-link them.
+// IDs and parents are reassigned; callers need not pre-link them. It mutates
+// the caller's base slice elements in place.
 func reshapePigs(base []SynthCommit, ids []Identity, rng *rand.Rand) *Plan {
 	for i := range base {
 		id := ids[i%len(ids)]
