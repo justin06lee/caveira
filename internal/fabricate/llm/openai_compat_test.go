@@ -16,7 +16,7 @@ func TestOpenAICompat_GeneratePlan(t *testing.T) {
 		}
 
 		var req struct {
-			Model          string `json:"model"`
+			Model          string  `json:"model"`
 			Temperature    float64 `json:"temperature"`
 			ResponseFormat struct {
 				Type string `json:"type"`
