@@ -1,6 +1,7 @@
 package fabricate
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -32,9 +33,9 @@ func linearPlan(n int) *Plan {
 		commits[i] = SynthCommit{
 			ID:      i,
 			Parents: parents,
-			Author:  Identity{Name: "A" + itoa(i), Email: "a" + itoa(i) + "@x.com"},
-			Message: "commit " + itoa(i),
-			Added:   []FileRef{fileRef("file"+itoa(i)+".txt", "content "+itoa(i)+"\n")},
+			Author:  Identity{Name: "A" + strconv.Itoa(i), Email: "a" + strconv.Itoa(i) + "@x.com"},
+			Message: "commit " + strconv.Itoa(i),
+			Added:   []FileRef{fileRef("file"+strconv.Itoa(i)+".txt", "content "+strconv.Itoa(i)+"\n")},
 		}
 	}
 	return &Plan{
@@ -43,18 +44,6 @@ func linearPlan(n int) *Plan {
 		HEAD:    n - 1,
 		HeadRef: "refs/heads/master",
 	}
-}
-
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	var b []byte
-	for i > 0 {
-		b = append([]byte{byte('0' + i%10)}, b...)
-		i /= 10
-	}
-	return string(b)
 }
 
 func TestSquashPlan_LinearEdge(t *testing.T) {

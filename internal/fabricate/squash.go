@@ -2,8 +2,6 @@ package fabricate
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 )
 
 // SquashOp is one parent->child squash, by synthetic OID ("synth-N").
@@ -21,6 +19,10 @@ type SquashOp struct {
 // durations maps synthetic OID -> duration in minutes; it determines which of
 // parent/child supplies the survivor's metadata. SquashPlan does NOT mutate the
 // caller's durations map: it clones it internally.
+//
+// squashes must be supplied in the order the scheduler produced them: each op
+// references nodes that still exist at that point in the replay, so an
+// out-of-order slice can reference an already-removed commit.
 func SquashPlan(plan *Plan, squashes []SquashOp, durations map[string]int) error {
 	durs := make(map[string]int, len(durations))
 	for k, v := range durations {
@@ -95,19 +97,6 @@ func SquashPlan(plan *Plan, squashes []SquashOp, durations map[string]int) error
 	}
 
 	return nil
-}
-
-// parseSyntheticOID parses "synth-N" into the integer N.
-func parseSyntheticOID(oid string) (int, error) {
-	const prefix = "synth-"
-	if !strings.HasPrefix(oid, prefix) {
-		return 0, fmt.Errorf("not a synthetic OID")
-	}
-	n, err := strconv.Atoi(strings.TrimPrefix(oid, prefix))
-	if err != nil {
-		return 0, err
-	}
-	return n, nil
 }
 
 // findCommit returns a pointer to the SynthCommit with the given ID, or nil.
