@@ -72,8 +72,10 @@ func newRootCmd() *cobra.Command {
 			if err := cfg.Validate(); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "parsed config: repo=%s window=%s..%s tz=%s dry=%v\n",
-				cfg.Repo, cfg.Start, cfg.End, cfg.WindowTZ, cfg.DryRun)
+			code := Pipeline(cfg, c.OutOrStdout(), c.ErrOrStderr())
+			if code != 0 {
+				return fmt.Errorf("caveira exited with code %d", code)
+			}
 			return nil
 		},
 	}
