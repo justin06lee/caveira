@@ -65,6 +65,13 @@ cav --repo https://github.com/u/myrepo.git \
 | `--rats N`         |          | Branched fabrication with N people                        |
 | `--pig "Name <email>"` |      | A pig identity; repeatable (requires `--pigs`)            |
 | `--rat "Name <email>"` |      | A rat identity; repeatable (requires `--rats`)            |
+| `--groq`           |          | LLM engine: Groq API (`GROQ_API_KEY`)                     |
+| `--nvidia`         |          | LLM engine: NVIDIA API (`NVIDIA_API_KEY`)                 |
+| `--claude-code`    |          | LLM engine: `claude` CLI subprocess                       |
+| `--codex`          |          | LLM engine: `codex` CLI subprocess                        |
+| `--opencode`       |          | LLM engine: `opencode` CLI subprocess                     |
+| `--model NAME`     |          | Override the LLM provider's default model                 |
+| `--llm-timeout D`  |          | Per-LLM-call timeout (default `120s`)                     |
 
 Run `caveira --help` for the live flag reference.
 
@@ -117,8 +124,35 @@ If `--pigs N` or `--rats N` is set and fewer than N identities are supplied via
 and prompts interactively for any still missing. If too many are found, it
 shows a picker.
 
-LLM-backed fabricators (Groq, Claude Code as a subprocess, Codex, NVIDIA,
-OpenCode) are Phase 2 of this feature.
+### LLM-backed fabrication
+
+Instead of the templated `--flurry` engine, an LLM can design the fabricated
+history — grouping files into features, ordering commits, splitting large files
+across multiple commits, and writing the messages. Pick exactly one engine:
+
+| Flag             | Engine                          | Auth                          |
+|------------------|---------------------------------|-------------------------------|
+| `--groq`         | Groq API                        | `GROQ_API_KEY` env var        |
+| `--nvidia`       | NVIDIA API                      | `NVIDIA_API_KEY` env var      |
+| `--claude-code`  | `claude` CLI subprocess         | the CLI's own configuration   |
+| `--codex`        | `codex` CLI subprocess          | the CLI's own configuration   |
+| `--opencode`     | `opencode` CLI subprocess       | the CLI's own configuration   |
+
+Optional: `--model NAME` overrides the provider's default model;
+`--llm-timeout DURATION` bounds each call (default 120s).
+
+LLM engines compose with `--pigs` / `--rats` exactly like `--flurry`:
+
+```bash
+cav --repo ./myrepo --fabricate --groq --rats 3 \
+    --start "2026-05-14 09:00" --end "2026-05-14 17:00"
+```
+
+The fabricated tree always matches the source HEAD exactly. Unlike `--flurry`,
+LLM-backed runs are **not** guaranteed to be bit-reproducible across runs:
+the structural reshaping (`--pigs` / `--rats`, scheduling) stays seeded, but the
+LLM's plan itself may vary. If the provider fails or returns an unusable plan
+after retries, Caveira aborts with an error — it does not silently fall back.
 
 ## Notes & limitations
 

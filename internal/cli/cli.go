@@ -79,7 +79,11 @@ func newRootCmd(name string) *cobra.Command {
 
   ` + name + ` --repo /path/to/myrepo --fabricate --flurry \
       --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
-      --pigs 3`,
+      --pigs 3
+
+  ` + name + ` --repo /path/to/myrepo --fabricate --groq \
+      --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
+      --rats 3`,
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			tz, err := time.LoadLocation(windowTZ)
