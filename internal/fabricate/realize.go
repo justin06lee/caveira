@@ -27,7 +27,6 @@ type fileChange struct {
 // PlanCommitView is a resolved, clamped commit ready for realization.
 type PlanCommitView struct {
 	Message string
-	Type    string
 	Changes []fileChange
 }
 
@@ -86,7 +85,15 @@ func Realize(sources []SourceFile, plan *llm.Plan) ([]SynthCommit, error) {
 		}
 	}
 	// Forgotten segments of touched files -> append to that file's last commit.
-	for path, segset := range assigned {
+	// Iterate paths in sorted order so the resulting fileChange order (and thus
+	// FileRef order in sc.Added) is deterministic across runs.
+	assignedPaths := make([]string, 0, len(assigned))
+	for path := range assigned {
+		assignedPaths = append(assignedPaths, path)
+	}
+	sort.Strings(assignedPaths)
+	for _, path := range assignedPaths {
+		segset := assigned[path]
 		sf := byPath[path]
 		var missing []int
 		for i := 0; i < len(sf.Segments); i++ {
@@ -112,12 +119,12 @@ func Realize(sources []SourceFile, plan *llm.Plan) ([]SynthCommit, error) {
 	}
 	commits := make([]PlanCommitView, len(plan.Commits))
 	for i, pc := range plan.Commits {
-		commits[i] = PlanCommitView{Message: pc.Message, Type: pc.Type, Changes: resolved[i]}
+		commits[i] = PlanCommitView{Message: pc.Message, Changes: resolved[i]}
 	}
 	if len(forgotten) > 0 {
 		sort.Slice(forgotten, func(i, j int) bool { return forgotten[i].path < forgotten[j].path })
 		commits = append(commits, PlanCommitView{
-			Message: "chore: finalize", Type: "chore", Changes: forgotten,
+			Message: "chore: finalize", Changes: forgotten,
 		})
 	}
 
@@ -178,6 +185,7 @@ func assembleContent(sf SourceFile, set map[int]bool) []byte {
 func segLineCount(s Segment) int {
 	n := s.EndLine - s.StartLine
 	if n < 1 {
+		// An empty or zero-line segment still counts as one visible edit.
 		return 1
 	}
 	return n
