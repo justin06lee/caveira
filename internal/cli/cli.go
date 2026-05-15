@@ -56,6 +56,14 @@ func newRootCmd(name string) *cobra.Command {
 		ratsN         int
 		pigIDs        []string
 		ratIDs        []string
+
+		groqFlag       bool
+		claudeCodeFlag bool
+		codexFlag      bool
+		nvidiaFlag     bool
+		openCodeFlag   bool
+		modelFlag      string
+		llmTimeoutFlag time.Duration
 	)
 
 	cmd := &cobra.Command{
@@ -87,6 +95,18 @@ func newRootCmd(name string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			provider := ""
+			for name, on := range map[string]bool{
+				"groq": groqFlag, "claude-code": claudeCodeFlag,
+				"codex": codexFlag, "nvidia": nvidiaFlag, "opencode": openCodeFlag,
+			} {
+				if on {
+					if provider != "" {
+						return fmt.Errorf("only one LLM engine may be selected")
+					}
+					provider = name
+				}
+			}
 			cfg := &input.Config{
 				Repo:          repoFlag,
 				Start:         start,
@@ -104,6 +124,9 @@ func newRootCmd(name string) *cobra.Command {
 				RatsN:         ratsN,
 				PigIdentities: pigIDs,
 				RatIdentities: ratIDs,
+				Provider:      provider,
+				Model:         modelFlag,
+				LLMTimeout:    llmTimeoutFlag,
 			}
 			if err := cfg.Validate(); err != nil {
 				return err
@@ -132,6 +155,14 @@ func newRootCmd(name string) *cobra.Command {
 	cmd.Flags().IntVar(&ratsN, "rats", 0, "branched fabricator with N people (requires --fabricate)")
 	cmd.Flags().StringArrayVar(&pigIDs, "pig", nil, "pig identity as \"Name <email>\"; repeatable (requires --pigs)")
 	cmd.Flags().StringArrayVar(&ratIDs, "rat", nil, "rat identity as \"Name <email>\"; repeatable (requires --rats)")
+
+	cmd.Flags().BoolVar(&groqFlag, "groq", false, "LLM engine: Groq API (requires --fabricate, GROQ_API_KEY)")
+	cmd.Flags().BoolVar(&claudeCodeFlag, "claude-code", false, "LLM engine: claude CLI subprocess (requires --fabricate)")
+	cmd.Flags().BoolVar(&codexFlag, "codex", false, "LLM engine: codex CLI subprocess (requires --fabricate)")
+	cmd.Flags().BoolVar(&nvidiaFlag, "nvidia", false, "LLM engine: NVIDIA API (requires --fabricate, NVIDIA_API_KEY)")
+	cmd.Flags().BoolVar(&openCodeFlag, "opencode", false, "LLM engine: opencode CLI subprocess (requires --fabricate)")
+	cmd.Flags().StringVar(&modelFlag, "model", "", "override the LLM provider's default model")
+	cmd.Flags().DurationVar(&llmTimeoutFlag, "llm-timeout", 0, "per-LLM-call timeout (default 120s)")
 
 	_ = cmd.MarkFlagRequired("repo")
 	_ = cmd.MarkFlagRequired("start")

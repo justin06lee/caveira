@@ -80,3 +80,36 @@ func TestRunFabricateFlagsParse(t *testing.T) {
 		}
 	}
 }
+
+func TestRunLLMFlagsParse(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{
+		"--repo", "/tmp/nonexistent-llm",
+		"--start", "2026-05-14 12:00",
+		"--end", "2026-05-14 14:00",
+		"--window-tz", "UTC",
+		"--fabricate", "--groq",
+		"--model", "test-model",
+		"--llm-timeout", "30s",
+	}, &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit (missing repo), got 0; stderr=%q", errOut.String())
+	}
+	if bytes.Contains(errOut.Bytes(), []byte("base engine")) {
+		t.Fatalf("flags should have parsed past validation; stderr=%q", errOut.String())
+	}
+}
+
+func TestRunFabricateNoBaseEngineRejected(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{
+		"--repo", "/tmp/x",
+		"--start", "2026-05-14 12:00",
+		"--end", "2026-05-14 14:00",
+		"--window-tz", "UTC",
+		"--fabricate",
+	}, &out, &errOut)
+	if code == 0 {
+		t.Fatal("expected non-zero exit when --fabricate has no base engine")
+	}
+}
