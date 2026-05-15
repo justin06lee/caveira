@@ -31,7 +31,7 @@ func WriteToRepo(src, dst *git.Repository, plan *Plan, times map[string]time.Tim
 		return nil, err
 	}
 
-	// Copy all blobs referenced by any commit's Added list from src to dst.
+	// Copy source blobs and write synthetic-content blobs into dst.
 	seenBlobs := map[plumbing.Hash]bool{}
 	for _, c := range plan.Commits {
 		for _, fr := range c.Added {
@@ -39,6 +39,12 @@ func WriteToRepo(src, dst *git.Repository, plan *Plan, times map[string]time.Tim
 				continue
 			}
 			seenBlobs[fr.Blob] = true
+			if fr.Content != nil {
+				if err := writeBlob(dst, fr.Content); err != nil {
+					return nil, fmt.Errorf("write synthetic blob %s: %w", fr.Blob, err)
+				}
+				continue
+			}
 			if err := copyBlob(src, dst, fr.Blob); err != nil {
 				return nil, fmt.Errorf("copy blob %s: %w", fr.Blob, err)
 			}
@@ -212,6 +218,25 @@ func indexOf(s string, c byte) int {
 		}
 	}
 	return -1
+}
+
+// writeBlob writes content as a blob object into dst. The resulting hash
+// equals plumbing.ComputeHash(plumbing.BlobObject, content).
+func writeBlob(dst *git.Repository, content []byte) error {
+	ne := dst.Storer.NewEncodedObject()
+	ne.SetType(plumbing.BlobObject)
+	w, err := ne.Writer()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(content); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	_, err = dst.Storer.SetEncodedObject(ne)
+	return err
 }
 
 func copyBlob(src, dst *git.Repository, h plumbing.Hash) error {
