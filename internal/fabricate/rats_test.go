@@ -37,6 +37,32 @@ func TestReshapeRats_BranchesPerFeature(t *testing.T) {
 	}
 }
 
+func TestReshapeRats_NoChoreSynthesizesRoot(t *testing.T) {
+	ids := []Identity{{Name: "A", Email: "a@x.com"}}
+	base := []SynthCommit{
+		{ID: 0, Message: "feat(walk): add walk", Feature: "walk"},
+		{ID: 1, Message: "test(walk): tests for walk", Feature: "walk"},
+		{ID: 2, Message: "feat(cli): add cli", Feature: "cli"},
+	}
+	plan, err := reshapeRats(base, ids, rand.New(rand.NewSource(3)))
+	if err != nil {
+		t.Fatalf("reshapeRats: %v", err)
+	}
+	if len(plan.Commits) == 0 {
+		t.Fatalf("expected commits in plan")
+	}
+	root := plan.Commits[0]
+	if len(root.Parents) != 0 {
+		t.Fatalf("expected commit 0 to be a root with no parents, got parents %v", root.Parents)
+	}
+	if root.Message == "" {
+		t.Fatalf("expected synthesized root commit to have a non-empty message")
+	}
+	if _, ok := plan.Refs[defaultBranch]; !ok {
+		t.Fatalf("expected plan to retain a %s ref", defaultBranch)
+	}
+}
+
 func TestRatsMode_FeatureBranches(t *testing.T) {
 	repo := newFixtureRepo(t, map[string]string{
 		"README.md":             "# x\n",

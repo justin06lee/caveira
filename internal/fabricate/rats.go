@@ -35,6 +35,11 @@ type featureRun struct {
 
 // splitBase partitions a linear base sequence into a leading chore run (commits
 // with Feature == "") and one featureRun per contiguous same-Feature run.
+//
+// It assumes each feature's commits are contiguous in the base sequence (true
+// for FlurrySequence output). Two non-adjacent runs with the same feature name
+// would each become a separate branch, and the later run's refs/heads/feat/<name>
+// ref would overwrite the earlier run's.
 func splitBase(base []SynthCommit) (chore []SynthCommit, runs []featureRun) {
 	for _, c := range base {
 		if c.Feature == "" {
@@ -60,7 +65,9 @@ func splitBase(base []SynthCommit) (chore []SynthCommit, runs []featureRun) {
 // reshapeRats reshapes a linear base sequence into the rats emergent topology:
 // each featureRun becomes a branch (forking from master or another open
 // branch), branches merge back into master, and merges may leave conflict-fix
-// scars. Commit IDs and parents are reassigned by this function.
+// scars. Commit IDs and parents are reassigned by this function. It does not
+// mutate the caller's base slice elements: each SynthCommit is copied by value
+// before its fields are reassigned, so the contract matches reshapePigs.
 func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, error) {
 	if len(base) == 0 {
 		return nil, errors.New("reshapeRats: empty base sequence")
@@ -98,6 +105,7 @@ func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, err
 	type branch struct {
 		rat        Identity
 		branchName string
+		feat       string
 		tip        int
 	}
 	var branches []branch
@@ -118,7 +126,7 @@ func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, err
 		}
 		openBranchTips = append(openBranchTips, tip)
 		refs[branchName] = tip
-		branches = append(branches, branch{rat: rat, branchName: branchName, tip: tip})
+		branches = append(branches, branch{rat: rat, branchName: branchName, feat: run.feature, tip: tip})
 	}
 
 	// Phase 2: merge each branch into master, with optional conflict-fix scars.
@@ -135,26 +143,25 @@ func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, err
 		masterTip = mergeID
 
 		if rng.Float64() < conflictFixProb {
-			feat := b.branchName[len("refs/heads/feat/"):]
 			if rng.Float64() < conflictFixBranchProb {
 				fixID := next()
 				commits = append(commits, SynthCommit{
 					ID: fixID, Parents: []int{masterTip}, Author: b.rat, Committer: b.rat,
-					Message: fmt.Sprintf("fix: resolve conflict in %s", feat),
+					Message: fmt.Sprintf("fix: resolve conflict in %s", b.feat),
 				})
-				refs[fmt.Sprintf("refs/heads/fix/%s", feat)] = fixID
+				refs[fmt.Sprintf("refs/heads/fix/%s", b.feat)] = fixID
 				mergeFixID := next()
 				commits = append(commits, SynthCommit{
 					ID: mergeFixID, Parents: []int{masterTip, fixID}, Author: b.rat,
 					Committer: b.rat, IsMerge: true,
-					Message: fmt.Sprintf("Merge branch 'fix/%s' into master", feat),
+					Message: fmt.Sprintf("Merge branch 'fix/%s' into master", b.feat),
 				})
 				masterTip = mergeFixID
 			} else {
 				fixID := next()
 				commits = append(commits, SynthCommit{
 					ID: fixID, Parents: []int{masterTip}, Author: b.rat, Committer: b.rat,
-					Message: fmt.Sprintf("fix: resolve conflict in %s", feat),
+					Message: fmt.Sprintf("fix: resolve conflict in %s", b.feat),
 				})
 				masterTip = fixID
 			}
