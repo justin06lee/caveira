@@ -62,3 +62,42 @@ func TestRatsMode_MergesAttributedToOwner(t *testing.T) {
 		}
 	}
 }
+
+func TestRatsMode_OffBranchForkAtSomeSeed(t *testing.T) {
+	// With enough features and the off-branch probability, at least one seed
+	// should produce a feature branch whose first commit's parent is NOT the
+	// chore commit (i.e., it forked from another open branch).
+	files := map[string]string{}
+	for _, dir := range []string{"a", "b", "c", "d", "e", "f"} {
+		files[dir+"/x.go"] = "package " + dir + "\n"
+	}
+	repo := newFixtureRepo(t, files)
+	ids := []Identity{
+		{Name: "Alice", Email: "a@x.com"},
+		{Name: "Bob", Email: "b@x.com"},
+	}
+	sawOffBranch := false
+	for s := int64(0); s < 50; s++ {
+		rng := rand.New(rand.NewSource(s))
+		plan, _ := BuildRatsPlan(repo, ids, rng)
+		// Find non-merge non-chore commits whose parent is not the chore.
+		for _, c := range plan.Commits {
+			if c.IsMerge || len(c.Added) == 0 || c.ID == 0 {
+				continue
+			}
+			if len(c.Parents) == 1 && c.Parents[0] != 0 {
+				parent := plan.Commits[c.Parents[0]]
+				if !parent.IsMerge && parent.ID != 0 {
+					sawOffBranch = true
+					break
+				}
+			}
+		}
+		if sawOffBranch {
+			break
+		}
+	}
+	if !sawOffBranch {
+		t.Errorf("expected at least one seed across 50 trials to fork off another branch")
+	}
+}
