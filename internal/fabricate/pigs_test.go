@@ -78,6 +78,29 @@ func TestPigsMode_NoiseCommitsAreEmptyAndShortMessage(t *testing.T) {
 	}
 }
 
+func TestReshapePigs_LinearChainWithAuthors(t *testing.T) {
+	ids := []Identity{{Name: "A", Email: "a@x.com"}, {Name: "B", Email: "b@x.com"}}
+	base := []SynthCommit{
+		{ID: 0, Message: "chore: scaffold"},
+		{ID: 1, Parents: []int{0}, Message: "feat(walk): add walk", Feature: "walk"},
+		{ID: 2, Parents: []int{1}, Message: "feat(cli): add cli", Feature: "cli"},
+	}
+	plan := reshapePigs(base, ids, rand.New(rand.NewSource(7)))
+	if plan.HeadRef != defaultBranch {
+		t.Fatalf("HeadRef = %q, want %q", plan.HeadRef, defaultBranch)
+	}
+	authors := map[string]bool{}
+	for _, c := range plan.Commits {
+		authors[c.Author.Email] = true
+		if len(c.Parents) > 1 {
+			t.Fatalf("pigs plan must be linear; commit %d has %d parents", c.ID, len(c.Parents))
+		}
+	}
+	if len(authors) < 2 {
+		t.Fatalf("expected both identities used, got %d", len(authors))
+	}
+}
+
 func TestPigsMode_HeadRefAndLinearChain(t *testing.T) {
 	repo := newFixtureRepo(t, map[string]string{
 		"README.md":             "# x\n",
