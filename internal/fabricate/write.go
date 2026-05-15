@@ -116,6 +116,21 @@ func WriteToRepo(src, dst *git.Repository, plan *Plan, times map[string]time.Tim
 		mapping[SyntheticOID(id)] = newHash
 	}
 
+	// Drop every pre-existing ref. Duplicate copied the source repo's
+	// branches, tags and remote-tracking refs verbatim; without removing
+	// them the original commits stay reachable and the fabricated history
+	// would be grafted alongside the real one instead of replacing it.
+	existingRefs, err := dst.References()
+	if err != nil {
+		return nil, err
+	}
+	_ = existingRefs.ForEach(func(r *plumbing.Reference) error {
+		if r.Name() == plumbing.HEAD {
+			return nil
+		}
+		return dst.Storer.RemoveReference(r.Name())
+	})
+
 	for refName, commitID := range plan.Refs {
 		if err := dst.Storer.SetReference(plumbing.NewHashReference(plumbing.ReferenceName(refName), mapping[SyntheticOID(commitID)])); err != nil {
 			return nil, err
