@@ -69,6 +69,16 @@ func newRootCmd(name string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   name,
 		Short: "Rewrite a repo's commit timestamps to fit a chosen time window",
+		Long: `Caveira rewrites a repository's commit timestamps to fit a chosen time
+window, and with --fabricate can synthesize an entirely new commit history
+inside that window instead of retiming the source.
+
+Reproducibility: --fabricate with an LLM engine (--groq, --nvidia,
+--claude-code, --codex, --opencode) is NOT bit-reproducible across runs,
+even with --seed. The structural reshaping (--pigs/--rats and the
+scheduling of commits in the window) stays seeded and deterministic, but
+the LLM's plan itself may vary between runs. The templated --flurry
+engine IS deterministic.`,
 		Example: "  " + name + ` --repo /path/to/myrepo \
       --start "2026-05-14 13:00" \
       --end   "2026-05-14 17:00"

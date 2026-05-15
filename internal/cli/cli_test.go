@@ -14,8 +14,11 @@ func TestRunHelp(t *testing.T) {
 	if !bytes.Contains(out.Bytes(), []byte("Usage:")) {
 		t.Fatalf("expected help output to include 'Usage:', got: %s", out.String())
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Rewrite a repo's commit timestamps")) {
-		t.Fatalf("expected help output to include the Short description, got: %s", out.String())
+	if !bytes.Contains(out.Bytes(), []byte("commit timestamps to fit a chosen time")) {
+		t.Fatalf("expected help output to describe retiming commit timestamps, got: %s", out.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("NOT bit-reproducible")) {
+		t.Fatalf("expected help output to include the LLM reproducibility note, got: %s", out.String())
 	}
 }
 
