@@ -175,7 +175,19 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 	}
 
 	rng := rngFor(cfg)
-	plan, dag, err := fabricate.Generate(srcRepo, ids, nil, mode, rng)
+	var weights []int
+	if cfg.Earned {
+		discovered, derr := fabricate.DiscoverIdentities(srcRepo, mailmap)
+		if derr != nil {
+			fmt.Fprintln(errOut, "error: discover identities for --earned:", derr)
+			return 1
+		}
+		weights = fabricate.EarnedWeights(ids, discovered, mailmap)
+		if weights == nil {
+			fmt.Fprintln(errOut, "note: --earned: no identities found in history; using equal weights")
+		}
+	}
+	plan, dag, err := fabricate.Generate(srcRepo, ids, weights, mode, rng)
 	if err != nil {
 		fmt.Fprintln(errOut, "error: fabricate generate:", err)
 		return 1
