@@ -80,6 +80,117 @@ func TestInjectCoAuthors_ZeroRatePlayerSkipped(t *testing.T) {
 	}
 }
 
+func TestInjectCoAuthors_WeightedModelChoice(t *testing.T) {
+	alice := Identity{Name: "Alice", Email: "alice@example.com"}
+	claude := Identity{Name: "Claude", Email: "noreply@anthropic.com"}
+	codex := Identity{Name: "Codex", Email: "codex@openai.com"}
+	const n = 200
+	commits := make([]SynthCommit, n)
+	for i := 0; i < n; i++ {
+		commits[i] = SynthCommit{
+			ID:      i,
+			Author:  alice,
+			Message: "feat: change",
+			Added:   codeFile("internal/walk/load.go"),
+		}
+	}
+	plan := &Plan{Commits: commits}
+	report := &ModelReport{
+		Models: []Identity{claude, codex},
+		Profiles: map[string]PlayerProfile{
+			"alice@example.com": {
+				Rate: 1.0,
+				Mix: map[string]float64{
+					"noreply@anthropic.com": 0.8,
+					"codex@openai.com":      0.2,
+				},
+			},
+		},
+	}
+	InjectCoAuthors(plan, report, rand.New(rand.NewSource(1)))
+
+	claudeCount, codexCount := 0, 0
+	for _, c := range plan.Commits {
+		switch {
+		case strings.Contains(c.Message, "Co-Authored-By: Claude <noreply@anthropic.com>"):
+			claudeCount++
+		case strings.Contains(c.Message, "Co-Authored-By: Codex <codex@openai.com>"):
+			codexCount++
+		default:
+			t.Fatalf("commit %d got no co-author trailer: %q", c.ID, c.Message)
+		}
+	}
+	if claudeCount+codexCount != n {
+		t.Fatalf("expected all %d commits trailered, got claude=%d codex=%d", n, claudeCount, codexCount)
+	}
+	if claudeCount == 0 || codexCount == 0 {
+		t.Fatalf("expected both models picked at least once, got claude=%d codex=%d", claudeCount, codexCount)
+	}
+	if claudeCount <= codexCount {
+		t.Fatalf("expected Claude (weight 0.8) > Codex (weight 0.2), got claude=%d codex=%d", claudeCount, codexCount)
+	}
+	if claudeCount*100 <= n*60 {
+		t.Fatalf("expected Claude to be a clear majority (>60%% of %d), got claude=%d", n, claudeCount)
+	}
+	t.Logf("weighted pick: claude=%d codex=%d", claudeCount, codexCount)
+}
+
+func TestInjectCoAuthors_ChoreTypeFactor(t *testing.T) {
+	alice := Identity{Name: "Alice", Email: "alice@example.com"}
+	claude := Identity{Name: "Claude", Email: "noreply@anthropic.com"}
+	const n = 200
+	report := &ModelReport{
+		Models: []Identity{claude},
+		Profiles: map[string]PlayerProfile{
+			// Rate*1.5 = 1.05 (clamped to 1.0) for chore; Rate*1.0 = 0.7 for code.
+			"alice@example.com": {Rate: 0.7, Mix: map[string]float64{"noreply@anthropic.com": 1.0}},
+		},
+	}
+	buildPlan := func(filePath string) *Plan {
+		commits := make([]SynthCommit, n)
+		for i := 0; i < n; i++ {
+			commits[i] = SynthCommit{
+				ID:      i,
+				Author:  alice,
+				Message: "change",
+				Added:   codeFile(filePath),
+			}
+		}
+		return &Plan{Commits: commits}
+	}
+	countTrailers := func(plan *Plan) int {
+		c := 0
+		for _, sc := range plan.Commits {
+			if strings.Contains(sc.Message, "Co-Authored-By") {
+				c++
+			}
+		}
+		return c
+	}
+
+	if Classify("README.md") != Chore {
+		t.Fatalf("expected README.md to classify as Chore")
+	}
+	if Classify("internal/walk/load.go") != Code {
+		t.Fatalf("expected internal/walk/load.go to classify as Code")
+	}
+
+	chorePlan := buildPlan("README.md")
+	InjectCoAuthors(chorePlan, report, rand.New(rand.NewSource(1)))
+	choreCount := countTrailers(chorePlan)
+	if choreCount != n {
+		t.Fatalf("chore p clamps to 1.0; expected all %d commits trailered, got %d", n, choreCount)
+	}
+
+	codePlan := buildPlan("internal/walk/load.go")
+	InjectCoAuthors(codePlan, report, rand.New(rand.NewSource(1)))
+	codeCount := countTrailers(codePlan)
+	if codeCount >= choreCount {
+		t.Fatalf("code p=0.7 should skip some commits; expected codeCount < choreCount, got code=%d chore=%d", codeCount, choreCount)
+	}
+	t.Logf("type factor: chore trailers=%d code trailers=%d", choreCount, codeCount)
+}
+
 func TestInjectCoAuthors_Deterministic(t *testing.T) {
 	build := func() *Plan {
 		alice := Identity{Name: "Alice", Email: "alice@example.com"}
