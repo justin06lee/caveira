@@ -297,6 +297,9 @@ func TestCurateIdentities_RejectsOverAndOutOfRange(t *testing.T) {
 	if _, err := curateIdentities(found, 2, strings.NewReader("9\n"), io.Discard, 2, 0); err == nil {
 		t.Fatal("expected error for out-of-range index")
 	}
+	if _, err := curateIdentities(found, 2, strings.NewReader("1,1\n"), io.Discard, 2, 0); err == nil {
+		t.Fatal("expected error for duplicate pick")
+	}
 }
 
 func TestResolveIdentities_PickPathPromptsShortfall(t *testing.T) {

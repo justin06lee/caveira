@@ -136,6 +136,11 @@ func DiscoverIdentities(repo *git.Repository, mm *Mailmap) ([]DiscoveredIdentity
 //
 // If more identities are discovered than the remaining slots after flags, an
 // interactive picker is shown to let the user choose which to use.
+//
+// When pick is true, the automatic discover/picker logic in step 2 is bypassed:
+// resolution always runs an interactive curation step (curateIdentities over the
+// discovered identities, where the user may select any subset including none),
+// then prompts on stdin for any shortfall to reach n.
 func ResolveIdentities(repo *git.Repository, flagIDs []string, n int, mm *Mailmap, pick bool, stdin io.Reader, stdout io.Writer) ([]Identity, error) {
 	if n < 1 {
 		return nil, fmt.Errorf("ResolveIdentities: n must be >= 1, got %d", n)
