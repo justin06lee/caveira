@@ -43,7 +43,7 @@ func (c *Config) Validate() error {
 	fabFlagsUsed := c.PigsN > 0 || c.RatsN > 0 ||
 		len(c.PigIdentities) > 0 || len(c.RatIdentities) > 0 || c.Pick || c.Earned
 	if fabFlagsUsed && !c.Fabricate {
-		return errors.New("--pigs, --rats, --pig, --rat, --pick all require --fabricate")
+		return errors.New("--pigs, --rats, --pig, --rat, --pick, --earned all require --fabricate")
 	}
 
 	if c.PigsN > 0 && c.RatsN > 0 {
