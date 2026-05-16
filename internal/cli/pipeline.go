@@ -175,7 +175,7 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 	}
 
 	rng := rngFor(cfg)
-	plan, dag, err := fabricate.Generate(srcRepo, ids, mode, rng)
+	plan, dag, err := fabricate.Generate(srcRepo, ids, nil, mode, rng)
 	if err != nil {
 		fmt.Fprintln(errOut, "error: fabricate generate:", err)
 		return 1

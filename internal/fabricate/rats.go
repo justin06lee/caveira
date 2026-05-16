@@ -16,7 +16,7 @@ const (
 )
 
 // BuildRatsPlan produces a Plan for rats mode from the flurry base sequence.
-func BuildRatsPlan(repo *git.Repository, ids []Identity, rng *rand.Rand) (*Plan, error) {
+func BuildRatsPlan(repo *git.Repository, ids []Identity, weights []int, rng *rand.Rand) (*Plan, error) {
 	if len(ids) == 0 {
 		return nil, errors.New("BuildRatsPlan: at least one identity required")
 	}
@@ -24,7 +24,7 @@ func BuildRatsPlan(repo *git.Repository, ids []Identity, rng *rand.Rand) (*Plan,
 	if err != nil {
 		return nil, err
 	}
-	return reshapeRats(base, ids, rng)
+	return reshapeRats(base, ids, weights, rng)
 }
 
 // featureRun is a contiguous run of base commits sharing one Feature.
@@ -69,7 +69,7 @@ func splitBase(base []SynthCommit) (chore []SynthCommit, runs []featureRun) {
 // reshapePigs and reshapeSingle, it does not mutate the caller's base slice
 // elements: each SynthCommit is copied by value before its fields are
 // reassigned.
-func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, error) {
+func reshapeRats(base []SynthCommit, ids []Identity, weights []int, rng *rand.Rand) (*Plan, error) {
 	if len(base) == 0 {
 		return nil, errors.New("reshapeRats: empty base sequence")
 	}
@@ -84,7 +84,7 @@ func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, err
 	for _, cc := range choreCommits {
 		id := next()
 		cc.ID = id
-		choreAuthor := pickAuthor(ids, nil, rng)
+		choreAuthor := pickAuthor(ids, weights, rng)
 		cc.Author = choreAuthor
 		cc.Committer = choreAuthor
 		if masterTip >= 0 {
@@ -97,7 +97,7 @@ func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, err
 	}
 	if masterTip < 0 {
 		// No chore commit: synthesize an empty root so feature branches have a base.
-		rootAuthor := pickAuthor(ids, nil, rng)
+		rootAuthor := pickAuthor(ids, weights, rng)
 		commits = append(commits, SynthCommit{
 			ID: 0, Author: rootAuthor, Committer: rootAuthor, Message: "chore: initial commit",
 		})
@@ -114,7 +114,7 @@ func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, err
 	var branches []branch
 	var openBranchTips []int
 	for _, run := range runs {
-		rat := pickAuthor(ids, nil, rng)
+		rat := pickAuthor(ids, weights, rng)
 		branchName := fmt.Sprintf("refs/heads/feat/%s", run.feature)
 		parent := pickForkParent(masterTip, openBranchTips, rng)
 		tip := parent

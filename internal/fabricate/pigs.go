@@ -19,7 +19,7 @@ var noiseMessages = []string{
 }
 
 // BuildPigsPlan produces a Plan for pigs mode from the flurry base sequence.
-func BuildPigsPlan(repo *git.Repository, ids []Identity, rng *rand.Rand) (*Plan, error) {
+func BuildPigsPlan(repo *git.Repository, ids []Identity, weights []int, rng *rand.Rand) (*Plan, error) {
 	if len(ids) == 0 {
 		return nil, errors.New("BuildPigsPlan: at least one identity required")
 	}
@@ -27,7 +27,7 @@ func BuildPigsPlan(repo *git.Repository, ids []Identity, rng *rand.Rand) (*Plan,
 	if err != nil {
 		return nil, err
 	}
-	return reshapePigs(base, ids, rng), nil
+	return reshapePigs(base, ids, weights, rng), nil
 }
 
 // reshapePigs reshapes a linear base sequence for pigs mode: randomly drawn
@@ -35,9 +35,9 @@ func BuildPigsPlan(repo *git.Repository, ids []Identity, rng *rand.Rand) (*Plan,
 // commits injected between adjacent real commits. The base sequence's commit
 // IDs and parents are reassigned; callers need not pre-link them. It mutates
 // the caller's base slice elements in place.
-func reshapePigs(base []SynthCommit, ids []Identity, rng *rand.Rand) *Plan {
+func reshapePigs(base []SynthCommit, ids []Identity, weights []int, rng *rand.Rand) *Plan {
 	for i := range base {
-		id := pickAuthor(ids, nil, rng)
+		id := pickAuthor(ids, weights, rng)
 		base[i].Author = id
 		base[i].Committer = id
 	}
@@ -52,8 +52,8 @@ func reshapePigs(base []SynthCommit, ids []Identity, rng *rand.Rand) *Plan {
 	for i := 1; i < len(base); i++ {
 		if rng.Float64() < noiseRate {
 			noise := SynthCommit{
-				Author:    pickAuthor(ids, nil, rng),
-				Committer: pickAuthor(ids, nil, rng),
+				Author:    pickAuthor(ids, weights, rng),
+				Committer: pickAuthor(ids, weights, rng),
 				Message:   ApplyTypos(noiseMessages[rng.Intn(len(noiseMessages))], rng),
 			}
 			noise.ID = len(out)

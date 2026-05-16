@@ -11,7 +11,7 @@ func TestPlanToDAG(t *testing.T) {
 		"internal/walk/load.go": "package walk\n",
 	})
 	rng := rand.New(rand.NewSource(1))
-	plan, _ := BuildPigsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, rng)
+	plan, _ := BuildPigsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, nil, rng)
 
 	dag, err := PlanToDAG(repo, plan)
 	if err != nil {

@@ -101,7 +101,7 @@ func TestWriteToRepo_PigsLinear(t *testing.T) {
 		"internal/walk/load.go": "package walk\n",
 	})
 	rng := rand.New(rand.NewSource(1))
-	plan, _ := BuildPigsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, rng)
+	plan, _ := BuildPigsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, nil, rng)
 
 	dst, err := rewrite.InMemoryClone(repo)
 	if err != nil {
@@ -148,7 +148,7 @@ func TestWriteToRepo_RatsNestedTree(t *testing.T) {
 		"internal/cli/main.go":  "package cli\n",
 	})
 	rng := rand.New(rand.NewSource(1))
-	plan, _ := BuildRatsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, rng)
+	plan, _ := BuildRatsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, nil, rng)
 	dst, err := rewrite.InMemoryClone(repo)
 	if err != nil {
 		t.Fatalf("clone: %v", err)

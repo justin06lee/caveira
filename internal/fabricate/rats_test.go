@@ -14,7 +14,7 @@ func TestReshapeRats_BranchesPerFeature(t *testing.T) {
 		{ID: 2, Message: "test(walk): tests for walk", Feature: "walk"},
 		{ID: 3, Message: "feat(cli): add cli", Feature: "cli"},
 	}
-	plan, err := reshapeRats(base, ids, rand.New(rand.NewSource(3)))
+	plan, err := reshapeRats(base, ids, nil, rand.New(rand.NewSource(3)))
 	if err != nil {
 		t.Fatalf("reshapeRats: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestReshapeRats_NoChoreSynthesizesRoot(t *testing.T) {
 		{ID: 1, Message: "test(walk): tests for walk", Feature: "walk"},
 		{ID: 2, Message: "feat(cli): add cli", Feature: "cli"},
 	}
-	plan, err := reshapeRats(base, ids, rand.New(rand.NewSource(3)))
+	plan, err := reshapeRats(base, ids, nil, rand.New(rand.NewSource(3)))
 	if err != nil {
 		t.Fatalf("reshapeRats: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestRatsMode_FeatureBranches(t *testing.T) {
 	plan, err := BuildRatsPlan(repo, []Identity{
 		{Name: "Alice", Email: "a@x.com"},
 		{Name: "Bob", Email: "b@x.com"},
-	}, rng)
+	}, nil, rng)
 	if err != nil {
 		t.Fatalf("BuildRatsPlan: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestRatsMode_MergesAttributedToOwner(t *testing.T) {
 		{Name: "Alice", Email: "a@x.com"},
 		{Name: "Bob", Email: "b@x.com"},
 	}
-	plan, _ := BuildRatsPlan(repo, ids, rng)
+	plan, _ := BuildRatsPlan(repo, ids, nil, rng)
 	for _, c := range plan.Commits {
 		if !c.IsMerge {
 			continue
@@ -136,7 +136,7 @@ func TestRatsMode_OffBranchForkAtSomeSeed(t *testing.T) {
 	sawOffBranch := false
 	for s := int64(0); s < 50; s++ {
 		rng := rand.New(rand.NewSource(s))
-		plan, _ := BuildRatsPlan(repo, ids, rng)
+		plan, _ := BuildRatsPlan(repo, ids, nil, rng)
 		// Find non-merge non-chore commits whose parent is not the chore.
 		for _, c := range plan.Commits {
 			if c.IsMerge || len(c.Added) == 0 || c.ID == 0 {
@@ -169,7 +169,7 @@ func TestRatsMode_ConflictFixScarAtSomeSeed(t *testing.T) {
 	sawConflictFix := false
 	for s := int64(0); s < 50; s++ {
 		rng := rand.New(rand.NewSource(s))
-		plan, _ := BuildRatsPlan(repo, ids, rng)
+		plan, _ := BuildRatsPlan(repo, ids, nil, rng)
 		for _, c := range plan.Commits {
 			if strings.HasPrefix(c.Message, "fix: resolve conflict") {
 				sawConflictFix = true

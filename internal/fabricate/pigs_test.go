@@ -11,7 +11,7 @@ func TestPigsMode_SingleAuthor_NoNoise(t *testing.T) {
 		"internal/walk/load.go": "package walk\n",
 	})
 	rng := rand.New(rand.NewSource(1))
-	plan, err := BuildPigsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, rng)
+	plan, err := BuildPigsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, nil, rng)
 	if err != nil {
 		t.Fatalf("BuildPigsPlan: %v", err)
 	}
@@ -31,13 +31,29 @@ func TestReshapePigs_RandomAuthorDistribution(t *testing.T) {
 	for i := range base {
 		base[i] = SynthCommit{ID: i, Message: "feat: c"}
 	}
-	plan := reshapePigs(base, ids, rand.New(rand.NewSource(1)))
+	plan := reshapePigs(base, ids, nil, rand.New(rand.NewSource(1)))
 	counts := map[string]int{}
 	for _, c := range plan.Commits {
 		counts[c.Author.Email]++
 	}
 	if counts["a@x"] < 90 || counts["b@x"] < 90 {
 		t.Fatalf("expected both authors well-represented, got %+v", counts)
+	}
+}
+
+func TestReshapePigs_WeightedAuthorDistribution(t *testing.T) {
+	ids := []Identity{{Name: "Heavy", Email: "h@x"}, {Name: "Light", Email: "l@x"}}
+	base := make([]SynthCommit, 300)
+	for i := range base {
+		base[i] = SynthCommit{ID: i, Message: "feat: c"}
+	}
+	plan := reshapePigs(base, ids, []int{9, 1}, rand.New(rand.NewSource(1)))
+	counts := map[string]int{}
+	for _, c := range plan.Commits {
+		counts[c.Author.Email]++
+	}
+	if counts["h@x"] <= counts["l@x"] {
+		t.Fatalf("weighted reshape not skewed toward Heavy: %+v", counts)
 	}
 }
 
@@ -49,7 +65,7 @@ func TestPigsMode_NoiseCommitsAreEmptyAndShortMessage(t *testing.T) {
 	}
 	repo := newFixtureRepo(t, files)
 	rng := rand.New(rand.NewSource(3))
-	plan, err := BuildPigsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, rng)
+	plan, err := BuildPigsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, nil, rng)
 	if err != nil {
 		t.Fatalf("BuildPigsPlan: %v", err)
 	}
@@ -71,7 +87,7 @@ func TestReshapePigs_LinearChainWithAuthors(t *testing.T) {
 		{ID: 1, Parents: []int{0}, Message: "feat(walk): add walk", Feature: "walk"},
 		{ID: 2, Parents: []int{1}, Message: "feat(cli): add cli", Feature: "cli"},
 	}
-	plan := reshapePigs(base, ids, rand.New(rand.NewSource(7)))
+	plan := reshapePigs(base, ids, nil, rand.New(rand.NewSource(7)))
 	if plan.HeadRef != defaultBranch {
 		t.Fatalf("HeadRef = %q, want %q", plan.HeadRef, defaultBranch)
 	}
@@ -93,7 +109,7 @@ func TestPigsMode_HeadRefAndLinearChain(t *testing.T) {
 		"internal/walk/load.go": "package walk\n",
 	})
 	rng := rand.New(rand.NewSource(2))
-	plan, err := BuildPigsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, rng)
+	plan, err := BuildPigsPlan(repo, []Identity{{Name: "Solo", Email: "solo@x.com"}}, nil, rng)
 	if err != nil {
 		t.Fatalf("BuildPigsPlan: %v", err)
 	}
