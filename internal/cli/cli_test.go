@@ -113,4 +113,7 @@ func TestRunEarnedFlagParses(t *testing.T) {
 	if bytes.Contains(errOut.Bytes(), []byte("--earned requires")) {
 		t.Fatalf("--earned with --fabricate --pigs should pass validation; stderr=%q", errOut.String())
 	}
+	if bytes.Contains(errOut.Bytes(), []byte("unknown flag")) {
+		t.Fatalf("--earned flag is not registered; stderr=%q", errOut.String())
+	}
 }
