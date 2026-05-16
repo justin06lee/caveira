@@ -35,3 +35,63 @@ func TestWriteMailmapSkeleton_EmptyHistory(t *testing.T) {
 		t.Fatalf("empty history should still print the comment header:\n%s", buf.String())
 	}
 }
+
+func TestCommitCount(t *testing.T) {
+	if got := commitCount(1); got != "1 commit" {
+		t.Fatalf("commitCount(1) = %q, want \"1 commit\"", got)
+	}
+	if got := commitCount(5); got != "5 commits" {
+		t.Fatalf("commitCount(5) = %q, want \"5 commits\"", got)
+	}
+	if got := commitCount(0); got != "0 commits" {
+		t.Fatalf("commitCount(0) = %q, want \"0 commits\"", got)
+	}
+}
+
+func TestWriteIdentityReport_PlayersAndModels(t *testing.T) {
+	discovered := []fabricate.DiscoveredIdentity{
+		{Identity: fabricate.Identity{Name: "justin06lee", Email: "hi@justin06lee.dev"}, Commits: 131},
+		{Identity: fabricate.Identity{Name: "justin06lee", Email: "justin.leehuiyun@gmail.com"}, Commits: 1},
+	}
+	models := []fabricate.Identity{{Name: "Claude", Email: "noreply@anthropic.com"}}
+	var buf bytes.Buffer
+	writeIdentityReport(&buf, "/tmp/caveira", true, discovered, models)
+	got := buf.String()
+	for _, want := range []string{
+		"/tmp/caveira", ".mailmap applied",
+		"Players (2):", "hi@justin06lee.dev", "131 commits",
+		"justin.leehuiyun@gmail.com", "1 commit",
+		"AI models", "noreply@anthropic.com",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("report missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestWriteIdentityReport_NoModels(t *testing.T) {
+	discovered := []fabricate.DiscoveredIdentity{
+		{Identity: fabricate.Identity{Name: "Solo", Email: "solo@x.com"}, Commits: 3},
+	}
+	var buf bytes.Buffer
+	writeIdentityReport(&buf, "/tmp/r", false, discovered, nil)
+	got := buf.String()
+	if strings.Contains(got, "AI models") {
+		t.Fatalf("no models found — the AI models section must be omitted:\n%s", got)
+	}
+	if !strings.Contains(got, "no .mailmap") {
+		t.Fatalf("expected the \"no .mailmap\" header note:\n%s", got)
+	}
+}
+
+func TestWriteIdentityReport_EmptyHistory(t *testing.T) {
+	var buf bytes.Buffer
+	writeIdentityReport(&buf, "/tmp/empty", false, nil, nil)
+	got := buf.String()
+	if !strings.Contains(got, "No commits found") {
+		t.Fatalf("empty history should print a friendly line:\n%s", got)
+	}
+	if strings.Contains(got, "Players (") {
+		t.Fatalf("empty history must not print a Players section:\n%s", got)
+	}
+}

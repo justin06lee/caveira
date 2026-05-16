@@ -20,3 +20,46 @@ func writeMailmapSkeleton(out io.Writer, discovered []fabricate.DiscoveredIdenti
 		fmt.Fprintf(out, "%s <%s>\n", d.Name, d.Email)
 	}
 }
+
+// commitCount renders n as "1 commit" or "N commits".
+func commitCount(n int) string {
+	if n == 1 {
+		return "1 commit"
+	}
+	return fmt.Sprintf("%d commits", n)
+}
+
+// writeIdentityReport prints the human-readable interrogate report to out: a
+// header naming the repo and .mailmap status, the players section with commit
+// counts, and (only if any were found) the AI-models section.
+func writeIdentityReport(out io.Writer, srcPath string, hasMailmap bool, discovered []fabricate.DiscoveredIdentity, models []fabricate.Identity) {
+	mmNote := "no .mailmap"
+	if hasMailmap {
+		mmNote = ".mailmap applied"
+	}
+	fmt.Fprintf(out, "Identities in %s  (%s)\n", srcPath, mmNote)
+
+	if len(discovered) == 0 {
+		fmt.Fprintf(out, "\nNo commits found in %s.\n", srcPath)
+		return
+	}
+
+	width := 0
+	for _, d := range discovered {
+		if n := len(d.Name) + len(d.Email) + 3; n > width {
+			width = n
+		}
+	}
+	fmt.Fprintf(out, "\nPlayers (%d):\n", len(discovered))
+	for _, d := range discovered {
+		label := fmt.Sprintf("%s <%s>", d.Name, d.Email)
+		fmt.Fprintf(out, "  %-*s  %s\n", width, label, commitCount(d.Commits))
+	}
+
+	if len(models) > 0 {
+		fmt.Fprintln(out, "\nAI models (excluded from players — co-author only):")
+		for _, m := range models {
+			fmt.Fprintf(out, "  %s <%s>\n", m.Name, m.Email)
+		}
+	}
+}
