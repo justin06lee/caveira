@@ -92,6 +92,24 @@ func TestEarnedWeights(t *testing.T) {
 	}
 }
 
+func TestEarnedWeights_MeanFlooredAtOne(t *testing.T) {
+	discovered := []DiscoveredIdentity{
+		{Identity: Identity{Name: "A", Email: "a@x"}, Commits: 0},
+		{Identity: Identity{Name: "B", Email: "b@x"}, Commits: 0},
+	}
+	ids := []Identity{
+		{Name: "A", Email: "a@x"},
+		{Name: "Newcomer", Email: "new@x"},
+	}
+	w := EarnedWeights(ids, discovered, nil)
+	if len(w) != 2 {
+		t.Fatalf("expected 2 weights, got %+v", w)
+	}
+	if w[1] != 1 {
+		t.Fatalf("non-discovered weight should be floored at 1 when discovered mean is 0, got %d", w[1])
+	}
+}
+
 func TestEarnedWeights_NoDiscoveredIsNil(t *testing.T) {
 	ids := []Identity{{Name: "A", Email: "a@x"}}
 	if w := EarnedWeights(ids, nil, nil); w != nil {
