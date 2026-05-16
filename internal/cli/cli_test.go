@@ -97,3 +97,20 @@ func TestRunPickFlagParses(t *testing.T) {
 		t.Fatalf("--pick with --fabricate --rats should pass validation; stderr=%q", errOut.String())
 	}
 }
+
+func TestRunEarnedFlagParses(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{
+		"--repo", "/tmp/nonexistent-earned",
+		"--start", "2026-05-14 12:00",
+		"--end", "2026-05-14 14:00",
+		"--window-tz", "UTC",
+		"--fabricate", "--pigs", "2", "--earned",
+	}, &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit (missing repo), got 0; stderr=%q", errOut.String())
+	}
+	if bytes.Contains(errOut.Bytes(), []byte("--earned requires")) {
+		t.Fatalf("--earned with --fabricate --pigs should pass validation; stderr=%q", errOut.String())
+	}
+}

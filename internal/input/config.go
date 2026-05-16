@@ -25,6 +25,7 @@ type Config struct {
 	PigIdentities []string // raw strings from --pig flags, parsed in fabricate.ParseIdentity
 	RatIdentities []string // raw strings from --rat flags
 	Pick          bool     // --pick: always open the interactive player picker
+	Earned        bool     // --earned: weight author assignment by real commit-count distribution
 }
 
 // Validate returns an error if the configuration is unusable.
@@ -40,7 +41,7 @@ func (c *Config) Validate() error {
 	}
 
 	fabFlagsUsed := c.PigsN > 0 || c.RatsN > 0 ||
-		len(c.PigIdentities) > 0 || len(c.RatIdentities) > 0 || c.Pick
+		len(c.PigIdentities) > 0 || len(c.RatIdentities) > 0 || c.Pick || c.Earned
 	if fabFlagsUsed && !c.Fabricate {
 		return errors.New("--pigs, --rats, --pig, --rat, --pick all require --fabricate")
 	}
@@ -65,6 +66,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Pick && c.PigsN == 0 && c.RatsN == 0 {
 		return errors.New("--pick requires --pigs N or --rats N")
+	}
+	if c.Earned && !c.Fabricate {
+		return errors.New("--earned requires --fabricate")
+	}
+	if c.Earned && c.PigsN == 0 && c.RatsN == 0 {
+		return errors.New("--earned requires --pigs N or --rats N")
 	}
 	return nil
 }

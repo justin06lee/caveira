@@ -56,6 +56,7 @@ func newRootCmd(name string) *cobra.Command {
 		pigIDs        []string
 		ratIDs        []string
 		pickFlag      bool
+		earnedFlag    bool
 	)
 
 	cmd := &cobra.Command{
@@ -103,6 +104,7 @@ func newRootCmd(name string) *cobra.Command {
 				PigIdentities: pigIDs,
 				RatIdentities: ratIDs,
 				Pick:          pickFlag,
+				Earned:        earnedFlag,
 			}
 			if err := cfg.Validate(); err != nil {
 				return err
@@ -131,6 +133,7 @@ func newRootCmd(name string) *cobra.Command {
 	cmd.Flags().StringArrayVar(&pigIDs, "pig", nil, "pig identity as \"Name <email>\"; repeatable (requires --pigs)")
 	cmd.Flags().StringArrayVar(&ratIDs, "rat", nil, "rat identity as \"Name <email>\"; repeatable (requires --rats)")
 	cmd.Flags().BoolVar(&pickFlag, "pick", false, "always open the interactive player picker (requires --pigs/--rats)")
+	cmd.Flags().BoolVar(&earnedFlag, "earned", false, "weight author assignment by real commit-count distribution (requires --pigs/--rats)")
 
 	_ = cmd.MarkFlagRequired("repo")
 	_ = cmd.MarkFlagRequired("start")

@@ -136,3 +136,25 @@ func TestValidate_PickRequiresFabricate(t *testing.T) {
 		t.Fatal("expected --pick without --fabricate to be rejected")
 	}
 }
+
+func TestValidate_EarnedRequiresPigsOrRats(t *testing.T) {
+	c := baseValidConfig()
+	c.Fabricate = true
+	c.Earned = true
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected --earned without --pigs/--rats to be rejected")
+	}
+	c.PigsN = 2
+	if err := c.Validate(); err != nil {
+		t.Fatalf("--earned with --pigs should validate, got: %v", err)
+	}
+}
+
+func TestValidate_EarnedRequiresFabricate(t *testing.T) {
+	c := baseValidConfig()
+	c.Earned = true
+	c.PigsN = 2
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected --earned without --fabricate to be rejected")
+	}
+}
