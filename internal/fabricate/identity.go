@@ -31,7 +31,7 @@ func ParseIdentity(s string) (Identity, error) {
 }
 
 // DiscoveredIdentity is an Identity plus how many commits attributed to it
-// (used for the picker UI in Task 4).
+// (used for the picker UI).
 type DiscoveredIdentity struct {
 	Identity
 	Commits int

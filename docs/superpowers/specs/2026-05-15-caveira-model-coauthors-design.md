@@ -66,7 +66,9 @@ commit messages.
 - **Heuristic fallback** — an identity not on the list is still classified as a
   model if its name or email (case-insensitive) contains an agent token —
   `claude`, `codex`, `copilot`, `cursor`, `aider`, `gpt`, `devin` — or ends with a
-  `[bot]` suffix, or uses a known AI-vendor email domain.
+  `[bot]` suffix. Domain-level matching (e.g. classifying anything `@anthropic.com`
+  or `@openai.com` as a model) is deliberately avoided: it would misclassify human
+  employees of AI vendors as models.
 - Classification is applied to every identity that appears in source history in
   **any** position: author, committer, or `Co-Authored-By:` trailer.
 

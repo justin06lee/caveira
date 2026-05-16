@@ -12,7 +12,7 @@ var modelEmailExact = map[string]bool{
 // modelTokens are case-insensitive substrings that mark an identity as an AI
 // coding agent when found anywhere in its name or email.
 var modelTokens = []string{
-	"claude", "codex", "copilot", "cursor", "aider", "devin", "opencode",
+	"claude", "codex", "copilot", "cursor", "aider", "devin", "opencode", "gpt",
 }
 
 // IsModel reports whether an identity belongs to an AI coding agent rather than

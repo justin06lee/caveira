@@ -12,6 +12,7 @@ func TestIsModel(t *testing.T) {
 		{Identity{Name: "Cursor Agent", Email: "agent@example.com"}, true},
 		{Identity{Name: "github-actions[bot]", Email: "actions@github.com"}, true},
 		{Identity{Name: "Aider", Email: "aider@local"}, true},
+		{Identity{Name: "GPT Agent", Email: "agent@example.com"}, true},
 		{Identity{Name: "copilot", Email: "copilot@github.com"}, true},
 		{Identity{Name: "Alice Cooper", Email: "alice@example.com"}, false},
 		{Identity{Name: "Bob", Email: "bob@anthropic.example"}, false},
