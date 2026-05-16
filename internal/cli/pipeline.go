@@ -15,7 +15,6 @@ import (
 
 	"github.com/justin06lee/caveira/internal/difficulty"
 	"github.com/justin06lee/caveira/internal/fabricate"
-	"github.com/justin06lee/caveira/internal/fabricate/llm"
 	"github.com/justin06lee/caveira/internal/input"
 	"github.com/justin06lee/caveira/internal/repo"
 	"github.com/justin06lee/caveira/internal/report"
@@ -164,26 +163,7 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 	}
 
 	rng := rngFor(cfg)
-	var (
-		plan *fabricate.Plan
-		dag  *walk.DAG
-		err  error
-	)
-	if cfg.Provider != "" {
-		provider, perr := llm.NewProvider(cfg.Provider, llm.Options{
-			Model:   cfg.Model,
-			Timeout: cfg.LLMTimeout,
-			Seed:    cfg.Seed,
-			HasSeed: cfg.HasSeed,
-		})
-		if perr != nil {
-			fmt.Fprintln(errOut, "error:", perr)
-			return 1
-		}
-		plan, dag, err = fabricate.GenerateLLM(srcRepo, ids, mode, provider, rng)
-	} else {
-		plan, dag, err = fabricate.Generate(srcRepo, ids, mode, rng)
-	}
+	plan, dag, err := fabricate.Generate(srcRepo, ids, mode, rng)
 	if err != nil {
 		fmt.Fprintln(errOut, "error: fabricate generate:", err)
 		return 1

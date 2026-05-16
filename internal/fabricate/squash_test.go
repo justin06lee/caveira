@@ -10,15 +10,26 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 )
 
-// fileRef builds a synthetic FileRef for a path with the given content.
+// fileRef builds a FileRef for a path with the given content. The blob hash
+// matches plumbing.ComputeHash(BlobObject, content); callers that hand the
+// plan to WriteToRepo must ensure a source repo holds a blob with that hash.
 func fileRef(path, content string) FileRef {
 	b := []byte(content)
 	return FileRef{
-		Path:    path,
-		Blob:    plumbing.ComputeHash(plumbing.BlobObject, b),
-		Mode:    filemode.Regular,
-		Content: b,
+		Path: path,
+		Blob: plumbing.ComputeHash(plumbing.BlobObject, b),
+		Mode: filemode.Regular,
 	}
+}
+
+// linearPlanContent returns the path->content of the files a linearPlan(n)
+// references, so a source fixture repo can be built to hold those blobs.
+func linearPlanContent(n int) map[string]string {
+	files := map[string]string{}
+	for i := 0; i < n; i++ {
+		files["file"+strconv.Itoa(i)+".txt"] = "content " + strconv.Itoa(i) + "\n"
+	}
+	return files
 }
 
 // linearPlan builds a purely additive linear Plan with IDs 0..n-1, each
@@ -146,7 +157,8 @@ func TestSquashPlan_RootEdge(t *testing.T) {
 }
 
 func TestSquashPlan_FinalTreeUnchanged(t *testing.T) {
-	src := newEmptyRepo(t)
+	// The source repo must hold the blobs the plan's FileRefs reference.
+	src := newFixtureRepo(t, linearPlanContent(4))
 
 	// Write the un-squashed plan and record the HEAD tree hash.
 	base := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)

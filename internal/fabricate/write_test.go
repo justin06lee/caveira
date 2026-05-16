@@ -24,45 +24,14 @@ func newEmptyRepo(t *testing.T) *git.Repository {
 	return repo
 }
 
-func TestWriteToRepo_SyntheticContentBlob(t *testing.T) {
-	src := newEmptyRepo(t)
-	dst := newEmptyRepo(t)
-
-	content := []byte("package main\n\nfunc main() {}\n")
-	h := plumbing.ComputeHash(plumbing.BlobObject, content)
-
-	plan := &Plan{
-		Commits: []SynthCommit{
-			{
-				ID:      0,
-				Author:  Identity{Name: "A", Email: "a@x.com"},
-				Message: "feat: add main",
-				Added: []FileRef{
-					{Path: "main.go", Content: content, Blob: h, Mode: filemode.Regular},
-				},
-			},
-		},
-		Refs:    map[string]int{"refs/heads/master": 0},
-		HEAD:    0,
-		HeadRef: "refs/heads/master",
-	}
-	times := map[string]time.Time{SyntheticOID(0): time.Now()}
-
-	if _, err := WriteToRepo(src, dst, plan, times); err != nil {
-		t.Fatalf("WriteToRepo: %v", err)
-	}
-	obj, err := dst.Storer.EncodedObject(plumbing.BlobObject, h)
-	if err != nil {
-		t.Fatalf("synthetic blob not written to dst: %v", err)
-	}
-	if obj.Size() != int64(len(content)) {
-		t.Fatalf("blob size = %d, want %d", obj.Size(), len(content))
-	}
-}
-
 func TestWriteToRepo_DropsPreexistingRefs(t *testing.T) {
-	src := newEmptyRepo(t)
-	dst := newEmptyRepo(t)
+	content := []byte("package main\n\nfunc main() {}\n")
+	src := newFixtureRepo(t, map[string]string{"main.go": string(content)})
+	h := plumbing.ComputeHash(plumbing.BlobObject, content)
+	dst, err := rewrite.InMemoryClone(src)
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
 
 	// Simulate refs copied verbatim by Duplicate: branches and a
 	// remote-tracking ref that are NOT part of the fabricated plan.
@@ -77,8 +46,6 @@ func TestWriteToRepo_DropsPreexistingRefs(t *testing.T) {
 		}
 	}
 
-	content := []byte("package main\n\nfunc main() {}\n")
-	h := plumbing.ComputeHash(plumbing.BlobObject, content)
 	plan := &Plan{
 		Commits: []SynthCommit{
 			{
@@ -86,7 +53,7 @@ func TestWriteToRepo_DropsPreexistingRefs(t *testing.T) {
 				Author:  Identity{Name: "A", Email: "a@x.com"},
 				Message: "feat: add main",
 				Added: []FileRef{
-					{Path: "main.go", Content: content, Blob: h, Mode: filemode.Regular},
+					{Path: "main.go", Blob: h, Mode: filemode.Regular},
 				},
 			},
 		},

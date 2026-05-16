@@ -34,7 +34,7 @@ func TestIntegration_FabricateFlurry_SingleAuthor(t *testing.T) {
 		"--start", "2026-05-14 12:00",
 		"--end", "2026-05-14 14:00",
 		"--window-tz", "UTC",
-		"--fabricate", "--flurry",
+		"--fabricate",
 		"--seed", "1",
 	}, &out, &errOut)
 	if code != 0 {
@@ -84,7 +84,7 @@ func TestIntegration_FabricatePigs_TwoAuthors(t *testing.T) {
 		"--start", "2026-05-14 12:00",
 		"--end", "2026-05-14 14:00",
 		"--window-tz", "UTC",
-		"--fabricate", "--flurry",
+		"--fabricate",
 		"--pigs", "2",
 		"--pig", "Alice <a@x.com>",
 		"--pig", "Bob <b@x.com>",
@@ -138,7 +138,6 @@ func TestIntegration_Fabricate_DropsSourceBranches(t *testing.T) {
 		End:       time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC),
 		WindowTZ:  time.UTC,
 		Fabricate: true,
-		Flurry:    true,
 		Seed:      1,
 		HasSeed:   true,
 	}
@@ -198,7 +197,6 @@ func TestIntegration_FabricatePigs_SquashesToFitTinyWindow(t *testing.T) {
 		End:           start.Add(30 * time.Minute),
 		WindowTZ:      time.UTC,
 		Fabricate:     true,
-		Flurry:        true,
 		PigsN:         2,
 		PigIdentities: []string{"Alice <a@x.com>", "Bob <b@x.com>"},
 		Seed:          1,
@@ -226,31 +224,4 @@ func TestIntegration_FabricatePigs_SquashesToFitTinyWindow(t *testing.T) {
 		t.Errorf("expected squashing to reduce the commit count below the un-squashed ~13, got %d", n)
 	}
 	t.Logf("squashed pigs history has %d commit(s)", n)
-}
-
-func TestIntegration_FabricateLLM_HardErrorNoFallback(t *testing.T) {
-	dir := t.TempDir()
-	script := "#!/bin/sh\ncat >/dev/null\necho 'provider exploded' >&2\nexit 1\n"
-	if err := os.WriteFile(filepath.Join(dir, "claude"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-
-	src := makeFixtureRepoDir(t)
-	cfg := &input.Config{
-		Repo:      src,
-		Start:     time.Now().Add(-4 * time.Hour),
-		End:       time.Now(),
-		WindowTZ:  time.UTC,
-		Fabricate: true,
-		Provider:  "claude-code",
-	}
-	var out, errOut bytes.Buffer
-	code := Pipeline(cfg, &out, &errOut)
-	if code == 0 {
-		t.Fatalf("expected non-zero exit; stderr=%q", errOut.String())
-	}
-	if !bytes.Contains(errOut.Bytes(), []byte("claude-code")) {
-		t.Fatalf("error should name the failed provider; stderr=%q", errOut.String())
-	}
 }

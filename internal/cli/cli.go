@@ -51,49 +51,25 @@ func newRootCmd(name string) *cobra.Command {
 		outDir    string
 
 		fabricateFlag bool
-		flurryFlag    bool
 		pigsN         int
 		ratsN         int
 		pigIDs        []string
 		ratIDs        []string
-
-		groqFlag       bool
-		claudeCodeFlag bool
-		codexFlag      bool
-		nvidiaFlag     bool
-		openCodeFlag   bool
-		modelFlag      string
-		llmTimeoutFlag time.Duration
 	)
 
 	cmd := &cobra.Command{
 		Use:   name,
 		Short: "Rewrite a repo's commit timestamps to fit a chosen time window",
-		Long: `Caveira rewrites a repository's commit timestamps to fit a chosen time
-window, and with --fabricate can synthesize an entirely new commit history
-inside that window instead of retiming the source.
-
-Reproducibility: --fabricate with an LLM engine (--groq, --nvidia,
---claude-code, --codex, --opencode) is NOT bit-reproducible across runs,
-even with --seed. The structural reshaping (--pigs/--rats and the
-scheduling of commits in the window) stays seeded and deterministic, but
-the LLM's plan itself may vary between runs. The templated --flurry
-engine IS deterministic.`,
 		Example: "  " + name + ` --repo /path/to/myrepo \
       --start "2026-05-14 13:00" \
       --end   "2026-05-14 17:00"
 
-  ` + name + ` --repo https://github.com/u/myrepo.git \
-      --start "tomorrow 9am" --end "tomorrow 5pm" \
-      --seed 42 --dry-run
+  ` + name + ` --repo /path/to/myrepo --fabricate \
+      --start "2026-05-14 09:00" --end "2026-05-14 17:00"
 
-  ` + name + ` --repo /path/to/myrepo --fabricate --flurry \
+  ` + name + ` --repo /path/to/myrepo --fabricate \
       --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
-      --pigs 3
-
-  ` + name + ` --repo /path/to/myrepo --fabricate --groq \
-      --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
-      --rats 3`,
+      --pigs 3`,
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			tz, err := time.LoadLocation(windowTZ)
@@ -109,18 +85,6 @@ engine IS deterministic.`,
 			if err != nil {
 				return err
 			}
-			provider := ""
-			for name, on := range map[string]bool{
-				"groq": groqFlag, "claude-code": claudeCodeFlag,
-				"codex": codexFlag, "nvidia": nvidiaFlag, "opencode": openCodeFlag,
-			} {
-				if on {
-					if provider != "" {
-						return fmt.Errorf("only one LLM engine may be selected")
-					}
-					provider = name
-				}
-			}
 			cfg := &input.Config{
 				Repo:          repoFlag,
 				Start:         start,
@@ -133,14 +97,10 @@ engine IS deterministic.`,
 				WindowTZ:      tz,
 				OutDir:        outDir,
 				Fabricate:     fabricateFlag,
-				Flurry:        flurryFlag,
 				PigsN:         pigsN,
 				RatsN:         ratsN,
 				PigIdentities: pigIDs,
 				RatIdentities: ratIDs,
-				Provider:      provider,
-				Model:         modelFlag,
-				LLMTimeout:    llmTimeoutFlag,
 			}
 			if err := cfg.Validate(); err != nil {
 				return err
@@ -164,19 +124,10 @@ engine IS deterministic.`,
 	cmd.Flags().StringVar(&outDir, "out-dir", "", "parent directory for URL clones (default $CWD)")
 
 	cmd.Flags().BoolVar(&fabricateFlag, "fabricate", false, "synthesize a new commit history instead of retiming the source")
-	cmd.Flags().BoolVar(&flurryFlag, "flurry", false, "use the NLP-only fabricator (requires --fabricate)")
 	cmd.Flags().IntVar(&pigsN, "pigs", 0, "chaotic single-branch fabricator with N people (requires --fabricate)")
 	cmd.Flags().IntVar(&ratsN, "rats", 0, "branched fabricator with N people (requires --fabricate)")
 	cmd.Flags().StringArrayVar(&pigIDs, "pig", nil, "pig identity as \"Name <email>\"; repeatable (requires --pigs)")
 	cmd.Flags().StringArrayVar(&ratIDs, "rat", nil, "rat identity as \"Name <email>\"; repeatable (requires --rats)")
-
-	cmd.Flags().BoolVar(&groqFlag, "groq", false, "LLM engine: Groq API (requires --fabricate, GROQ_API_KEY)")
-	cmd.Flags().BoolVar(&claudeCodeFlag, "claude-code", false, "LLM engine: claude CLI subprocess (requires --fabricate)")
-	cmd.Flags().BoolVar(&codexFlag, "codex", false, "LLM engine: codex CLI subprocess (requires --fabricate)")
-	cmd.Flags().BoolVar(&nvidiaFlag, "nvidia", false, "LLM engine: NVIDIA API (requires --fabricate, NVIDIA_API_KEY)")
-	cmd.Flags().BoolVar(&openCodeFlag, "opencode", false, "LLM engine: opencode CLI subprocess (requires --fabricate)")
-	cmd.Flags().StringVar(&modelFlag, "model", "", "override the LLM provider's default model")
-	cmd.Flags().DurationVar(&llmTimeoutFlag, "llm-timeout", 0, "per-LLM-call timeout (default 120s)")
 
 	_ = cmd.MarkFlagRequired("repo")
 	_ = cmd.MarkFlagRequired("start")

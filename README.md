@@ -60,18 +60,10 @@ cav --repo https://github.com/u/myrepo.git \
 | `--window-tz`      |          | IANA timezone for parsing `--start`/`--end` (default `Local`) |
 | `--out-dir`        |          | Parent dir for URL clones (default `$CWD`)                |
 | `--fabricate`      |          | Synthesize a new commit history instead of retiming the source |
-| `--flurry`         |          | NLP-only fabricator (requires `--fabricate`)              |
 | `--pigs N`         |          | Chaotic single-branch fabrication with N people           |
 | `--rats N`         |          | Branched fabrication with N people                        |
 | `--pig "Name <email>"` |      | A pig identity; repeatable (requires `--pigs`)            |
 | `--rat "Name <email>"` |      | A rat identity; repeatable (requires `--rats`)            |
-| `--groq`           |          | LLM engine: Groq API (`GROQ_API_KEY`)                     |
-| `--nvidia`         |          | LLM engine: NVIDIA API (`NVIDIA_API_KEY`)                 |
-| `--claude-code`    |          | LLM engine: `claude` CLI subprocess                       |
-| `--codex`          |          | LLM engine: `codex` CLI subprocess                        |
-| `--opencode`       |          | LLM engine: `opencode` CLI subprocess                     |
-| `--model NAME`     |          | Override the LLM provider's default model                 |
-| `--llm-timeout D`  |          | Per-LLM-call timeout (default `120s`)                     |
 
 Run `caveira --help` for the live flag reference.
 
@@ -96,63 +88,34 @@ Full design: [`docs/superpowers/specs/2026-05-14-caveira-design.md`](docs/superp
 ## Fabrication mode (preview)
 
 `--fabricate` synthesizes a new commit history from scratch using the source
-repo's HEAD tree as the target. `--flurry` is the NLP-only fabricator (no LLM):
-it groups files by top-level directory, classifies each file as chore / code /
-test, and emits a sequence of `chore: …`, `feat(<dir>): …`, `test(<dir>): …`
-commits that end at the source's exact HEAD tree.
+repo's HEAD tree as the target. The built-in templated engine groups files by
+top-level directory, classifies each file as chore / code / test, and emits a
+sequence of `chore: …`, `feat(<dir>): …`, `test(<dir>): …` commits that end at
+the source's exact HEAD tree. Runs are deterministic under `--seed`.
 
 ```bash
 # Single-author (uses git config user.*)
-caveira --repo /path/to/myrepo --fabricate --flurry \
+caveira --repo /path/to/myrepo --fabricate \
         --start "2026-05-14 09:00" --end "2026-05-14 17:00"
 
 # Three pigs: chaotic single-branch with author RR, noise commits, message typos
-caveira --repo /path/to/myrepo --fabricate --flurry \
+caveira --repo /path/to/myrepo --fabricate \
         --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
         --pigs 3 \
         --pig "Alice <a@x.com>" --pig "Bob <b@x.com>" --pig "Carol <c@x.com>"
 
 # Two rats: emergent feature branches, off-branch forks, occasional conflict-fix scars
-caveira --repo /path/to/myrepo --fabricate --flurry \
+caveira --repo /path/to/myrepo --fabricate \
         --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
         --rats 2 \
         --rat "Alice <a@x.com>" --rat "Bob <b@x.com>"
 ```
 
-If `--pigs N` or `--rats N` is set and fewer than N identities are supplied via
-`--pig` / `--rat`, Caveira scans the `.git` history for additional identities
-and prompts interactively for any still missing. If too many are found, it
-shows a picker.
-
-### LLM-backed fabrication
-
-Instead of the templated `--flurry` engine, an LLM can design the fabricated
-history — grouping files into features, ordering commits, splitting large files
-across multiple commits, and writing the messages. Pick exactly one engine:
-
-| Flag             | Engine                          | Auth                          |
-|------------------|---------------------------------|-------------------------------|
-| `--groq`         | Groq API                        | `GROQ_API_KEY` env var        |
-| `--nvidia`       | NVIDIA API                      | `NVIDIA_API_KEY` env var      |
-| `--claude-code`  | `claude` CLI subprocess         | the CLI's own configuration   |
-| `--codex`        | `codex` CLI subprocess          | the CLI's own configuration   |
-| `--opencode`     | `opencode` CLI subprocess       | the CLI's own configuration   |
-
-Optional: `--model NAME` overrides the provider's default model;
-`--llm-timeout DURATION` bounds each call (default 120s).
-
-LLM engines compose with `--pigs` / `--rats` exactly like `--flurry`:
-
-```bash
-cav --repo ./myrepo --fabricate --groq --rats 3 \
-    --start "2026-05-14 09:00" --end "2026-05-14 17:00"
-```
-
-The fabricated tree always matches the source HEAD exactly. Unlike `--flurry`,
-LLM-backed runs are **not** guaranteed to be bit-reproducible across runs:
-the structural reshaping (`--pigs` / `--rats`, scheduling) stays seeded, but the
-LLM's plan itself may vary. If the provider fails or returns an unusable plan
-after retries, Caveira aborts with an error — it does not silently fall back.
+`--pigs N` and `--rats N` reshape the base sequence without changing the final
+tree. If `--pigs N` or `--rats N` is set and fewer than N identities are
+supplied via `--pig` / `--rat`, Caveira scans the `.git` history for additional
+identities and prompts interactively for any still missing. If too many are
+found, it shows a picker.
 
 ## Notes & limitations
 
