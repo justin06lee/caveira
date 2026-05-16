@@ -84,8 +84,9 @@ func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, err
 	for _, cc := range choreCommits {
 		id := next()
 		cc.ID = id
-		cc.Author = ids[0]
-		cc.Committer = ids[0]
+		choreAuthor := pickAuthor(ids, nil, rng)
+		cc.Author = choreAuthor
+		cc.Committer = choreAuthor
 		if masterTip >= 0 {
 			cc.Parents = []int{masterTip}
 		} else {
@@ -96,8 +97,9 @@ func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, err
 	}
 	if masterTip < 0 {
 		// No chore commit: synthesize an empty root so feature branches have a base.
+		rootAuthor := pickAuthor(ids, nil, rng)
 		commits = append(commits, SynthCommit{
-			ID: 0, Author: ids[0], Committer: ids[0], Message: "chore: initial commit",
+			ID: 0, Author: rootAuthor, Committer: rootAuthor, Message: "chore: initial commit",
 		})
 		masterTip = 0
 	}
@@ -111,8 +113,8 @@ func reshapeRats(base []SynthCommit, ids []Identity, rng *rand.Rand) (*Plan, err
 	}
 	var branches []branch
 	var openBranchTips []int
-	for fi, run := range runs {
-		rat := ids[fi%len(ids)]
+	for _, run := range runs {
+		rat := pickAuthor(ids, nil, rng)
 		branchName := fmt.Sprintf("refs/heads/feat/%s", run.feature)
 		parent := pickForkParent(masterTip, openBranchTips, rng)
 		tip := parent

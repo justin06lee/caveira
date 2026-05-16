@@ -25,33 +25,19 @@ func TestPigsMode_SingleAuthor_NoNoise(t *testing.T) {
 	}
 }
 
-func TestPigsMode_TwoAuthors_RoundRobin(t *testing.T) {
-	repo := newFixtureRepo(t, map[string]string{
-		"README.md": "# x\n",
-		"a/x.go":    "package a\n",
-		"b/y.go":    "package b\n",
-		"c/z.go":    "package c\n",
-		"d/w.go":    "package d\n",
-	})
-	rng := rand.New(rand.NewSource(7))
-	plan, err := BuildPigsPlan(repo, []Identity{
-		{Name: "Alice", Email: "a@x.com"},
-		{Name: "Bob", Email: "b@x.com"},
-	}, rng)
-	if err != nil {
-		t.Fatalf("BuildPigsPlan: %v", err)
+func TestReshapePigs_RandomAuthorDistribution(t *testing.T) {
+	ids := []Identity{{Name: "A", Email: "a@x"}, {Name: "B", Email: "b@x"}}
+	base := make([]SynthCommit, 300)
+	for i := range base {
+		base[i] = SynthCommit{ID: i, Message: "feat: c"}
 	}
-	sawA, sawB := false, false
+	plan := reshapePigs(base, ids, rand.New(rand.NewSource(1)))
+	counts := map[string]int{}
 	for _, c := range plan.Commits {
-		switch c.Author.Name {
-		case "Alice":
-			sawA = true
-		case "Bob":
-			sawB = true
-		}
+		counts[c.Author.Email]++
 	}
-	if !sawA || !sawB {
-		t.Errorf("expected both authors to appear; sawA=%v sawB=%v", sawA, sawB)
+	if counts["a@x"] < 90 || counts["b@x"] < 90 {
+		t.Fatalf("expected both authors well-represented, got %+v", counts)
 	}
 }
 

@@ -30,14 +30,14 @@ func BuildPigsPlan(repo *git.Repository, ids []Identity, rng *rand.Rand) (*Plan,
 	return reshapePigs(base, ids, rng), nil
 }
 
-// reshapePigs reshapes a linear base sequence for pigs mode: round-robin
+// reshapePigs reshapes a linear base sequence for pigs mode: randomly drawn
 // authors across real commits, typos on every message, and ~noiseRate noise
 // commits injected between adjacent real commits. The base sequence's commit
 // IDs and parents are reassigned; callers need not pre-link them. It mutates
 // the caller's base slice elements in place.
 func reshapePigs(base []SynthCommit, ids []Identity, rng *rand.Rand) *Plan {
 	for i := range base {
-		id := ids[i%len(ids)]
+		id := pickAuthor(ids, nil, rng)
 		base[i].Author = id
 		base[i].Committer = id
 	}
@@ -52,8 +52,8 @@ func reshapePigs(base []SynthCommit, ids []Identity, rng *rand.Rand) *Plan {
 	for i := 1; i < len(base); i++ {
 		if rng.Float64() < noiseRate {
 			noise := SynthCommit{
-				Author:    ids[rng.Intn(len(ids))],
-				Committer: ids[rng.Intn(len(ids))],
+				Author:    pickAuthor(ids, nil, rng),
+				Committer: pickAuthor(ids, nil, rng),
 				Message:   ApplyTypos(noiseMessages[rng.Intn(len(noiseMessages))], rng),
 			}
 			noise.ID = len(out)
