@@ -77,8 +77,20 @@ func newInterrogateCmd() *cobra.Command {
 		emitMailmap bool
 	)
 	cmd := &cobra.Command{
-		Use:          "interrogate",
-		Short:        "Scan a repo's history and report its identities (read-only)",
+		Use:   "interrogate",
+		Short: "Scan a repo's history and report its identities (read-only)",
+		Long: `Scan a repository's commit history and report the identities in it:
+human authors with their commit counts, and AI coding models (which appear
+only as Co-Authored-By trailers, never as players). Identities are unified
+through the repository's .mailmap when one is present.
+
+interrogate is read-only — it never modifies the repository.
+
+With --emit-mailmap, print a .mailmap skeleton instead of the report: one
+line per identity, ready to edit so you can unify identities that drifted
+across multiple emails. Redirect it to start a .mailmap file:
+
+  cav interrogate --repo /path/to/repo --emit-mailmap > .mailmap`,
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			return runInterrogate(repoFlag, outDir, emitMailmap, c.OutOrStdout())
