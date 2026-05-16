@@ -37,16 +37,11 @@ type DiscoveredIdentity struct {
 	Commits int
 }
 
-// DiscoverIdentities scans every reachable commit in repo and returns the
-// unique author identities (keyed by lowercased email), sorted by commit count
-// descending then by name ascending.
-func DiscoverIdentities(repo *git.Repository) ([]DiscoveredIdentity, error) {
-	visited := map[plumbing.Hash]bool{}
-	counts := map[string]*DiscoveredIdentity{}
-
+// walkCommits visits every commit reachable from any ref in repo exactly once.
+func walkCommits(repo *git.Repository, visit func(*object.Commit)) error {
 	refs, err := repo.References()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	var heads []plumbing.Hash
 	err = refs.ForEach(func(r *plumbing.Reference) error {
@@ -68,9 +63,9 @@ func DiscoverIdentities(repo *git.Repository) ([]DiscoveredIdentity, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-
+	visited := map[plumbing.Hash]bool{}
 	for _, h := range heads {
 		c, err := repo.CommitObject(h)
 		if err != nil {
@@ -84,25 +79,38 @@ func DiscoverIdentities(repo *git.Repository) ([]DiscoveredIdentity, error) {
 				continue
 			}
 			visited[cur.Hash] = true
-
-			key := strings.ToLower(strings.TrimSpace(cur.Author.Email))
-			if key == "" {
-				continue
-			}
-			d, ok := counts[key]
-			if !ok {
-				d = &DiscoveredIdentity{
-					Identity: Identity{Name: cur.Author.Name, Email: cur.Author.Email},
-				}
-				counts[key] = d
-			}
-			d.Commits++
-
+			visit(cur)
 			_ = cur.Parents().ForEach(func(p *object.Commit) error {
 				stack = append(stack, p)
 				return nil
 			})
 		}
+	}
+	return nil
+}
+
+// DiscoverIdentities scans every reachable commit in repo and returns the
+// unique author identities (keyed by lowercased email), sorted by commit count
+// descending then by name ascending.
+func DiscoverIdentities(repo *git.Repository) ([]DiscoveredIdentity, error) {
+	counts := map[string]*DiscoveredIdentity{}
+
+	err := walkCommits(repo, func(cur *object.Commit) {
+		key := strings.ToLower(strings.TrimSpace(cur.Author.Email))
+		if key == "" {
+			return
+		}
+		d, ok := counts[key]
+		if !ok {
+			d = &DiscoveredIdentity{
+				Identity: Identity{Name: cur.Author.Name, Email: cur.Author.Email},
+			}
+			counts[key] = d
+		}
+		d.Commits++
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	out := make([]DiscoveredIdentity, 0, len(counts))

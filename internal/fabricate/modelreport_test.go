@@ -105,3 +105,77 @@ func TestScanModelReport(t *testing.T) {
 		t.Errorf("Bob profile = %+v, want zero rate / empty mix", pb)
 	}
 }
+
+func TestScanModelReport_MultiModel(t *testing.T) {
+	repo := newEmptyRepo(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	alice := Identity{Name: "Alice", Email: "alice@example.com"}
+
+	// Alice: 2 commits co-authored by Claude, 1 by Codex.
+	commitAs(t, wt, alice, alice, "feat: a1\n\nCo-Authored-By: Claude <noreply@anthropic.com>")
+	commitAs(t, wt, alice, alice, "feat: a2\n\nCo-Authored-By: Claude <noreply@anthropic.com>")
+	commitAs(t, wt, alice, alice, "feat: a3\n\nCo-Authored-By: Codex <codex@openai.com>")
+
+	report, err := ScanModelReport(repo)
+	if err != nil {
+		t.Fatalf("ScanModelReport: %v", err)
+	}
+
+	if len(report.Models) != 2 {
+		t.Fatalf("Models = %+v, want 2 entries", report.Models)
+	}
+
+	pa, ok := report.Profiles["alice@example.com"]
+	if !ok {
+		t.Fatal("no profile for Alice")
+	}
+	claudeMix, hasClaude := pa.Mix["noreply@anthropic.com"]
+	codexMix, hasCodex := pa.Mix["codex@openai.com"]
+	if !hasClaude || !hasCodex {
+		t.Fatalf("Mix missing a model key: %+v", pa.Mix)
+	}
+	if sum := claudeMix + codexMix; sum < 0.99 || sum > 1.01 {
+		t.Errorf("Mix values sum = %v, want ~1.0", sum)
+	}
+	if claudeMix < 0.65 || claudeMix > 0.68 { // 2/3
+		t.Errorf("Mix[claude] = %v, want ~0.667", claudeMix)
+	}
+	if codexMix < 0.32 || codexMix > 0.35 { // 1/3
+		t.Errorf("Mix[codex] = %v, want ~0.333", codexMix)
+	}
+}
+
+func TestScanModelReport_ModelCommitter(t *testing.T) {
+	repo := newEmptyRepo(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	alice := Identity{Name: "Alice", Email: "alice@example.com"}
+	claude := Identity{Name: "Claude", Email: "noreply@anthropic.com"}
+
+	// Human author, but the model is the committer.
+	commitAs(t, wt, alice, claude, "feat: a1")
+	commitAs(t, wt, alice, alice, "feat: a2 (solo)")
+
+	report, err := ScanModelReport(repo)
+	if err != nil {
+		t.Fatalf("ScanModelReport: %v", err)
+	}
+
+	pa, ok := report.Profiles["alice@example.com"]
+	if !ok {
+		t.Fatal("no profile for Alice")
+	}
+	if pa.Rate < 0.49 || pa.Rate > 0.51 { // 1/2
+		t.Errorf("Alice Rate = %v, want ~0.5 (model committer counts)", pa.Rate)
+	}
+	if mix := pa.Mix["noreply@anthropic.com"]; mix < 0.99 {
+		t.Errorf("Alice Mix[claude] = %v, want 1.0", mix)
+	}
+}

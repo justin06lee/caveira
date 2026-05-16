@@ -4,8 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	git "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
@@ -39,8 +38,8 @@ func parseCoAuthors(message string) []Identity {
 type PlayerProfile struct {
 	// Rate is the fraction of the player's commits that had at least one model.
 	Rate float64
-	// Mix maps a lowercased model email to the fraction of the player's
-	// model-assisted commits in which that model appeared.
+	// Mix maps a lowercased model email to that model's share of all model
+	// appearances across the player's commits. Values sum to ~1.0.
 	Mix map[string]float64
 }
 
@@ -60,7 +59,7 @@ func ScanModelReport(repo *git.Repository) (*ModelReport, error) {
 	type acc struct {
 		total      int
 		withModel  int
-		modelCount map[string]int // lowercased model email -> count
+		modelCount map[string]int // lowercased model email -> count of commits containing that model
 	}
 	players := map[string]*acc{}
 	modelsByEmail := map[string]Identity{}
@@ -72,88 +71,44 @@ func ScanModelReport(repo *git.Repository) (*ModelReport, error) {
 		}
 	}
 
-	refs, err := repo.References()
-	if err != nil {
-		return nil, err
-	}
-	var heads []plumbing.Hash
-	err = refs.ForEach(func(r *plumbing.Reference) error {
-		if r.Type() != plumbing.HashReference {
-			return nil
+	err := walkCommits(repo, func(cur *object.Commit) {
+		author := Identity{Name: cur.Author.Name, Email: cur.Author.Email}
+		committer := Identity{Name: cur.Committer.Name, Email: cur.Committer.Email}
+		coAuthors := parseCoAuthors(cur.Message)
+
+		noteModel(author)
+		noteModel(committer)
+		for _, ca := range coAuthors {
+			noteModel(ca)
 		}
-		obj, err := repo.Object(plumbing.AnyObject, r.Hash())
-		if err != nil {
-			return nil
-		}
-		switch o := obj.(type) {
-		case *object.Commit:
-			heads = append(heads, o.Hash)
-		case *object.Tag:
-			if c, err := o.Commit(); err == nil {
-				heads = append(heads, c.Hash)
+
+		if !IsModel(author) && lc(author.Email) != "" {
+			key := lc(author.Email)
+			a := players[key]
+			if a == nil {
+				a = &acc{modelCount: map[string]int{}}
+				players[key] = a
+			}
+			a.total++
+			onCommit := map[string]bool{}
+			if IsModel(committer) {
+				onCommit[lc(committer.Email)] = true
+			}
+			for _, ca := range coAuthors {
+				if IsModel(ca) {
+					onCommit[lc(ca.Email)] = true
+				}
+			}
+			if len(onCommit) > 0 {
+				a.withModel++
+				for email := range onCommit {
+					a.modelCount[email]++
+				}
 			}
 		}
-		return nil
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	visited := map[plumbing.Hash]bool{}
-	for _, h := range heads {
-		c, err := repo.CommitObject(h)
-		if err != nil {
-			continue
-		}
-		stack := []*object.Commit{c}
-		for len(stack) > 0 {
-			cur := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
-			if visited[cur.Hash] {
-				continue
-			}
-			visited[cur.Hash] = true
-
-			author := Identity{Name: cur.Author.Name, Email: cur.Author.Email}
-			committer := Identity{Name: cur.Committer.Name, Email: cur.Committer.Email}
-			coAuthors := parseCoAuthors(cur.Message)
-
-			noteModel(author)
-			noteModel(committer)
-			for _, ca := range coAuthors {
-				noteModel(ca)
-			}
-
-			if !IsModel(author) && lc(author.Email) != "" {
-				key := lc(author.Email)
-				a := players[key]
-				if a == nil {
-					a = &acc{modelCount: map[string]int{}}
-					players[key] = a
-				}
-				a.total++
-				onCommit := map[string]bool{}
-				if IsModel(committer) {
-					onCommit[lc(committer.Email)] = true
-				}
-				for _, ca := range coAuthors {
-					if IsModel(ca) {
-						onCommit[lc(ca.Email)] = true
-					}
-				}
-				if len(onCommit) > 0 {
-					a.withModel++
-					for email := range onCommit {
-						a.modelCount[email]++
-					}
-				}
-			}
-
-			_ = cur.Parents().ForEach(func(p *object.Commit) error {
-				stack = append(stack, p)
-				return nil
-			})
-		}
 	}
 
 	report := &ModelReport{Profiles: map[string]PlayerProfile{}}
@@ -164,9 +119,6 @@ func ScanModelReport(repo *git.Repository) (*ModelReport, error) {
 		return lc(report.Models[i].Email) < lc(report.Models[j].Email)
 	})
 	for key, a := range players {
-		if a.total == 0 {
-			continue
-		}
 		prof := PlayerProfile{
 			Rate: float64(a.withModel) / float64(a.total),
 			Mix:  map[string]float64{},
