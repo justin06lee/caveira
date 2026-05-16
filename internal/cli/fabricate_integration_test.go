@@ -247,3 +247,73 @@ func TestIntegration_FabricatePigs_SquashesToFitTinyWindow(t *testing.T) {
 	}
 	t.Logf("squashed pigs history has %d commit(s)", n)
 }
+
+func TestIntegration_Fabricate_ModelBecomesCoAuthor(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "repo")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", src}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Alice", "GIT_AUTHOR_EMAIL=alice@example.com",
+			"GIT_COMMITTER_NAME=Alice", "GIT_COMMITTER_EMAIL=alice@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	run("init")
+	run("config", "user.name", "Alice")
+	run("config", "user.email", "alice@example.com")
+	// Several files across two feature dirs so flurry yields multiple commits.
+	for _, f := range []string{"README.md", "internal/walk/load.go", "internal/cli/main.go"} {
+		p := filepath.Join(src, f)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("package x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		run("add", f)
+		run("commit", "-m", "add "+f+"\n\nCo-Authored-By: Claude <noreply@anthropic.com>")
+	}
+
+	cfg := &input.Config{
+		Repo:      src,
+		Start:     time.Now().Add(-30 * 24 * time.Hour),
+		End:       time.Now(),
+		WindowTZ:  time.UTC,
+		Fabricate: true,
+		PigsN:     1,
+		Seed:      7,
+		HasSeed:   true,
+	}
+	var out, errOut bytes.Buffer
+	if code := Pipeline(cfg, &out, &errOut); code != 0 {
+		t.Fatalf("pipeline failed: %s", errOut.String())
+	}
+
+	bodies, err := exec.Command("git", "-C", src, "log", "--all", "--format=%B").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log: %v: %s", err, bodies)
+	}
+	if !bytes.Contains(bodies, []byte("Co-Authored-By: Claude <noreply@anthropic.com>")) {
+		t.Fatalf("expected Claude co-author trailers in fabricated history:\n%s", bodies)
+	}
+
+	authors, err := exec.Command("git", "-C", src, "log", "--all", "--format=%ae").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log authors: %v: %s", err, authors)
+	}
+	if bytes.Contains(authors, []byte("noreply@anthropic.com")) {
+		t.Fatalf("Claude appeared as a commit author; it must only be a co-author:\n%s", authors)
+	}
+	if !bytes.Contains(authors, []byte("alice@example.com")) {
+		t.Fatalf("expected Alice as the fabricated author:\n%s", authors)
+	}
+}
