@@ -125,6 +125,19 @@ func TestInterrogate_RegisteredAsSubcommand(t *testing.T) {
 	}
 }
 
+func TestInterrogate_RejectsRewriteFlags(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{
+		"interrogate", "--repo", "/tmp/x", "--start", "2026-05-16 12:00",
+	}, &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit: --start is not an interrogate flag; stderr=%q", errOut.String())
+	}
+	if !bytes.Contains(errOut.Bytes(), []byte("unknown flag")) {
+		t.Fatalf("expected an 'unknown flag' error for --start on interrogate; stderr=%q", errOut.String())
+	}
+}
+
 func TestRunEarnedFlagParses(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := RunWithArgs([]string{
