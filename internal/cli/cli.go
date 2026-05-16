@@ -139,5 +139,7 @@ func newRootCmd(name string) *cobra.Command {
 	_ = cmd.MarkFlagRequired("start")
 	_ = cmd.MarkFlagRequired("end")
 
+	cmd.AddCommand(newInterrogateCmd())
+
 	return cmd
 }

@@ -5,7 +5,10 @@ import (
 	"io"
 	"unicode/utf8"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/justin06lee/caveira/internal/fabricate"
+	"github.com/justin06lee/caveira/internal/input"
+	"github.com/spf13/cobra"
 )
 
 // writeMailmapSkeleton prints a .mailmap skeleton to out: a comment header
@@ -63,4 +66,60 @@ func writeIdentityReport(out io.Writer, srcPath string, hasMailmap bool, discove
 			fmt.Fprintf(out, "  %s <%s>\n", m.Name, m.Email)
 		}
 	}
+}
+
+// newInterrogateCmd builds the read-only `interrogate` subcommand. It has its
+// own flag set and never sees the root command's --start/--end rewrite flags.
+func newInterrogateCmd() *cobra.Command {
+	var (
+		repoFlag    string
+		outDir      string
+		emitMailmap bool
+	)
+	cmd := &cobra.Command{
+		Use:          "interrogate",
+		Short:        "Scan a repo's history and report its identities (read-only)",
+		SilenceUsage: true,
+		RunE: func(c *cobra.Command, args []string) error {
+			return runInterrogate(repoFlag, outDir, emitMailmap, c.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&repoFlag, "repo", "", "path or URL of the repository to scan (required)")
+	cmd.Flags().StringVar(&outDir, "out-dir", "", "parent directory for URL clones (default $CWD)")
+	cmd.Flags().BoolVar(&emitMailmap, "emit-mailmap", false, "print a .mailmap skeleton instead of the report")
+	_ = cmd.MarkFlagRequired("repo")
+	return cmd
+}
+
+// runInterrogate resolves repoPath (local path or URL clone), scans the repo,
+// and writes either the identity report or, when emitMailmap is set, a .mailmap
+// skeleton. It never modifies the repository.
+func runInterrogate(repoPath, outDir string, emitMailmap bool, out io.Writer) error {
+	cfg := &input.Config{Repo: repoPath, OutDir: outDir}
+	srcPath, _, err := acquireSource(cfg)
+	if err != nil {
+		return err
+	}
+	gitRepo, err := git.PlainOpen(srcPath)
+	if err != nil {
+		return fmt.Errorf("open repository %s: %w", srcPath, err)
+	}
+	mailmap, err := fabricate.LoadMailmap(srcPath)
+	if err != nil {
+		return fmt.Errorf("load .mailmap: %w", err)
+	}
+	discovered, err := fabricate.DiscoverIdentities(gitRepo, mailmap)
+	if err != nil {
+		return fmt.Errorf("scan identities: %w", err)
+	}
+	if emitMailmap {
+		writeMailmapSkeleton(out, discovered)
+		return nil
+	}
+	modelReport, err := fabricate.ScanModelReport(gitRepo, mailmap)
+	if err != nil {
+		return fmt.Errorf("scan models: %w", err)
+	}
+	writeIdentityReport(out, srcPath, mailmap != nil, discovered, modelReport.Models)
+	return nil
 }

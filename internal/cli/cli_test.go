@@ -98,6 +98,33 @@ func TestRunPickFlagParses(t *testing.T) {
 	}
 }
 
+func TestInterrogate_RequiresRepo(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{"interrogate"}, &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit when --repo is missing; stderr=%q", errOut.String())
+	}
+}
+
+func TestInterrogate_BadRepo(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{"interrogate", "--repo", "/tmp/caveira-no-such-repo-xyz"}, &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for a nonexistent repo; stderr=%q", errOut.String())
+	}
+}
+
+func TestInterrogate_RegisteredAsSubcommand(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{"--help"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("--help exited %d; stderr=%q", code, errOut.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("interrogate")) {
+		t.Fatalf("root --help should list the interrogate subcommand:\n%s", out.String())
+	}
+}
+
 func TestRunEarnedFlagParses(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := RunWithArgs([]string{
