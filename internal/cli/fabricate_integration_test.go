@@ -385,3 +385,75 @@ func TestIntegration_Fabricate_MailmapUnifies(t *testing.T) {
 		t.Fatalf("expected the canonical email as the fabricated author:\n%s", emails)
 	}
 }
+
+func TestIntegration_Fabricate_EarnedFavorsHeavyContributor(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "repo")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	commit := func(name, email, file string) {
+		t.Helper()
+		p := filepath.Join(src, file)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("package x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for _, args := range [][]string{{"add", file}, {"commit", "-m", "add " + file}} {
+			cmd := exec.Command("git", append([]string{"-C", src}, args...)...)
+			cmd.Env = append(os.Environ(),
+				"GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+email,
+				"GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+email)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v: %s", args, err, out)
+			}
+		}
+	}
+	if out, err := exec.Command("git", "-C", src, "init").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	// Heavy author: 8 commits across several feature dirs. Light author: 1.
+	heavyFiles := []string{
+		"internal/walk/load.go", "internal/walk/dag.go", "internal/cli/main.go",
+		"internal/cli/run.go", "internal/repo/clone.go", "internal/repo/swap.go",
+		"internal/report/row.go", "README.md",
+	}
+	for _, f := range heavyFiles {
+		commit("Heavy", "heavy@example.com", f)
+	}
+	commit("Light", "light@example.com", "internal/input/config.go")
+
+	cfg := &input.Config{
+		Repo:      src,
+		Start:     time.Now().Add(-60 * 24 * time.Hour),
+		End:       time.Now(),
+		WindowTZ:  time.UTC,
+		Fabricate: true,
+		PigsN:     2,
+		Earned:    true,
+		Seed:      5,
+		HasSeed:   true,
+	}
+	var out, errOut bytes.Buffer
+	if code := Pipeline(cfg, &out, &errOut); code != 0 {
+		t.Fatalf("pipeline failed: %s", errOut.String())
+	}
+
+	emails, err := exec.Command("git", "-C", src, "log", "--all", "--format=%ae").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log: %v: %s", err, emails)
+	}
+	heavy := bytes.Count(emails, []byte("heavy@example.com"))
+	light := bytes.Count(emails, []byte("light@example.com"))
+	if heavy == 0 {
+		t.Fatalf("heavy contributor absent from fabricated history:\n%s", emails)
+	}
+	if heavy <= light {
+		t.Fatalf("--earned did not favor the heavy contributor: heavy=%d light=%d\n%s", heavy, light, emails)
+	}
+}
