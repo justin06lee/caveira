@@ -204,3 +204,35 @@ func TestResolveIdentities_PickerRejectsBadInput(t *testing.T) {
 		})
 	}
 }
+
+func TestDiscoverIdentities_ExcludesModels(t *testing.T) {
+	repo := newEmptyRepo(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice := Identity{Name: "Alice", Email: "alice@example.com"}
+	claude := Identity{Name: "Claude", Email: "noreply@anthropic.com"}
+
+	commitAs(t, wt, alice, alice, "feat: human work")
+	commitAs(t, wt, claude, claude, "chore: model-authored commit")
+
+	got, err := DiscoverIdentities(repo)
+	if err != nil {
+		t.Fatalf("DiscoverIdentities: %v", err)
+	}
+	for _, d := range got {
+		if IsModel(d.Identity) {
+			t.Fatalf("model %q <%s> leaked into discovered identities", d.Name, d.Email)
+		}
+	}
+	foundAlice := false
+	for _, d := range got {
+		if d.Email == alice.Email {
+			foundAlice = true
+		}
+	}
+	if !foundAlice {
+		t.Fatal("expected Alice in discovered identities")
+	}
+}

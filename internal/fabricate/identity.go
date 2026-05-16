@@ -115,6 +115,9 @@ func DiscoverIdentities(repo *git.Repository) ([]DiscoveredIdentity, error) {
 
 	out := make([]DiscoveredIdentity, 0, len(counts))
 	for _, d := range counts {
+		if IsModel(d.Identity) {
+			continue // AI coding agents are never offered as players
+		}
 		out = append(out, *d)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
