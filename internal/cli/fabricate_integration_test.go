@@ -386,6 +386,9 @@ func TestIntegration_Fabricate_MailmapUnifies(t *testing.T) {
 	}
 }
 
+// TestIntegration_Fabricate_EarnedFavorsHeavyContributor locks in that --earned
+// weights fabricated author assignment by each player's real commit-count
+// distribution — guarding against a regression to a uniform author draw.
 func TestIntegration_Fabricate_EarnedFavorsHeavyContributor(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
