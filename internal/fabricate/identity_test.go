@@ -2,6 +2,7 @@ package fabricate
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -108,7 +109,7 @@ func TestDiscoverIdentities(t *testing.T) {
 func TestResolveIdentities_AllFromFlags(t *testing.T) {
 	repo, _ := walk.MakeFixtureLinear(t, 2, []int{1, 1})
 	flags := []string{"Alice <a@x.com>", "Bob <b@x.com>"}
-	got, err := ResolveIdentities(repo, flags, 2, nil, strings.NewReader(""), &bytes.Buffer{})
+	got, err := ResolveIdentities(repo, flags, 2, nil, false, strings.NewReader(""), &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("ResolveIdentities: %v", err)
 	}
@@ -123,7 +124,7 @@ func TestResolveIdentities_AllFromFlags(t *testing.T) {
 func TestResolveIdentities_FillFromGit(t *testing.T) {
 	repo, _ := walk.MakeFixtureLinear(t, 2, []int{1, 1})
 	flags := []string{}
-	got, err := ResolveIdentities(repo, flags, 1, nil, strings.NewReader(""), &bytes.Buffer{})
+	got, err := ResolveIdentities(repo, flags, 1, nil, false, strings.NewReader(""), &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("ResolveIdentities: %v", err)
 	}
@@ -141,7 +142,7 @@ func TestResolveIdentities_PromptWhenShort(t *testing.T) {
 	flags := []string{}
 	stdin := strings.NewReader("Bob\nbob@x.com\nCarol\ncarol@x.com\n")
 	var stdout bytes.Buffer
-	got, err := ResolveIdentities(repo, flags, 3, nil, stdin, &stdout)
+	got, err := ResolveIdentities(repo, flags, 3, nil, false, stdin, &stdout)
 	if err != nil {
 		t.Fatalf("ResolveIdentities: %v", err)
 	}
@@ -166,7 +167,7 @@ func TestResolveIdentities_PickerWhenTooMany(t *testing.T) {
 	flags := []string{}
 	stdin := strings.NewReader("1,3\n")
 	var stdout bytes.Buffer
-	got, err := ResolveIdentities(repo, flags, 2, nil, stdin, &stdout)
+	got, err := ResolveIdentities(repo, flags, 2, nil, false, stdin, &stdout)
 	if err != nil {
 		t.Fatalf("ResolveIdentities: %v", err)
 	}
@@ -197,7 +198,7 @@ func TestResolveIdentities_PickerRejectsBadInput(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var stdout bytes.Buffer
-			_, err := ResolveIdentities(repo, nil, 1, nil, strings.NewReader(c.stdin), &stdout)
+			_, err := ResolveIdentities(repo, nil, 1, nil, false, strings.NewReader(c.stdin), &stdout)
 			if err == nil {
 				t.Fatalf("expected error for input %q, got nil", c.stdin)
 			}
@@ -258,5 +259,65 @@ func TestDiscoverIdentities_ExcludesModels(t *testing.T) {
 	}
 	if !foundAlice {
 		t.Fatal("expected Alice in discovered identities")
+	}
+}
+
+func TestCurateIdentities_SubsetAndEmpty(t *testing.T) {
+	found := []DiscoveredIdentity{
+		{Identity: Identity{Name: "A", Email: "a@x"}, Commits: 5},
+		{Identity: Identity{Name: "B", Email: "b@x"}, Commits: 3},
+		{Identity: Identity{Name: "C", Email: "c@x"}, Commits: 1},
+	}
+	// Pick a subset of 2 from 3.
+	got, err := curateIdentities(found, 3, strings.NewReader("1,3\n"), io.Discard, 3, 0)
+	if err != nil {
+		t.Fatalf("curate subset: %v", err)
+	}
+	if len(got) != 2 || got[0].Email != "a@x" || got[1].Email != "c@x" {
+		t.Fatalf("curate subset got %+v", got)
+	}
+	// Empty selection -> zero identities, no error.
+	got, err = curateIdentities(found, 3, strings.NewReader("\n"), io.Discard, 3, 0)
+	if err != nil {
+		t.Fatalf("curate empty: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("curate empty got %+v", got)
+	}
+}
+
+func TestCurateIdentities_RejectsOverAndOutOfRange(t *testing.T) {
+	found := []DiscoveredIdentity{
+		{Identity: Identity{Name: "A", Email: "a@x"}, Commits: 1},
+		{Identity: Identity{Name: "B", Email: "b@x"}, Commits: 1},
+	}
+	if _, err := curateIdentities(found, 1, strings.NewReader("1,2\n"), io.Discard, 1, 0); err == nil {
+		t.Fatal("expected error selecting more than max")
+	}
+	if _, err := curateIdentities(found, 2, strings.NewReader("9\n"), io.Discard, 2, 0); err == nil {
+		t.Fatal("expected error for out-of-range index")
+	}
+}
+
+func TestResolveIdentities_PickPathPromptsShortfall(t *testing.T) {
+	repo := newEmptyRepo(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice := Identity{Name: "Alice", Email: "alice@x"}
+	commitAs(t, wt, alice, alice, "feat: a")
+
+	// --rats 2, pick mode: select the 1 discovered (Alice), then prompt 1 more.
+	stdin := strings.NewReader("1\nBob\nbob@x\n")
+	got, err := ResolveIdentities(repo, nil, 2, nil, true, stdin, io.Discard)
+	if err != nil {
+		t.Fatalf("ResolveIdentities pick: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 identities, got %+v", got)
+	}
+	if got[0].Email != "alice@x" || got[1].Email != "bob@x" {
+		t.Fatalf("pick-path identities wrong: %+v", got)
 	}
 }

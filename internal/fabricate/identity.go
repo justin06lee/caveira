@@ -136,7 +136,7 @@ func DiscoverIdentities(repo *git.Repository, mm *Mailmap) ([]DiscoveredIdentity
 //
 // If more identities are discovered than the remaining slots after flags, an
 // interactive picker is shown to let the user choose which to use.
-func ResolveIdentities(repo *git.Repository, flagIDs []string, n int, mm *Mailmap, stdin io.Reader, stdout io.Writer) ([]Identity, error) {
+func ResolveIdentities(repo *git.Repository, flagIDs []string, n int, mm *Mailmap, pick bool, stdin io.Reader, stdout io.Writer) ([]Identity, error) {
 	if n < 1 {
 		return nil, fmt.Errorf("ResolveIdentities: n must be >= 1, got %d", n)
 	}
@@ -173,6 +173,25 @@ func ResolveIdentities(repo *git.Repository, flagIDs []string, n int, mm *Mailma
 		}
 	}
 
+	if pick {
+		picked, err := curateIdentities(fresh, remaining, stdin, stdout, n, len(out))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, picked...)
+		if len(out) < n {
+			prompted, err := promptIdentities(n-len(out), stdin, stdout)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, prompted...)
+		}
+		if len(out) != n {
+			return nil, fmt.Errorf("resolver produced %d identities, expected %d", len(out), n)
+		}
+		return out, nil
+	}
+
 	switch {
 	case len(fresh) == remaining:
 		for _, d := range fresh {
@@ -198,6 +217,71 @@ func ResolveIdentities(repo *git.Repository, flagIDs []string, n int, mm *Mailma
 
 	if len(out) != n {
 		return nil, fmt.Errorf("resolver produced %d identities, expected %d", len(out), n)
+	}
+	return out, nil
+}
+
+// readLineUnbuffered reads a single line (up to and including '\n') from r one
+// byte at a time, so it never consumes input past the newline. Returns the line
+// without the trailing newline. A trailing io.EOF is returned alongside any
+// partial line read before the stream ended.
+func readLineUnbuffered(r io.Reader) (string, error) {
+	var sb strings.Builder
+	buf := make([]byte, 1)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			if buf[0] == '\n' {
+				return sb.String(), nil
+			}
+			sb.WriteByte(buf[0])
+		}
+		if err != nil {
+			return sb.String(), err
+		}
+	}
+}
+
+// curateIdentities shows found and reads a comma-separated selection of 0..max
+// entries by 1-based index. An empty line selects none. Returns the chosen
+// identities. Errors on out-of-range indices, duplicates, or more than max.
+func curateIdentities(found []DiscoveredIdentity, max int, stdin io.Reader, stdout io.Writer, total, alreadyHave int) ([]Identity, error) {
+	fmt.Fprintf(stdout, "Caveira needs %d identities. %d supplied via flag. Found %d in .git:\n", total, alreadyHave, len(found))
+	for i, d := range found {
+		fmt.Fprintf(stdout, "  [%d] %s <%s>     (%d commits)\n", i+1, d.Name, d.Email, d.Commits)
+	}
+	fmt.Fprintf(stdout, "Pick up to %d (comma-separated, e.g. `1,3`; empty to pick none): ", max)
+
+	// Read exactly one line without buffering ahead: in the pick path the
+	// caller may hand the same stdin to promptIdentities afterwards, and a
+	// bufio.Reader would swallow that follow-up input.
+	line, err := readLineUnbuffered(stdin)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return nil, nil
+	}
+	parts := strings.Split(line, ",")
+	if len(parts) > max {
+		return nil, fmt.Errorf("picked %d but only %d slot(s) available", len(parts), max)
+	}
+	seen := map[int]bool{}
+	out := make([]Identity, 0, len(parts))
+	for _, p := range parts {
+		var idx int
+		if _, err := fmt.Sscanf(strings.TrimSpace(p), "%d", &idx); err != nil {
+			return nil, fmt.Errorf("invalid pick %q", p)
+		}
+		if idx < 1 || idx > len(found) {
+			return nil, fmt.Errorf("pick %d out of range", idx)
+		}
+		if seen[idx] {
+			return nil, fmt.Errorf("duplicate pick %d", idx)
+		}
+		seen[idx] = true
+		out = append(out, found[idx-1].Identity)
 	}
 	return out, nil
 }

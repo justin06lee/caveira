@@ -160,7 +160,7 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 		}
 		ids = []fabricate.Identity{id}
 	} else {
-		resolved, err := fabricate.ResolveIdentities(srcRepo, rawIDs, nIDs, mailmap, os.Stdin, out)
+		resolved, err := fabricate.ResolveIdentities(srcRepo, rawIDs, nIDs, mailmap, cfg.Pick, os.Stdin, out)
 		if err != nil {
 			fmt.Fprintln(errOut, "error: identity resolution:", err)
 			return 1
