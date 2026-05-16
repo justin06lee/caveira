@@ -2,6 +2,9 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -117,5 +120,65 @@ func TestWriteIdentityReport_EmptyHistory(t *testing.T) {
 	}
 	if strings.Contains(got, "Players (") {
 		t.Fatalf("empty history must not print a Players section:\n%s", got)
+	}
+}
+
+func TestIntegration_Interrogate_ReportsIdentitiesAndModels(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	src := t.TempDir()
+	if out, err := exec.Command("git", "-C", src, "init").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	commit := func(name, email, file, message string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(src, file), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for _, args := range [][]string{{"add", file}, {"commit", "-m", message}} {
+			cmd := exec.Command("git", append([]string{"-C", src}, args...)...)
+			cmd.Env = append(os.Environ(),
+				"GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+email,
+				"GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+email)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v: %s", args, err, out)
+			}
+		}
+	}
+	// Drifted human identity: same name, two emails (2 commits + 1 commit).
+	commit("justin06lee", "hi@justin06lee.dev", "a.go", "feat: a")
+	commit("justin06lee", "hi@justin06lee.dev", "b.go", "feat: b")
+	// A commit crediting an AI model as co-author.
+	commit("justin06lee", "justin.leehuiyun@gmail.com", "c.go",
+		"docs: c\n\nCo-Authored-By: Claude <noreply@anthropic.com>")
+
+	var out, errOut bytes.Buffer
+	if code := RunWithArgs([]string{"interrogate", "--repo", src}, &out, &errOut); code != 0 {
+		t.Fatalf("interrogate exited %d; stderr=%q", code, errOut.String())
+	}
+	got := out.String()
+	for _, want := range []string{
+		"hi@justin06lee.dev", "justin.leehuiyun@gmail.com",
+		"2 commits", "1 commit",
+		"AI models", "noreply@anthropic.com",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("interrogate report missing %q:\n%s", want, got)
+		}
+	}
+
+	// --emit-mailmap: one line per human identity, AI model excluded.
+	var mmOut, mmErr bytes.Buffer
+	if code := RunWithArgs([]string{"interrogate", "--repo", src, "--emit-mailmap"}, &mmOut, &mmErr); code != 0 {
+		t.Fatalf("interrogate --emit-mailmap exited %d; stderr=%q", code, mmErr.String())
+	}
+	mm := mmOut.String()
+	if !strings.Contains(mm, "justin06lee <hi@justin06lee.dev>") ||
+		!strings.Contains(mm, "justin06lee <justin.leehuiyun@gmail.com>") {
+		t.Fatalf("skeleton missing a human identity line:\n%s", mm)
+	}
+	if strings.Contains(mm, "noreply@anthropic.com") {
+		t.Fatalf("skeleton must exclude AI models:\n%s", mm)
 	}
 }
