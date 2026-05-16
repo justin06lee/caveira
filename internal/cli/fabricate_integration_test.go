@@ -159,6 +159,28 @@ func TestIntegration_Fabricate_DropsSourceBranches(t *testing.T) {
 	}
 }
 
+func TestIntegration_Fabricate_NoModels_NoCoAuthors(t *testing.T) {
+	src := makeFixtureRepoDir(t) // fixture history has no AI-model identities
+	cfg := &input.Config{
+		Repo:      src,
+		Start:     time.Now().Add(-30 * 24 * time.Hour),
+		End:       time.Now(),
+		WindowTZ:  time.UTC,
+		Fabricate: true,
+	}
+	var out, errOut bytes.Buffer
+	if code := Pipeline(cfg, &out, &errOut); code != 0 {
+		t.Fatalf("pipeline failed: %s", errOut.String())
+	}
+	logOut, err := exec.Command("git", "-C", src, "log", "--format=%B").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log: %v: %s", err, logOut)
+	}
+	if bytes.Contains(logOut, []byte("Co-Authored-By")) {
+		t.Fatalf("no models in source, but output has Co-Authored-By trailers:\n%s", logOut)
+	}
+}
+
 func TestIntegration_FabricatePigs_SquashesToFitTinyWindow(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git binary not on PATH")

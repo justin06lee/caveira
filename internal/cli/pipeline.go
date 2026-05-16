@@ -162,6 +162,12 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 		ids = resolved
 	}
 
+	modelReport, err := fabricate.ScanModelReport(srcRepo)
+	if err != nil {
+		fmt.Fprintln(errOut, "error: scan models:", err)
+		return 1
+	}
+
 	rng := rngFor(cfg)
 	plan, dag, err := fabricate.Generate(srcRepo, ids, mode, rng)
 	if err != nil {
@@ -208,6 +214,8 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 		report.WriteDryRun(out, rows, res, cfg.Start, cfg.End)
 		return 0
 	}
+
+	fabricate.InjectCoAuthors(plan, modelReport, rng)
 
 	if _, err := os.Stat(stagePath); err == nil {
 		fmt.Fprintf(errOut, "error: %s already exists; remove or rename before retrying\n", stagePath)
