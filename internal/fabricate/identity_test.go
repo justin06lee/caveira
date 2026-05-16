@@ -93,7 +93,7 @@ func TestParseIdentity_Invalid(t *testing.T) {
 
 func TestDiscoverIdentities(t *testing.T) {
 	repo, _ := walk.MakeFixtureLinear(t, 3, []int{1, 1, 1})
-	got, err := DiscoverIdentities(repo)
+	got, err := DiscoverIdentities(repo, nil)
 	if err != nil {
 		t.Fatalf("DiscoverIdentities: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestDiscoverIdentities(t *testing.T) {
 func TestResolveIdentities_AllFromFlags(t *testing.T) {
 	repo, _ := walk.MakeFixtureLinear(t, 2, []int{1, 1})
 	flags := []string{"Alice <a@x.com>", "Bob <b@x.com>"}
-	got, err := ResolveIdentities(repo, flags, 2, strings.NewReader(""), &bytes.Buffer{})
+	got, err := ResolveIdentities(repo, flags, 2, nil, strings.NewReader(""), &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("ResolveIdentities: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestResolveIdentities_AllFromFlags(t *testing.T) {
 func TestResolveIdentities_FillFromGit(t *testing.T) {
 	repo, _ := walk.MakeFixtureLinear(t, 2, []int{1, 1})
 	flags := []string{}
-	got, err := ResolveIdentities(repo, flags, 1, strings.NewReader(""), &bytes.Buffer{})
+	got, err := ResolveIdentities(repo, flags, 1, nil, strings.NewReader(""), &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("ResolveIdentities: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestResolveIdentities_PromptWhenShort(t *testing.T) {
 	flags := []string{}
 	stdin := strings.NewReader("Bob\nbob@x.com\nCarol\ncarol@x.com\n")
 	var stdout bytes.Buffer
-	got, err := ResolveIdentities(repo, flags, 3, stdin, &stdout)
+	got, err := ResolveIdentities(repo, flags, 3, nil, stdin, &stdout)
 	if err != nil {
 		t.Fatalf("ResolveIdentities: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestResolveIdentities_PickerWhenTooMany(t *testing.T) {
 	flags := []string{}
 	stdin := strings.NewReader("1,3\n")
 	var stdout bytes.Buffer
-	got, err := ResolveIdentities(repo, flags, 2, stdin, &stdout)
+	got, err := ResolveIdentities(repo, flags, 2, nil, stdin, &stdout)
 	if err != nil {
 		t.Fatalf("ResolveIdentities: %v", err)
 	}
@@ -197,11 +197,35 @@ func TestResolveIdentities_PickerRejectsBadInput(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var stdout bytes.Buffer
-			_, err := ResolveIdentities(repo, nil, 1, strings.NewReader(c.stdin), &stdout)
+			_, err := ResolveIdentities(repo, nil, 1, nil, strings.NewReader(c.stdin), &stdout)
 			if err == nil {
 				t.Fatalf("expected error for input %q, got nil", c.stdin)
 			}
 		})
+	}
+}
+
+func TestDiscoverIdentities_MailmapUnifies(t *testing.T) {
+	repo := newEmptyRepo(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a1 := Identity{Name: "Jay", Email: "jay@personal.com"}
+	a2 := Identity{Name: "jay06", Email: "jay@work.com"}
+	commitAs(t, wt, a1, a1, "feat: one")
+	commitAs(t, wt, a2, a2, "feat: two")
+
+	mm := ParseMailmap([]byte("Jay <jay@personal.com> <jay@work.com>\n"))
+	got, err := DiscoverIdentities(repo, mm)
+	if err != nil {
+		t.Fatalf("DiscoverIdentities: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 unified identity, got %d: %+v", len(got), got)
+	}
+	if got[0].Email != "jay@personal.com" || got[0].Commits != 2 {
+		t.Fatalf("unified identity wrong: %+v", got[0])
 	}
 }
 
@@ -217,7 +241,7 @@ func TestDiscoverIdentities_ExcludesModels(t *testing.T) {
 	commitAs(t, wt, alice, alice, "feat: human work")
 	commitAs(t, wt, claude, claude, "chore: model-authored commit")
 
-	got, err := DiscoverIdentities(repo)
+	got, err := DiscoverIdentities(repo, nil)
 	if err != nil {
 		t.Fatalf("DiscoverIdentities: %v", err)
 	}

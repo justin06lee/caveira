@@ -55,7 +55,7 @@ type ModelReport struct {
 // ScanModelReport walks every reachable commit in repo and builds a ModelReport:
 // the set of AI models present in history, and a per-human-author profile of
 // how much each used those models (as committers or Co-Authored-By trailers).
-func ScanModelReport(repo *git.Repository) (*ModelReport, error) {
+func ScanModelReport(repo *git.Repository, mm *Mailmap) (*ModelReport, error) {
 	type acc struct {
 		total      int
 		withModel  int
@@ -72,9 +72,12 @@ func ScanModelReport(repo *git.Repository) (*ModelReport, error) {
 	}
 
 	err := walkCommits(repo, func(cur *object.Commit) {
-		author := Identity{Name: cur.Author.Name, Email: cur.Author.Email}
-		committer := Identity{Name: cur.Committer.Name, Email: cur.Committer.Email}
-		coAuthors := parseCoAuthors(cur.Message)
+		author := mm.Canonical(Identity{Name: cur.Author.Name, Email: cur.Author.Email})
+		committer := mm.Canonical(Identity{Name: cur.Committer.Name, Email: cur.Committer.Email})
+		var coAuthors []Identity
+		for _, ca := range parseCoAuthors(cur.Message) {
+			coAuthors = append(coAuthors, mm.Canonical(ca))
+		}
 
 		noteModel(author)
 		noteModel(committer)

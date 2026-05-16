@@ -79,7 +79,7 @@ func TestScanModelReport(t *testing.T) {
 	commitAs(t, wt, bob, bob, "fix: b1")
 	commitAs(t, wt, bob, bob, "fix: b2")
 
-	report, err := ScanModelReport(repo)
+	report, err := ScanModelReport(repo, nil)
 	if err != nil {
 		t.Fatalf("ScanModelReport: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestScanModelReport_MultiModel(t *testing.T) {
 	commitAs(t, wt, alice, alice, "feat: a2\n\nCo-Authored-By: Claude <noreply@anthropic.com>")
 	commitAs(t, wt, alice, alice, "feat: a3\n\nCo-Authored-By: Codex <codex@openai.com>")
 
-	report, err := ScanModelReport(repo)
+	report, err := ScanModelReport(repo, nil)
 	if err != nil {
 		t.Fatalf("ScanModelReport: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestScanModelReport_ModelCommitter(t *testing.T) {
 	commitAs(t, wt, alice, claude, "feat: a1")
 	commitAs(t, wt, alice, alice, "feat: a2 (solo)")
 
-	report, err := ScanModelReport(repo)
+	report, err := ScanModelReport(repo, nil)
 	if err != nil {
 		t.Fatalf("ScanModelReport: %v", err)
 	}
@@ -177,5 +177,34 @@ func TestScanModelReport_ModelCommitter(t *testing.T) {
 	}
 	if mix := pa.Mix["noreply@anthropic.com"]; mix < 0.99 {
 		t.Errorf("Alice Mix[claude] = %v, want 1.0", mix)
+	}
+}
+
+func TestScanModelReport_MailmapMergesProfile(t *testing.T) {
+	repo := newEmptyRepo(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a1 := Identity{Name: "Jay", Email: "jay@personal.com"}
+	a2 := Identity{Name: "jay06", Email: "jay@work.com"}
+	// Under each email, one commit; one of them co-authored by Claude.
+	commitAs(t, wt, a1, a1, "feat: p1\n\nCo-Authored-By: Claude <noreply@anthropic.com>")
+	commitAs(t, wt, a2, a2, "feat: w1")
+
+	mm := ParseMailmap([]byte("Jay <jay@personal.com> <jay@work.com>\n"))
+	report, err := ScanModelReport(repo, mm)
+	if err != nil {
+		t.Fatalf("ScanModelReport: %v", err)
+	}
+	if len(report.Profiles) != 1 {
+		t.Fatalf("expected 1 merged profile, got %d: %+v", len(report.Profiles), report.Profiles)
+	}
+	prof, ok := report.Profiles["jay@personal.com"]
+	if !ok {
+		t.Fatalf("no profile under canonical email: %+v", report.Profiles)
+	}
+	if prof.Rate < 0.49 || prof.Rate > 0.51 { // 1 of 2 merged commits
+		t.Fatalf("merged Rate = %v, want ~0.5", prof.Rate)
 	}
 }

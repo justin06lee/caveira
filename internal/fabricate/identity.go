@@ -90,21 +90,21 @@ func walkCommits(repo *git.Repository, visit func(*object.Commit)) error {
 }
 
 // DiscoverIdentities scans every reachable commit in repo and returns the
-// unique author identities (keyed by lowercased email), sorted by commit count
-// descending then by name ascending.
-func DiscoverIdentities(repo *git.Repository) ([]DiscoveredIdentity, error) {
+// unique author identities (keyed by lowercased email, canonicalized through
+// mm), sorted by commit count descending then by name ascending. Models are
+// excluded. A nil mm applies no canonicalization.
+func DiscoverIdentities(repo *git.Repository, mm *Mailmap) ([]DiscoveredIdentity, error) {
 	counts := map[string]*DiscoveredIdentity{}
 
 	err := walkCommits(repo, func(cur *object.Commit) {
-		key := strings.ToLower(strings.TrimSpace(cur.Author.Email))
+		id := mm.Canonical(Identity{Name: cur.Author.Name, Email: cur.Author.Email})
+		key := strings.ToLower(strings.TrimSpace(id.Email))
 		if key == "" {
 			return
 		}
 		d, ok := counts[key]
 		if !ok {
-			d = &DiscoveredIdentity{
-				Identity: Identity{Name: cur.Author.Name, Email: cur.Author.Email},
-			}
+			d = &DiscoveredIdentity{Identity: id}
 			counts[key] = d
 		}
 		d.Commits++
@@ -136,7 +136,7 @@ func DiscoverIdentities(repo *git.Repository) ([]DiscoveredIdentity, error) {
 //
 // If more identities are discovered than the remaining slots after flags, an
 // interactive picker is shown to let the user choose which to use.
-func ResolveIdentities(repo *git.Repository, flagIDs []string, n int, stdin io.Reader, stdout io.Writer) ([]Identity, error) {
+func ResolveIdentities(repo *git.Repository, flagIDs []string, n int, mm *Mailmap, stdin io.Reader, stdout io.Writer) ([]Identity, error) {
 	if n < 1 {
 		return nil, fmt.Errorf("ResolveIdentities: n must be >= 1, got %d", n)
 	}
@@ -162,7 +162,7 @@ func ResolveIdentities(repo *git.Repository, flagIDs []string, n int, stdin io.R
 		supplied[strings.ToLower(id.Email)] = true
 	}
 
-	discovered, err := DiscoverIdentities(repo)
+	discovered, err := DiscoverIdentities(repo, mm)
 	if err != nil {
 		return nil, err
 	}

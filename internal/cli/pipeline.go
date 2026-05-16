@@ -145,6 +145,12 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 		rawIDs = cfg.RatIdentities
 	}
 
+	mailmap, err := fabricate.LoadMailmap(srcPath)
+	if err != nil {
+		fmt.Fprintln(errOut, "error: read .mailmap:", err)
+		return 1
+	}
+
 	var ids []fabricate.Identity
 	if mode == "single" {
 		id, err := singleAuthorIdentity()
@@ -154,7 +160,7 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 		}
 		ids = []fabricate.Identity{id}
 	} else {
-		resolved, err := fabricate.ResolveIdentities(srcRepo, rawIDs, nIDs, os.Stdin, out)
+		resolved, err := fabricate.ResolveIdentities(srcRepo, rawIDs, nIDs, mailmap, os.Stdin, out)
 		if err != nil {
 			fmt.Fprintln(errOut, "error: identity resolution:", err)
 			return 1
@@ -162,7 +168,7 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 		ids = resolved
 	}
 
-	modelReport, err := fabricate.ScanModelReport(srcRepo)
+	modelReport, err := fabricate.ScanModelReport(srcRepo, mailmap)
 	if err != nil {
 		fmt.Fprintln(errOut, "error: scan models:", err)
 		return 1
