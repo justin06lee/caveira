@@ -84,6 +84,30 @@ func TestWriteIdentityReport_NoModels(t *testing.T) {
 	}
 }
 
+func TestWriteIdentityReport_ColumnsAligned(t *testing.T) {
+	discovered := []fabricate.DiscoveredIdentity{
+		{Identity: fabricate.Identity{Name: "Al", Email: "a@x.com"}, Commits: 9},
+		{Identity: fabricate.Identity{Name: "Bartholomew", Email: "bartholomew@example.com"}, Commits: 2},
+	}
+	var buf bytes.Buffer
+	writeIdentityReport(&buf, "/tmp/r", false, discovered, nil)
+	var col1, col2 int
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, "a@x.com") {
+			col1 = strings.Index(line, "9 commits")
+		}
+		if strings.Contains(line, "bartholomew@example.com") {
+			col2 = strings.Index(line, "2 commits")
+		}
+	}
+	if col1 <= 0 || col2 <= 0 {
+		t.Fatalf("could not locate both player lines:\n%s", buf.String())
+	}
+	if col1 != col2 {
+		t.Fatalf("commit-count column not aligned: col1=%d col2=%d\n%s", col1, col2, buf.String())
+	}
+}
+
 func TestWriteIdentityReport_EmptyHistory(t *testing.T) {
 	var buf bytes.Buffer
 	writeIdentityReport(&buf, "/tmp/empty", false, nil, nil)

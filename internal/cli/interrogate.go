@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"unicode/utf8"
 
 	"github.com/justin06lee/caveira/internal/fabricate"
 )
@@ -46,7 +47,7 @@ func writeIdentityReport(out io.Writer, srcPath string, hasMailmap bool, discove
 
 	width := 0
 	for _, d := range discovered {
-		if n := len(d.Name) + len(d.Email) + 3; n > width {
+		if n := utf8.RuneCountInString(d.Name) + utf8.RuneCountInString(d.Email) + 3; n > width {
 			width = n
 		}
 	}
