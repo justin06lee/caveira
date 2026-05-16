@@ -104,3 +104,35 @@ func TestConfig_Validate_FabricateOK(t *testing.T) {
 		t.Fatalf("expected ok, got %v", err)
 	}
 }
+
+func baseValidConfig() *Config {
+	return &Config{
+		Repo:     "/tmp/x",
+		Start:    time.Date(2026, 5, 14, 13, 0, 0, 0, time.UTC),
+		End:      time.Date(2026, 5, 14, 17, 0, 0, 0, time.UTC),
+		WindowTZ: time.UTC,
+	}
+}
+
+func TestValidate_PickRequiresPigsOrRats(t *testing.T) {
+	c := baseValidConfig()
+	c.Fabricate = true
+	c.Pick = true
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected --pick without --pigs/--rats to be rejected")
+	}
+
+	c.RatsN = 3
+	if err := c.Validate(); err != nil {
+		t.Fatalf("--pick with --rats should validate, got: %v", err)
+	}
+}
+
+func TestValidate_PickRequiresFabricate(t *testing.T) {
+	c := baseValidConfig()
+	c.Pick = true
+	c.RatsN = 3
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected --pick without --fabricate to be rejected")
+	}
+}

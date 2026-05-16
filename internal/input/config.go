@@ -24,6 +24,7 @@ type Config struct {
 	RatsN         int      // 0 = not set
 	PigIdentities []string // raw strings from --pig flags, parsed in fabricate.ParseIdentity
 	RatIdentities []string // raw strings from --rat flags
+	Pick          bool     // --pick: always open the interactive player picker
 }
 
 // Validate returns an error if the configuration is unusable.
@@ -39,9 +40,9 @@ func (c *Config) Validate() error {
 	}
 
 	fabFlagsUsed := c.PigsN > 0 || c.RatsN > 0 ||
-		len(c.PigIdentities) > 0 || len(c.RatIdentities) > 0
+		len(c.PigIdentities) > 0 || len(c.RatIdentities) > 0 || c.Pick
 	if fabFlagsUsed && !c.Fabricate {
-		return errors.New("--pigs, --rats, --pig, --rat all require --fabricate")
+		return errors.New("--pigs, --rats, --pig, --rat, --pick all require --fabricate")
 	}
 
 	if c.PigsN > 0 && c.RatsN > 0 {
@@ -58,6 +59,12 @@ func (c *Config) Validate() error {
 	}
 	if c.RatsN < 0 {
 		return errors.New("--rats must be >= 1")
+	}
+	if c.Pick && !c.Fabricate {
+		return errors.New("--pick requires --fabricate")
+	}
+	if c.Pick && c.PigsN == 0 && c.RatsN == 0 {
+		return errors.New("--pick requires --pigs N or --rats N")
 	}
 	return nil
 }
