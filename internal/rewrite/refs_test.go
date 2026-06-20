@@ -15,7 +15,7 @@ func TestRebuildRefs_BranchTipPointsAtNewHash(t *testing.T) {
 	dag, _ := walk.Load(src)
 	durations := map[string]int{oids[0]: 5, oids[1]: 5}
 	windowStart := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
-	res, _ := schedule.Schedule(dag, durations, windowStart, windowStart.Add(time.Hour))
+	res, _ := schedule.Schedule(dag, durations, windowStart, windowStart.Add(time.Hour), false)
 
 	dst, _ := InMemoryClone(src)
 	mapping, err := Apply(src, dst, dag, res)
