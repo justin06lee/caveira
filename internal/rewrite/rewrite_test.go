@@ -20,7 +20,7 @@ func TestRewrite_LinearPreservesTreesAndMessages(t *testing.T) {
 	durations := map[string]int{oids[0]: 5, oids[1]: 5, oids[2]: 5}
 	windowStart := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	windowEnd := windowStart.Add(time.Hour)
-	res, err := schedule.Schedule(dag, durations, windowStart, windowEnd)
+	res, err := schedule.Schedule(dag, durations, windowStart, windowEnd, false)
 	if err != nil {
 		t.Fatalf("Schedule: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestRewrite_AppliesSquash(t *testing.T) {
 	windowStart := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	windowEnd := windowStart.Add(90 * time.Minute)
 
-	res, err := schedule.Schedule(dag, durations, windowStart, windowEnd)
+	res, err := schedule.Schedule(dag, durations, windowStart, windowEnd, false)
 	if err != nil {
 		t.Fatalf("Schedule: %v", err)
 	}

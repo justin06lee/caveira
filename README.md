@@ -72,6 +72,7 @@ cav interrogate --repo /path/to/myrepo
 | `--push-protected` |          | Allow `--push` to touch `main` / `master`                 |
 | `--window-tz`      |          | IANA timezone for parsing `--start`/`--end` (default `Local`) |
 | `--out-dir`        |          | Parent dir for URL clones (default `$CWD`)                |
+| `--preserve`       |          | Never merge commits; keep all of them and scale spacing down to fit |
 | `--fabricate`      |          | Synthesize a new commit history instead of retiming the source |
 | `--pigs N`         |          | Chaotic single-branch fabrication with N people           |
 | `--rats N`         |          | Branched fabrication with N people                        |
@@ -95,6 +96,12 @@ for the interrogate subcommand.
    `s = 0.5`, where the minimum trivial duration reaches 1 minute).
 5. If scaling alone can't fit, squash the cheapest adjacent linear edges,
    then linearize branch points if needed, until the window fits.
+   With `--preserve`, steps 4–5 change: nothing is ever squashed or linearized.
+   Instead the global scale shrinks past the `0.5` floor (down to a one-second
+   floor per commit) until every commit fits. Spacing stays proportional to each
+   commit's difficulty, just uniformly compressed — so harder commits keep larger
+   gaps. It fails only if the window is shorter than one second per commit along
+   the longest chain.
 6. Duplicate the source folder, write the new commits, rebuild refs, swap
    the rewritten copy into the original location and rename the original to
    `<name>.dead`.

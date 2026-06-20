@@ -17,6 +17,7 @@ type Config struct {
 	PushProtected bool
 	WindowTZ      *time.Location
 	OutDir        string
+	Preserve      bool // --preserve: keep every commit, scaling spacing down to fit instead of merging
 
 	// Fabricate-mode fields
 	Fabricate     bool

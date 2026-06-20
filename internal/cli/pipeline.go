@@ -69,7 +69,7 @@ func Pipeline(cfg *input.Config, out, errOut io.Writer) int {
 	rng := rngFor(cfg)
 	durations, diffs := schedule.BuildDurations(dag, rng)
 
-	res, err := schedule.Schedule(dag, durations, cfg.Start, cfg.End)
+	res, err := schedule.Schedule(dag, durations, cfg.Start, cfg.End, cfg.Preserve)
 	if err != nil {
 		fmt.Fprintln(errOut, "error:", err)
 		return 1
@@ -200,7 +200,7 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 	origCommitCount := len(plan.Commits)
 
 	durations, diffs := schedule.BuildDurations(dag, rng)
-	res, err := schedule.Schedule(dag, durations, cfg.Start, cfg.End)
+	res, err := schedule.Schedule(dag, durations, cfg.Start, cfg.End, cfg.Preserve)
 	if err != nil {
 		fmt.Fprintln(errOut, "error:", err)
 		return 1

@@ -30,7 +30,11 @@ type Squash struct {
 // Schedule produces new timestamps for every commit so that the entire DAG
 // fits within [windowStart, windowEnd]. May scale durations and squash.
 // Implements §5 of the design spec.
-func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd time.Time) (*Result, error) {
+//
+// When preserve is true, no commit is ever squashed or linearized: the full
+// history is kept and the global scale is shrunk as far as needed (past the
+// normal 0.5 floor) so every commit still fits. See schedulePreserve.
+func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd time.Time, preserve bool) (*Result, error) {
 	if !windowStart.Before(windowEnd) {
 		return nil, fmt.Errorf("window start must precede end")
 	}
@@ -38,6 +42,10 @@ func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd ti
 
 	work := cloneDAG(dag)
 	d := cloneInts(durations)
+
+	if preserve {
+		return schedulePreserve(work, d, windowStart, windowSize)
+	}
 
 	res, span, err := runSchedule(work, d, windowStart, 1.0)
 	if err != nil {
@@ -78,6 +86,82 @@ func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd ti
 	res.Squashes = squashes
 	res.DAG = work
 	return res, nil
+}
+
+// schedulePreserve fits the entire DAG into the window WITHOUT squashing or
+// linearizing. Every commit survives; instead the global scale is shrunk until
+// the span fits. Spacing stays proportional to each commit's difficulty-derived
+// duration — harder commits keep larger gaps — just uniformly compressed.
+//
+// Scheduling here runs at second resolution with a one-second floor per commit
+// (rather than the minute / 0.5x floor of the normal path), so even tiny scales
+// keep commits distinct and ordered. The only unfittable case is a window
+// shorter than one second per commit along the longest chain.
+func schedulePreserve(work *walk.DAG, durations map[string]int, windowStart time.Time, windowSize time.Duration) (*Result, error) {
+	// Hard floor: even at one second per commit the longest chain needs this
+	// much room. If that already exceeds the window, no scaling can help.
+	if _, minSpan, err := runSchedulePreserve(work, durations, windowStart, 0); err != nil {
+		return nil, err
+	} else if minSpan > windowSize {
+		return nil, fmt.Errorf("cannot fit %d commits into the window even at one second per commit; widen --start/--end (need at least %v)", len(work.All()), minSpan)
+	}
+
+	res, span, err := runSchedulePreserve(work, durations, windowStart, 1.0)
+	if err != nil {
+		return nil, err
+	}
+	// span is monotonic non-increasing in scale and the floor above proved a
+	// fitting scale exists, so this loop is guaranteed to terminate. The cap is
+	// a defensive backstop only.
+	scale := 1.0
+	for i := 0; span > windowSize && i < 10000; i++ {
+		// Aim straight at the window, with a little headroom to absorb
+		// per-commit second-flooring, then re-measure.
+		scale *= float64(windowSize) / float64(span) * 0.98
+		res, span, err = runSchedulePreserve(work, durations, windowStart, scale)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if span > windowSize {
+		return nil, fmt.Errorf("cannot fit %d commits into the window; widen --start/--end", len(work.All()))
+	}
+	res.DAG = work
+	return res, nil
+}
+
+// runSchedulePreserve is runSchedule at second resolution: each commit's
+// duration is scaled then floored at one second (never rounded up to a whole
+// minute), so arbitrarily small scales still keep commits ordered.
+func runSchedulePreserve(dag *walk.DAG, durations map[string]int, windowStart time.Time, scale float64) (*Result, time.Duration, error) {
+	order, err := dag.TopologicalOrder()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	end := map[string]time.Time{}
+	for _, oid := range order {
+		c := dag.Get(oid)
+		start := windowStart
+		for _, p := range c.Parents {
+			if t, ok := end[p]; ok && t.After(start) {
+				start = t
+			}
+		}
+		secs := int(float64(durations[oid])*scale*60.0 + 0.5)
+		if secs < 1 {
+			secs = 1
+		}
+		end[oid] = start.Add(time.Duration(secs) * time.Second)
+	}
+
+	var maxEnd time.Time
+	for _, t := range end {
+		if t.After(maxEnd) {
+			maxEnd = t
+		}
+	}
+	return &Result{NewTimes: end, Scale: scale}, maxEnd.Sub(windowStart), nil
 }
 
 func scaleLoop(dag *walk.DAG, durations map[string]int, windowStart time.Time, windowSize time.Duration, startScale float64) (*Result, time.Duration, error) {

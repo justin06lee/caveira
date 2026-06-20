@@ -158,3 +158,21 @@ func TestValidate_EarnedRequiresFabricate(t *testing.T) {
 		t.Fatal("expected --earned without --fabricate to be rejected")
 	}
 }
+
+func TestValidate_PreserveHasNoDependencies(t *testing.T) {
+	// --preserve is a scheduling concern: it is valid on its own (retime mode)
+	// and alongside fabricate flags, with no gating like --pick/--earned.
+	c := baseValidConfig()
+	c.Preserve = true
+	if err := c.Validate(); err != nil {
+		t.Fatalf("--preserve alone should validate, got: %v", err)
+	}
+
+	c = baseValidConfig()
+	c.Preserve = true
+	c.Fabricate = true
+	c.PigsN = 2
+	if err := c.Validate(); err != nil {
+		t.Fatalf("--preserve with --fabricate --pigs should validate, got: %v", err)
+	}
+}
