@@ -84,7 +84,13 @@ func Apply(src, dst *git.Repository, dag *walk.DAG, res *schedule.Result) (map[s
 		if !ok {
 			return nil, fmt.Errorf("no scheduled time for %s", oid)
 		}
-		newTimeInTZ := newTime.In(oldCommit.Author.When.Location())
+		// Keep the scheduled instant in the window's timezone (the zone the
+		// user chose for --start/--end). Re-projecting into each commit's
+		// ORIGINAL zone would scatter offsets across the rewritten history
+		// (e.g. a source spanning a DST boundary mixes -08:00 and -07:00),
+		// making git log render the commits with inconsistent, out-of-order
+		// local times even though the underlying instants are correct.
+		newTimeInTZ := newTime
 
 		var newParents []plumbing.Hash
 		for _, p := range c.Parents {

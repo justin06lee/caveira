@@ -372,7 +372,11 @@ func rowsFor(dag *walk.DAG, durations map[string]int, diffs map[string]difficult
 			Difficulty: diffs[oid],
 			Duration:   durations[oid],
 			OldTime:    c.AuthorDate,
-			NewTime:    res.NewTimes[oid].In(c.AuthorDate.Location()),
+			// Display the new time in the window's timezone (its native zone),
+			// not the commit's original zone — otherwise a history spanning a
+			// DST boundary or multiple author zones shows mixed offsets and
+			// the rows look out of order. See rewrite.Apply for details.
+			NewTime:    res.NewTimes[oid],
 		}
 		rows = append(rows, row)
 	}

@@ -84,6 +84,75 @@ func TestRewrite_AppliesSquash(t *testing.T) {
 	}
 }
 
+// TestRewrite_NormalizesMixedTimezones guards against the bug where rewritten
+// commits were re-projected into each commit's ORIGINAL timezone. A source
+// whose commits carry different UTC offsets (e.g. one straddling a DST
+// boundary, or authors in different zones) would then emit a rewritten history
+// with mixed offsets, making git log render the commits out of order even
+// though the underlying instants were correct. Every rewritten commit must
+// share the window's zone offset and be strictly monotonic.
+func TestRewrite_NormalizesMixedTimezones(t *testing.T) {
+	// The fixture authors its commits in UTC (offset 0). The window below is
+	// in a non-UTC fixed zone, so any code that re-projects new times into the
+	// source commit's zone (the bug) would leak offset 0 into the output. A
+	// correct rewrite emits every commit in the window's zone instead.
+	src, oids := walk.MakeFixtureLinear(t, 4, []int{1, 5, 5, 5})
+
+	dag, err := walk.Load(src)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	durations := map[string]int{}
+	for _, o := range oids {
+		durations[o] = 5
+	}
+
+	// Window expressed in a single fixed zone — this is the zone every
+	// rewritten commit must adopt.
+	windowZone := time.FixedZone("WIN", -7*3600)
+	windowStart := time.Date(2026, 5, 14, 13, 0, 0, 0, windowZone)
+	windowEnd := windowStart.Add(2 * time.Hour)
+
+	res, err := schedule.Schedule(dag, durations, windowStart, windowEnd, true)
+	if err != nil {
+		t.Fatalf("Schedule preserve: %v", err)
+	}
+
+	dst, err := InMemoryClone(src)
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+	if _, err := Apply(src, dst, dag, res); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	commits := allCommits(t, dst) // chronological (oldest first)
+	if len(commits) != 4 {
+		t.Fatalf("expected 4 commits, got %d", len(commits))
+	}
+
+	wantOffset := offsetOf(windowStart)
+	var prev time.Time
+	for i, c := range commits {
+		if got := offsetOf(c.Author.When); got != wantOffset {
+			t.Errorf("commit %d author offset = %ds, want %ds (mixed zones leak through)", i, got, wantOffset)
+		}
+		if got := offsetOf(c.Committer.When); got != wantOffset {
+			t.Errorf("commit %d committer offset = %ds, want %ds", i, got, wantOffset)
+		}
+		if i > 0 && !c.Author.When.After(prev) {
+			t.Errorf("commit %d time %v is not after previous %v (out of order)", i, c.Author.When, prev)
+		}
+		prev = c.Author.When
+	}
+}
+
+func offsetOf(t time.Time) int {
+	_, off := t.Zone()
+	return off
+}
+
 func allCommits(t *testing.T, repo *git.Repository) []*object.Commit {
 	t.Helper()
 	head, err := repo.Head()
