@@ -67,6 +67,9 @@ func newRootCmd(name string) *cobra.Command {
       --start "2026-05-14 13:00" \
       --end   "2026-05-14 17:00"
 
+  ` + name + ` --repo /path/to/myrepo --preserve \
+      --start "2026-05-14 13:00" --end "2026-05-14 13:30"
+
   ` + name + ` --repo /path/to/myrepo --fabricate \
       --start "2026-05-14 09:00" --end "2026-05-14 17:00"
 
