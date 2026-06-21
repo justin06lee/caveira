@@ -2,6 +2,7 @@ package fabricate
 
 import (
 	"fmt"
+	"io"
 	"sort"
 	"time"
 
@@ -245,17 +246,13 @@ func copyBlob(src, dst *git.Repository, h plumbing.Hash) error {
 		return err
 	}
 	defer r.Close()
-	buf := make([]byte, 4096)
-	for {
-		n, err := r.Read(buf)
-		if n > 0 {
-			if _, werr := w.Write(buf[:n]); werr != nil {
-				return werr
-			}
-		}
-		if err != nil {
-			break
-		}
+	// io.Copy propagates a real read error instead of silently truncating the
+	// blob, and we close the writer so storers that flush on Close stay correct.
+	if _, err := io.Copy(w, r); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
 	}
 	_, err = dst.Storer.SetEncodedObject(ne)
 	return err

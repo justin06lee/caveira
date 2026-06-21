@@ -19,7 +19,10 @@ func IsProtectedBranch(name string) bool {
 	return short == "main" || short == "master"
 }
 
-// Push force-pushes (with lease) all branches and tags to origin.
+// Push force-pushes all branches and tags to origin. This is an UNCONDITIONAL
+// force push (go-git's PushOptions.Force) — it is NOT a --force-with-lease, so
+// it will overwrite any remote commits made since the local clone. The only
+// guard is the protected-branch check below.
 // Refuses to touch main/master unless allowProtected is true.
 func Push(repoPath string, allowProtected bool) error {
 	repo, err := git.PlainOpen(repoPath)
@@ -44,7 +47,7 @@ func Push(repoPath string, allowProtected bool) error {
 		}
 	}
 
-	// Push all branches with force-with-lease semantics.
+	// Push all branches (unconditional force; see the function doc).
 	if err := repo.Push(&git.PushOptions{
 		RemoteName: "origin",
 		Force:      true,

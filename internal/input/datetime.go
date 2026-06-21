@@ -60,10 +60,12 @@ func parseAbsolute(s string, tz *time.Location, now time.Time) (time.Time, error
 		return time.Time{}, fmt.Errorf("could not parse date %q (try YYYY-MM-DD HH:MM): %w", s, err)
 	}
 
-	// dateparse returns year 0 for inputs like "5/14" or "May 14". Substitute
-	// the year from "now" if the original input lacked a 4-digit year.
+	// dateparse returns year 0 for inputs like "5/14" or "May 14". Only then do
+	// we substitute the year from "now"; trusting the parsed year otherwise
+	// avoids silently clobbering a real year that isn't a word-bounded 4-digit
+	// run (e.g. the compact "20260514").
 	year := t.Year()
-	if year == 0 || !fourDigitYearRe.MatchString(s) {
+	if year == 0 {
 		year = now.Year()
 	}
 

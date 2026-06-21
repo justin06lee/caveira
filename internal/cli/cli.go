@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,11 @@ import (
 	"github.com/justin06lee/caveira/internal/input"
 	"github.com/spf13/cobra"
 )
+
+// errPipelineFailed is returned by RunE when Pipeline has already reported the
+// failure to stderr and exited nonzero. RunWithArgs recognizes it and avoids
+// printing a second, redundant error line.
+var errPipelineFailed = errors.New("pipeline failed")
 
 func Run() int {
 	return RunWithArgs(os.Args[1:], os.Stdout, os.Stderr)
@@ -21,7 +27,11 @@ func RunWithArgs(args []string, stdout, stderr io.Writer) int {
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(stderr, "error:", err)
+		// Pipeline failures are already reported on stderr; only print errors
+		// that originate here (flag parsing, validation, datetime parsing).
+		if !errors.Is(err, errPipelineFailed) {
+			fmt.Fprintln(stderr, "error:", err)
+		}
 		return 1
 	}
 	return 0
@@ -61,8 +71,9 @@ func newRootCmd(name string) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   name,
-		Short: "Rewrite a repo's commit timestamps to fit a chosen time window",
+		Use:           name,
+		Short:         "Rewrite a repo's commit timestamps to fit a chosen time window",
+		SilenceErrors: true,
 		Example: "  " + name + ` --repo /path/to/myrepo \
       --start "2026-05-14 13:00" \
       --end   "2026-05-14 17:00"
@@ -116,7 +127,9 @@ func newRootCmd(name string) *cobra.Command {
 			}
 			code := Pipeline(cfg, c.OutOrStdout(), c.ErrOrStderr())
 			if code != 0 {
-				return fmt.Errorf("%s exited with code %d", name, code)
+				// Pipeline already printed the cause; signal failure without a
+				// duplicate error line (see errPipelineFailed).
+				return errPipelineFailed
 			}
 			return nil
 		},

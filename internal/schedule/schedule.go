@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/justin06lee/caveira/internal/walk"
@@ -100,9 +101,12 @@ func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd ti
 func schedulePreserve(work *walk.DAG, durations map[string]int, windowStart time.Time, windowSize time.Duration) (*Result, error) {
 	// Hard floor: even at one second per commit the longest chain needs this
 	// much room. If that already exceeds the window, no scaling can help.
-	if _, minSpan, err := runSchedulePreserve(work, durations, windowStart, 0); err != nil {
+	// Otherwise this floor schedule is a guaranteed-fitting fallback.
+	floorRes, minSpan, err := runSchedulePreserve(work, durations, windowStart, 0)
+	if err != nil {
 		return nil, err
-	} else if minSpan > windowSize {
+	}
+	if minSpan > windowSize {
 		return nil, fmt.Errorf("cannot fit %d commits into the window even at one second per commit; widen --start/--end (need at least %v)", len(work.All()), minSpan)
 	}
 
@@ -111,7 +115,7 @@ func schedulePreserve(work *walk.DAG, durations map[string]int, windowStart time
 		return nil, err
 	}
 	// span is monotonic non-increasing in scale and the floor above proved a
-	// fitting scale exists, so this loop is guaranteed to terminate. The cap is
+	// fitting scale exists, so this loop is guaranteed to converge. The cap is
 	// a defensive backstop only.
 	scale := 1.0
 	for i := 0; span > windowSize && i < 10000; i++ {
@@ -124,7 +128,10 @@ func schedulePreserve(work *walk.DAG, durations map[string]int, windowStart time
 		}
 	}
 	if span > windowSize {
-		return nil, fmt.Errorf("cannot fit %d commits into the window; widen --start/--end", len(work.All()))
+		// Convergence never fails in practice, but feasibility was already
+		// proven by the floor check above — so fall back to that guaranteed
+		// fit rather than rejecting a window we know can hold every commit.
+		res = floorRes
 	}
 	res.DAG = work
 	return res, nil
@@ -246,7 +253,18 @@ func pickSquashEdge(d *walk.DAG, durations map[string]int) (Squash, bool) {
 	}
 	best := cands[0]
 	for _, c := range cands[1:] {
-		if c.score < best.score || (c.score == best.score && c.pDate.Before(best.pDate)) {
+		// score, then earlier parent date, then OID — the final OID tiebreak
+		// keeps the choice stable regardless of map-iteration order.
+		switch {
+		case c.score != best.score:
+			if c.score < best.score {
+				best = c
+			}
+		case !c.pDate.Equal(best.pDate):
+			if c.pDate.Before(best.pDate) {
+				best = c
+			}
+		case c.parent < best.parent:
 			best = c
 		}
 	}
@@ -337,7 +355,12 @@ func scaledDuration(d int, scale float64) int {
 // branch into the larger one, producing one fewer parallel branch. Returns
 // false if no such operation is possible.
 func linearizeOnce(d *walk.DAG, durations map[string]int) bool {
-	for _, p := range d.All() {
+	// Iterate in a stable OID order. d.All() walks the underlying map in random
+	// order, so without this the branch point chosen for collapsing — and thus
+	// the set of surviving commits — would vary run to run for the same --seed.
+	all := d.All()
+	sort.Slice(all, func(i, j int) bool { return all[i].OID < all[j].OID })
+	for _, p := range all {
 		kids := d.Children(p.OID)
 		if len(kids) < 2 {
 			continue

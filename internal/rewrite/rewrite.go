@@ -2,6 +2,7 @@ package rewrite
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/go-git/go-git/v5"
@@ -37,17 +38,14 @@ func InMemoryClone(src *git.Repository) (*git.Repository, error) {
 		if err != nil {
 			return err
 		}
-		buf := make([]byte, 4096)
-		for {
-			n, err := r.Read(buf)
-			if n > 0 {
-				if _, werr := w.Write(buf[:n]); werr != nil {
-					return werr
-				}
-			}
-			if err != nil {
-				break
-			}
+		// io.Copy surfaces a real read error instead of the hand-rolled loop's
+		// break-on-any-error, which silently truncated objects on transient I/O
+		// failures and wrote a corrupt copy.
+		if _, err := io.Copy(w, r); err != nil {
+			return err
+		}
+		if err := w.Close(); err != nil {
+			return err
 		}
 		_, err = dst.Storer.SetEncodedObject(ne)
 		return err
@@ -61,9 +59,13 @@ func InMemoryClone(src *git.Repository) (*git.Repository, error) {
 // It rewrites parents to point at new OIDs, preserves tree hashes (taking
 // the child's tree on a squash), and sets new author/committer timestamps.
 func Apply(src, dst *git.Repository, dag *walk.DAG, res *schedule.Result) (map[string]plumbing.Hash, error) {
+	// Apply needs the scheduled times; a nil result has nothing to apply.
+	if res == nil {
+		return nil, fmt.Errorf("rewrite.Apply: nil schedule result")
+	}
 	// Prefer the post-squash DAG from Schedule if available; otherwise fall
 	// back to the caller-supplied DAG (e.g. when no scheduling was performed).
-	if res != nil && res.DAG != nil {
+	if res.DAG != nil {
 		dag = res.DAG
 	}
 	order, err := dag.TopologicalOrder()

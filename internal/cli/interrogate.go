@@ -91,7 +91,8 @@ line per identity, ready to edit so you can unify identities that drifted
 across multiple emails. Redirect it to start a .mailmap file:
 
   cav interrogate --repo /path/to/repo --emit-mailmap > .mailmap`,
-		SilenceUsage: true,
+		SilenceUsage:  true,
+		SilenceErrors: true, // RunWithArgs prints the single error line.
 		RunE: func(c *cobra.Command, args []string) error {
 			return runInterrogate(repoFlag, outDir, emitMailmap, c.OutOrStdout())
 		},
@@ -108,7 +109,7 @@ across multiple emails. Redirect it to start a .mailmap file:
 // skeleton. It never modifies the repository.
 func runInterrogate(repoPath, outDir string, emitMailmap bool, out io.Writer) error {
 	cfg := &input.Config{Repo: repoPath, OutDir: outDir}
-	srcPath, _, err := acquireSource(cfg)
+	srcPath, err := acquireSource(cfg)
 	if err != nil {
 		return err
 	}

@@ -36,8 +36,31 @@ func WriteDryRun(w io.Writer, rows []Row, res *schedule.Result, windowStart, win
 		}
 	}
 	window := windowEnd.Sub(windowStart)
-	fmt.Fprintf(w, "\nSpan: %s (window: %s). Scale: s=%.2f. Squashes: %d.\n",
-		span.Round(time.Minute), window.Round(time.Minute), res.Scale, len(res.Squashes))
+	fmt.Fprintf(w, "\nSpan: %s (window: %s). Scale: s=%s. Squashes: %d.\n",
+		roundDur(span), roundDur(window), formatScale(res.Scale), len(res.Squashes))
+}
+
+// roundDur rounds a duration for display. Narrow windows (typical of
+// --preserve, where the whole history is compressed into minutes or seconds)
+// are rounded to the second so sub-minute spacing stays visible; wider spans
+// round to the minute to keep long retimes readable.
+func roundDur(d time.Duration) time.Duration {
+	if d < 10*time.Minute {
+		return d.Round(time.Second)
+	}
+	return d.Round(time.Minute)
+}
+
+// formatScale prints the compression scale. Two decimals suffice for normal
+// retimes, but --preserve can drive the scale well below 0.01 (compressing a
+// long history into a tiny window), where "%.2f" would collapse to "0.00".
+// Such tiny scales fall back to three significant figures so the value stays
+// informative. scale==1.0 still renders as "1.00".
+func formatScale(s float64) string {
+	if s == 0 || s >= 0.01 {
+		return fmt.Sprintf("%.2f", s)
+	}
+	return fmt.Sprintf("%.3g", s)
 }
 
 // WriteSummary prints the post-run summary.

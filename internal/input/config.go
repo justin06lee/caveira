@@ -40,6 +40,9 @@ func (c *Config) Validate() error {
 	if !c.Start.Before(c.End) {
 		return errors.New("--start must be strictly before --end")
 	}
+	if c.PushProtected && !c.Push {
+		return errors.New("--push-protected has no effect without --push")
+	}
 
 	fabFlagsUsed := c.PigsN > 0 || c.RatsN > 0 ||
 		len(c.PigIdentities) > 0 || len(c.RatIdentities) > 0 || c.Pick || c.Earned

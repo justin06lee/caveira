@@ -26,3 +26,33 @@ func TestWriteDryRun(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatScale(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want string
+	}{
+		{1.0, "1.00"}, // integration tests depend on this exact rendering
+		{0.85, "0.85"},
+		{0.0, "0.00"},
+		{0.006, "0.006"}, // tiny --preserve scale must not collapse to 0.00
+		{0.00012, "0.00012"},
+	}
+	for _, c := range cases {
+		if got := formatScale(c.in); got != c.want {
+			t.Errorf("formatScale(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestRoundDur(t *testing.T) {
+	// Sub-minute spans (typical of --preserve) keep second resolution instead
+	// of rounding away to "0s".
+	if got := roundDur(45 * time.Second); got != 45*time.Second {
+		t.Errorf("roundDur(45s) = %v, want 45s", got)
+	}
+	// Wide spans round to the minute for readability.
+	if got := roundDur(2*time.Hour + 20*time.Second); got != 2*time.Hour {
+		t.Errorf("roundDur(2h20s) = %v, want 2h0m0s", got)
+	}
+}

@@ -44,6 +44,31 @@ func TestConfig_Validate_OK(t *testing.T) {
 	}
 }
 
+func TestConfig_Validate_PushProtectedRequiresPush(t *testing.T) {
+	tz := time.UTC
+	base := func() Config {
+		return Config{
+			Repo:     "/tmp/x",
+			Start:    time.Date(2026, 5, 14, 12, 0, 0, 0, tz),
+			End:      time.Date(2026, 5, 14, 13, 0, 0, 0, tz),
+			WindowTZ: tz,
+		}
+	}
+
+	c := base()
+	c.PushProtected = true // no --push
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected error: --push-protected without --push")
+	}
+
+	c = base()
+	c.Push = true
+	c.PushProtected = true
+	if err := c.Validate(); err != nil {
+		t.Fatalf("--push + --push-protected should be valid, got %v", err)
+	}
+}
+
 func TestConfig_Validate_FabricateFlagDependencies(t *testing.T) {
 	tz := time.UTC
 	base := Config{

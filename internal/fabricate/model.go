@@ -4,9 +4,10 @@ import "strings"
 
 // modelEmailExact is the set of email addresses (lowercased) known to belong to
 // AI coding agents.
+// (copilot@github.com is intentionally omitted: it already matches the
+// "copilot" token below, so an exact entry would be dead.)
 var modelEmailExact = map[string]bool{
 	"noreply@anthropic.com": true,
-	"copilot@github.com":    true,
 }
 
 // modelTokens are case-insensitive substrings that mark an identity as an AI

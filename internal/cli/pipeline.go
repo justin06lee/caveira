@@ -26,7 +26,7 @@ import (
 // Pipeline runs the full caveira flow per cfg, writing user-facing output
 // to out and errors to errOut. Returns a process exit code.
 func Pipeline(cfg *input.Config, out, errOut io.Writer) int {
-	srcPath, _, err := acquireSource(cfg)
+	srcPath, err := acquireSource(cfg)
 	if err != nil {
 		fmt.Fprintln(errOut, "error:", err)
 		return 1
@@ -336,23 +336,23 @@ func singleAuthorIdentity() (fabricate.Identity, error) {
 	return fabricate.Identity{Name: n, Email: e}, nil
 }
 
-func acquireSource(cfg *input.Config) (path, name string, err error) {
+func acquireSource(cfg *input.Config) (path string, err error) {
 	if repo.IsURL(cfg.Repo) {
 		dst, err := repo.CloneURL(cfg.Repo, cfg.OutDir)
 		if err != nil {
-			return "", "", err
+			return "", err
 		}
-		return dst, filepath.Base(dst), nil
+		return dst, nil
 	}
 	abs, err := filepath.Abs(cfg.Repo)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	info, err := os.Stat(abs)
 	if err != nil || !info.IsDir() {
-		return "", "", fmt.Errorf("source path %s is not a directory", abs)
+		return "", fmt.Errorf("source path %s is not a directory", abs)
 	}
-	return abs, filepath.Base(abs), nil
+	return abs, nil
 }
 
 func rngFor(cfg *input.Config) *rand.Rand {
@@ -376,7 +376,7 @@ func rowsFor(dag *walk.DAG, durations map[string]int, diffs map[string]difficult
 			// not the commit's original zone — otherwise a history spanning a
 			// DST boundary or multiple author zones shows mixed offsets and
 			// the rows look out of order. See rewrite.Apply for details.
-			NewTime:    res.NewTimes[oid],
+			NewTime: res.NewTimes[oid],
 		}
 		rows = append(rows, row)
 	}
