@@ -17,7 +17,8 @@ Caveira has three modes:
   commit's "difficulty" from its diff stats, draws a duration per commit, and
   produces a copy whose history fits inside the requested window — scaling and
   (if necessary) squashing commits to fit. Author and committer identities are
-  preserved exactly; only timestamps change.
+  preserved exactly; only timestamps change. Pass `--preserve` to keep every
+  commit instead of squashing, compressing the spacing to fit.
 - **Fabricate** (`--fabricate`) — synthesizes a brand-new commit history that
   ends at the source repo's exact HEAD tree.
 - **Interrogate** (`cav interrogate`) — a read-only scan that reports the
@@ -52,6 +53,15 @@ cav --repo https://github.com/u/myrepo.git \
 ```
 
 `--dry-run` prints the schedule and exits without touching anything.
+
+Keep every commit (never squash), compressing the spacing to fit a narrow
+window:
+
+```bash
+caveira --repo /path/to/myrepo \
+        --start "2026-05-14 13:00" --end "2026-05-14 13:30" \
+        --preserve
+```
 
 Inspect a repo's identities without changing anything:
 
@@ -218,6 +228,12 @@ lines yourself onto a canonical one. interrogate flags: `--repo` (required),
   squashes linear edges to fit; single and `--rats` modes refuse instead (widen
   `--start`/`--end`), since squashing fabricated branch history there defeats
   the purpose.
+- `--preserve` never squashes or linearizes; it shrinks the global scale past
+  the `0.5` floor (down to a one-second floor per commit) so every commit
+  survives. It works in both retime and fabricate modes, and fails only when the
+  window is shorter than one second per commit along the longest chain. Because
+  git timestamps are second-granular, that's the hard limit — widen the window
+  rather than expecting sub-second spacing.
 - `interrogate` never modifies the repository, and `--emit-mailmap` prints to
   stdout — it does not write `.mailmap` for you.
 
