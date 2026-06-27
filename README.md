@@ -18,7 +18,8 @@ Caveira has three modes:
   produces a copy whose history fits inside the requested window — scaling and
   (if necessary) squashing commits to fit. Author and committer identities are
   preserved exactly; only timestamps change. Pass `--preserve` to keep every
-  commit instead of squashing, compressing the spacing to fit.
+  commit instead of squashing — new timestamps follow each commit's original
+  chronological order and proportional spacing, compressed to fit the window.
 - **Fabricate** (`--fabricate`) — synthesizes a brand-new commit history that
   ends at the source repo's exact HEAD tree.
 - **Interrogate** (`cav interrogate`) — a read-only scan that reports the
@@ -82,7 +83,7 @@ cav interrogate --repo /path/to/myrepo
 | `--push-protected` |          | Allow `--push` to touch `main` / `master`                 |
 | `--window-tz`      |          | IANA timezone for parsing `--start`/`--end` (default `Local`) |
 | `--out-dir`        |          | Parent dir for URL clones (default `$CWD`)                |
-| `--preserve`       |          | Never merge commits; keep all of them and scale spacing down to fit |
+| `--preserve`       |          | Never merge commits; keep all in original chronological order, compressing spacing to fit |
 | `--fabricate`      |          | Synthesize a new commit history instead of retiming the source |
 | `--pigs N`         |          | Chaotic single-branch fabrication with N people           |
 | `--rats N`         |          | Branched fabrication with N people                        |
@@ -106,12 +107,15 @@ for the interrogate subcommand.
    `s = 0.5`, where the minimum trivial duration reaches 1 minute).
 5. If scaling alone can't fit, squash the cheapest adjacent linear edges,
    then linearize branch points if needed, until the window fits.
-   With `--preserve`, steps 4–5 change: nothing is ever squashed or linearized.
-   Instead the global scale shrinks past the `0.5` floor (down to a one-second
-   floor per commit) until every commit fits. Spacing stays proportional to each
-   commit's difficulty, just uniformly compressed — so harder commits keep larger
-   gaps. It fails only if the window is shorter than one second per commit along
-   the longest chain.
+   With `--preserve`, steps 1–5 change entirely: durations and topological
+   scheduling are not used. Instead each commit's new timestamp follows its
+   **original author-date order and proportional spacing**, linearly compressed
+   into the window (scale `min(1, window/original_span)` — a window wider than
+   the original span keeps the real gaps rather than stretching them). This
+   keeps the history looking exactly like the source — including rebased
+   histories whose commits were authored out of topological order — just shifted
+   into the new window. It fails only if the window is shorter than one second
+   per commit.
 6. Duplicate the source folder, write the new commits, rebuild refs, swap
    the rewritten copy into the original location and rename the original to
    `<name>.dead`.
@@ -228,12 +232,13 @@ lines yourself onto a canonical one. interrogate flags: `--repo` (required),
   squashes linear edges to fit; single and `--rats` modes refuse instead (widen
   `--start`/`--end`), since squashing fabricated branch history there defeats
   the purpose.
-- `--preserve` never squashes or linearizes; it shrinks the global scale past
-  the `0.5` floor (down to a one-second floor per commit) so every commit
-  survives. It works in both retime and fabricate modes, and fails only when the
-  window is shorter than one second per commit along the longest chain. Because
-  git timestamps are second-granular, that's the hard limit — widen the window
-  rather than expecting sub-second spacing.
+- `--preserve` never squashes or linearizes; it re-times every commit in its
+  original author-date order and proportional spacing, compressed into the
+  window, so every commit survives and the history keeps its original shape
+  (rebased, out-of-topological-order author dates and all). It works in both
+  retime and fabricate modes, and fails only when the window is shorter than one
+  second per commit. Because git timestamps are second-granular, that's the hard
+  limit — widen the window rather than expecting sub-second spacing.
 - `interrogate` never modifies the repository, and `--emit-mailmap` prints to
   stdout — it does not write `.mailmap` for you.
 

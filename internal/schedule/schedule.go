@@ -32,9 +32,10 @@ type Squash struct {
 // fits within [windowStart, windowEnd]. May scale durations and squash.
 // Implements §5 of the design spec.
 //
-// When preserve is true, no commit is ever squashed or linearized: the full
-// history is kept and the global scale is shrunk as far as needed (past the
-// normal 0.5 floor) so every commit still fits. See schedulePreserve.
+// When preserve is true, no commit is ever squashed or linearized and the
+// original commit chronology is kept exactly: new timestamps follow each
+// commit's original author-date order and proportional spacing, compressed
+// into the window. See scheduleChronologicalPreserve.
 func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd time.Time, preserve bool) (*Result, error) {
 	if !windowStart.Before(windowEnd) {
 		return nil, fmt.Errorf("window start must precede end")
@@ -42,11 +43,20 @@ func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd ti
 	windowSize := windowEnd.Sub(windowStart)
 
 	work := cloneDAG(dag)
-	d := cloneInts(durations)
+
+	// An empty history has nothing to schedule. Return an empty result rather
+	// than letting the preserve path index commits[0] (panic) or the default
+	// path compute a negative span from a zero maxEnd. Callers in the CLI guard
+	// this already, but direct library callers may not.
+	if len(work.All()) == 0 {
+		return &Result{NewTimes: map[string]time.Time{}, Scale: 1.0, DAG: work}, nil
+	}
 
 	if preserve {
-		return schedulePreserve(work, d, windowStart, windowSize)
+		return scheduleChronologicalPreserve(work, windowStart, windowSize)
 	}
+
+	d := cloneInts(durations)
 
 	res, span, err := runSchedule(work, d, windowStart, 1.0)
 	if err != nil {
@@ -89,86 +99,82 @@ func Schedule(dag *walk.DAG, durations map[string]int, windowStart, windowEnd ti
 	return res, nil
 }
 
-// schedulePreserve fits the entire DAG into the window WITHOUT squashing or
-// linearizing. Every commit survives; instead the global scale is shrunk until
-// the span fits. Spacing stays proportional to each commit's difficulty-derived
-// duration — harder commits keep larger gaps — just uniformly compressed.
+// scheduleChronologicalPreserve fits every commit into the window WITHOUT
+// squashing, preserving the original commit chronology: new timestamps follow
+// the order and proportional spacing of each commit's ORIGINAL author date,
+// linearly compressed into the window. Unlike the default scheduler this does
+// NOT re-derive times from graph topology — so a rebased history (a child
+// authored earlier than its parent) keeps that exact shape, and the rewritten
+// repo looks like the source, just shifted into the new window.
 //
-// Scheduling here runs at second resolution with a one-second floor per commit
-// (rather than the minute / 0.5x floor of the normal path), so even tiny scales
-// keep commits distinct and ordered. The only unfittable case is a window
-// shorter than one second per commit along the longest chain.
-func schedulePreserve(work *walk.DAG, durations map[string]int, windowStart time.Time, windowSize time.Duration) (*Result, error) {
-	// Hard floor: even at one second per commit the longest chain needs this
-	// much room. If that already exceeds the window, no scaling can help.
-	// Otherwise this floor schedule is a guaranteed-fitting fallback.
-	floorRes, minSpan, err := runSchedulePreserve(work, durations, windowStart, 0)
-	if err != nil {
-		return nil, err
-	}
-	if minSpan > windowSize {
-		return nil, fmt.Errorf("cannot fit %d commits into the window even at one second per commit; widen --start/--end (need at least %v)", len(work.All()), minSpan)
+// Spacing is scaled by min(1, window/originalSpan): a window wider than the
+// original author-date span keeps the real gaps (the history sits at the start)
+// rather than stretching them. Commits that share an author-second, or that
+// compression would collapse together, are nudged at least one second apart in
+// chronological order so every commit stays distinct and ordered. The only
+// unfittable case is a window shorter than one second per commit.
+func scheduleChronologicalPreserve(work *walk.DAG, windowStart time.Time, windowSize time.Duration) (*Result, error) {
+	commits := work.All()
+	sort.Slice(commits, func(i, j int) bool {
+		a, b := commits[i], commits[j]
+		if !a.AuthorDate.Equal(b.AuthorDate) {
+			return a.AuthorDate.Before(b.AuthorDate)
+		}
+		return a.OID < b.OID
+	})
+	n := len(commits)
+
+	// Even at one second per commit the timeline needs this much room.
+	if minSpan := time.Duration(n-1) * time.Second; windowSize < minSpan {
+		return nil, fmt.Errorf("cannot fit %d commits into the window even at one second apart; widen --start/--end (need at least %v)", n, minSpan)
 	}
 
-	res, span, err := runSchedulePreserve(work, durations, windowStart, 1.0)
-	if err != nil {
-		return nil, err
-	}
-	// span is monotonic non-increasing in scale and the floor above proved a
-	// fitting scale exists, so this loop is guaranteed to converge. The cap is
-	// a defensive backstop only.
+	tMin := commits[0].AuthorDate
+	origSpan := commits[n-1].AuthorDate.Sub(tMin)
+
+	// Compress (never expand) so the original span fits inside the window.
 	scale := 1.0
-	for i := 0; span > windowSize && i < 10000; i++ {
-		// Aim straight at the window, with a little headroom to absorb
-		// per-commit second-flooring, then re-measure.
-		scale *= float64(windowSize) / float64(span) * 0.98
-		res, span, err = runSchedulePreserve(work, durations, windowStart, scale)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if span > windowSize {
-		// Convergence never fails in practice, but feasibility was already
-		// proven by the floor check above — so fall back to that guaranteed
-		// fit rather than rejecting a window we know can hold every commit.
-		res = floorRes
-	}
-	res.DAG = work
-	return res, nil
-}
-
-// runSchedulePreserve is runSchedule at second resolution: each commit's
-// duration is scaled then floored at one second (never rounded up to a whole
-// minute), so arbitrarily small scales still keep commits ordered.
-func runSchedulePreserve(dag *walk.DAG, durations map[string]int, windowStart time.Time, scale float64) (*Result, time.Duration, error) {
-	order, err := dag.TopologicalOrder()
-	if err != nil {
-		return nil, 0, err
+	if origSpan > 0 && windowSize < origSpan {
+		scale = float64(windowSize) / float64(origSpan)
 	}
 
-	end := map[string]time.Time{}
-	for _, oid := range order {
-		c := dag.Get(oid)
-		start := windowStart
-		for _, p := range c.Parents {
-			if t, ok := end[p]; ok && t.After(start) {
-				start = t
-			}
+	newTimes := make(map[string]time.Time, n)
+	var prev time.Time
+	overflow := false
+	for i, c := range commits {
+		var nt time.Time
+		if origSpan == 0 {
+			nt = windowStart.Add(time.Duration(i) * time.Second)
+		} else {
+			nt = windowStart.Add(time.Duration(float64(c.AuthorDate.Sub(tMin)) * scale))
 		}
-		secs := int(float64(durations[oid])*scale*60.0 + 0.5)
-		if secs < 1 {
-			secs = 1
+		// Keep strictly increasing in chronological order so equal or
+		// compression-collapsed timestamps stay distinct and ordered.
+		if i > 0 && !nt.After(prev) {
+			nt = prev.Add(time.Second)
 		}
-		end[oid] = start.Add(time.Duration(secs) * time.Second)
+		newTimes[c.OID] = nt
+		prev = nt
+		if nt.Sub(windowStart) > windowSize {
+			overflow = true
+		}
 	}
 
-	var maxEnd time.Time
-	for _, t := range end {
-		if t.After(maxEnd) {
-			maxEnd = t
+	// Pathological tight windows (dense author-date clusters whose one-second
+	// nudges cumulatively overflow the window) fall back to even spacing: this
+	// preserves the chronological ORDER exactly and is guaranteed to fit,
+	// trading away proportional spacing only when it genuinely cannot fit.
+	if overflow && n > 1 {
+		step := windowSize / time.Duration(n-1)
+		for i, c := range commits {
+			newTimes[c.OID] = windowStart.Add(time.Duration(i) * step)
+		}
+		if origSpan > 0 {
+			scale = float64(windowSize) / float64(origSpan)
 		}
 	}
-	return &Result{NewTimes: end, Scale: scale}, maxEnd.Sub(windowStart), nil
+
+	return &Result{NewTimes: newTimes, Scale: scale, DAG: work}, nil
 }
 
 func scaleLoop(dag *walk.DAG, durations map[string]int, windowStart time.Time, windowSize time.Duration, startScale float64) (*Result, time.Duration, error) {
@@ -294,6 +300,9 @@ func applySquash(d *walk.DAG, durations map[string]int, s Squash) {
 	if p.IsRoot {
 		survivor.IsRoot = true
 	}
+	// Keep IsMerge consistent with the rewired parent count: a survivor that
+	// inherited a merge parent's multiple parents is itself now a merge.
+	survivor.IsMerge = len(survivor.Parents) > 1
 	durations[c.OID] = dur
 
 	// Remove the parent; this also strips p.OID from any commits that had it

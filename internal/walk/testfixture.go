@@ -1,6 +1,7 @@
 package walk
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -61,7 +62,7 @@ func MakeFixtureLinear(t *testing.T, n int, linesPerCommit []int) (*git.Reposito
 }
 
 func nameOfCommit(i int) string {
-	return "file_" + string(rune('a'+i)) + ".txt"
+	return fmt.Sprintf("file_%03d.txt", i)
 }
 
 // MakeFixtureBranchedMerged builds a repo with this shape:

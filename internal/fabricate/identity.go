@@ -6,6 +6,7 @@ import (
 	"io"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -275,8 +276,8 @@ func curateIdentities(found []DiscoveredIdentity, max int, stdin io.Reader, stdo
 	seen := map[int]bool{}
 	out := make([]Identity, 0, len(parts))
 	for _, p := range parts {
-		var idx int
-		if _, err := fmt.Sscanf(strings.TrimSpace(p), "%d", &idx); err != nil {
+		idx, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil {
 			return nil, fmt.Errorf("invalid pick %q", p)
 		}
 		if idx < 1 || idx > len(found) {
@@ -313,8 +314,8 @@ func pickIdentities(found []DiscoveredIdentity, k int, stdin io.Reader, stdout i
 	}
 	out := make([]Identity, 0, k)
 	for _, p := range parts {
-		var idx int
-		if _, err := fmt.Sscanf(strings.TrimSpace(p), "%d", &idx); err != nil {
+		idx, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil {
 			return nil, fmt.Errorf("invalid pick %q", p)
 		}
 		if idx < 1 || idx > len(found) {

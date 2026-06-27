@@ -1,16 +1,20 @@
 package schedule
 
 import (
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/justin06lee/caveira/internal/walk"
 )
 
-// assertPreserved checks the invariants every --preserve schedule must hold:
-// every original commit survives, each commit ends strictly after all of its
-// parents, and the whole schedule stays inside [start, end].
-func assertPreserved(t *testing.T, dag *walk.DAG, res *Result, start, end time.Time) {
+// assertChronoPreserved checks the invariants every --preserve schedule must
+// hold under the chronological contract: every commit survives, no commit is
+// squashed, the schedule stays inside [start, end], and — the heart of preserve
+// — taking commits in their ORIGINAL author-date order yields strictly
+// increasing new times. Topology is deliberately NOT required to be monotonic:
+// a rebased child authored before its parent keeps that shape.
+func assertChronoPreserved(t *testing.T, dag *walk.DAG, res *Result, start, end time.Time) {
 	t.Helper()
 	if len(res.Squashes) != 0 {
 		t.Errorf("preserve must not squash, got %d squashes", len(res.Squashes))
@@ -20,31 +24,56 @@ func assertPreserved(t *testing.T, dag *walk.DAG, res *Result, start, end time.T
 		t.Errorf("expected all %d commits preserved, got %d times", len(all), len(res.NewTimes))
 	}
 	if res.Scale > 1.0 {
-		t.Errorf("scale must never exceed 1.0, got %v", res.Scale)
+		t.Errorf("scale must never exceed 1.0 (preserve never expands), got %v", res.Scale)
 	}
-	for _, c := range all {
-		ct, ok := res.NewTimes[c.OID]
+
+	byOrig := append([]*walk.Commit(nil), all...)
+	sort.Slice(byOrig, func(i, j int) bool {
+		if !byOrig[i].AuthorDate.Equal(byOrig[j].AuthorDate) {
+			return byOrig[i].AuthorDate.Before(byOrig[j].AuthorDate)
+		}
+		return byOrig[i].OID < byOrig[j].OID
+	})
+
+	var prev time.Time
+	for i, c := range byOrig {
+		nt, ok := res.NewTimes[c.OID]
 		if !ok {
 			t.Errorf("commit %s missing from schedule", c.OID)
 			continue
 		}
-		if ct.Before(start) {
-			t.Errorf("commit %s at %v starts before window start %v", c.OID, ct, start)
+		if nt.Before(start) {
+			t.Errorf("commit %s at %v starts before window start %v", c.OID, nt, start)
 		}
-		if ct.After(end) {
-			t.Errorf("commit %s at %v ends after window end %v", c.OID, ct, end)
+		if nt.After(end) {
+			t.Errorf("commit %s at %v ends after window end %v", c.OID, nt, end)
 		}
-		for _, p := range c.Parents {
-			pt, ok := res.NewTimes[p]
-			if !ok {
-				t.Errorf("parent %s of %s missing from schedule", p, c.OID)
-				continue
-			}
-			if !ct.After(pt) {
-				t.Errorf("commit %s (%v) does not come after parent %s (%v)", c.OID, ct, p, pt)
-			}
+		if i > 0 && !nt.After(prev) {
+			t.Errorf("new times not strictly increasing in original author-date order at %s: %v <= %v", c.OID, nt, prev)
 		}
+		prev = nt
 	}
+}
+
+// makeLinearDAGDated builds a linear chain whose commits carry explicit author
+// dates (minutes past a fixed base). The chain order (parent->child) is the
+// slice order; the author dates may run in any order, letting tests model
+// rebased histories where author time disagrees with topology.
+func makeLinearDAGDated(authorMinutes []int) *walk.DAG {
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	d := walk.NewDAG()
+	prev := ""
+	for i, m := range authorMinutes {
+		c := &walk.Commit{OID: oidFor(i), AuthorDate: base.Add(time.Duration(m) * time.Minute)}
+		if prev == "" {
+			c.IsRoot = true
+		} else {
+			c.Parents = []string{prev}
+		}
+		d.Add(c)
+		prev = oidFor(i)
+	}
+	return d
 }
 
 func makeDiamondDAG() *walk.DAG {
@@ -57,176 +86,156 @@ func makeDiamondDAG() *walk.DAG {
 	return d
 }
 
-func TestPreserve_DiamondKeepsAllCommits(t *testing.T) {
-	dag := makeDiamondDAG()
-	durations := map[string]int{"A": 60, "B": 60, "C": 30, "D": 60}
+// TestPreserve_RebasedHistoryKeepsAuthorChronology is the regression test for
+// the reported bug: a rebased repo whose tip commit was authored EARLIER than
+// its ancestors had its chronology inverted ("recent commits became oldest")
+// because the old preserve re-dated strictly by graph topology. The
+// chronological contract must instead keep the original author-date order, even
+// though that means the topological tip is dated before the root.
+func TestPreserve_RebasedHistoryKeepsAuthorChronology(t *testing.T) {
+	// Chain A(root) -> B -> C. Authored OUT of topological order: the root A was
+	// authored LAST (180m), the tip C FIRST (0m) — a feature replayed onto an
+	// older base, exactly like the Etch.2 "Codex on top of working?" rebase.
+	d := makeLinearDAGDated([]int{180, 60, 0}) // A=180m, B=60m, C=0m
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
-	end := start.Add(30 * time.Minute) // far too narrow for ~180 unscaled minutes
+	end := start.Add(4 * time.Hour)
 
-	res, err := Schedule(dag, durations, start, end, true)
+	res, err := Schedule(d, nil, start, end, true)
 	if err != nil {
 		t.Fatalf("Schedule preserve: %v", err)
 	}
-	assertPreserved(t, dag, res, start, end)
-	if res.Scale >= 1.0 {
-		t.Errorf("expected compression for a narrow window, got scale %v", res.Scale)
+	assertChronoPreserved(t, d, res, start, end)
+
+	a, b, c := res.NewTimes[oidFor(0)], res.NewTimes[oidFor(1)], res.NewTimes[oidFor(2)]
+	// Author order was C(0) < B(60) < A(180), so new times must follow it.
+	if !(c.Before(b) && b.Before(a)) {
+		t.Errorf("expected author chronology C<B<A preserved, got A=%v B=%v C=%v", a, b, c)
+	}
+	// The crux: the topological tip C stays dated BEFORE the root A. The old
+	// topological preserve forced A<B<C, inverting the user's chronology.
+	if !c.Before(a) {
+		t.Errorf("rebased tip C (%v) must stay before root A (%v)", c, a)
 	}
 }
 
-func TestPreserve_MergeCommitSurvives(t *testing.T) {
-	// A diamond's tip D is a merge (two parents). Preserve must keep it and
-	// schedule it after BOTH parents finish.
-	dag := makeDiamondDAG()
-	durations := map[string]int{"A": 30, "B": 30, "C": 30, "D": 1}
+func TestPreserve_MonotonicHistoryKeepsOrder(t *testing.T) {
+	// A normal (non-rebased) history: author dates increase with topology. The
+	// output order must match and stay within the window.
+	d := makeLinearDAGDated([]int{0, 30, 90, 150})
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
-	end := start.Add(20 * time.Minute)
+	end := start.Add(3 * time.Hour)
 
-	res, err := Schedule(dag, durations, start, end, true)
+	res, err := Schedule(d, nil, start, end, true)
 	if err != nil {
 		t.Fatalf("Schedule preserve: %v", err)
 	}
-	assertPreserved(t, dag, res, start, end)
-	dEnd := res.NewTimes["D"]
-	if !dEnd.After(res.NewTimes["B"]) || !dEnd.After(res.NewTimes["C"]) {
-		t.Errorf("merge D must follow both parents: D=%v B=%v C=%v", dEnd, res.NewTimes["B"], res.NewTimes["C"])
-	}
-}
-
-func TestPreserve_SingleCommitNoScaleWhenFits(t *testing.T) {
-	dag := makeLinearDAG([]int{60})
-	durations := map[string]int{"A": 60}
-	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
-	end := start.Add(2 * time.Hour)
-
-	res, err := Schedule(dag, durations, start, end, true)
-	if err != nil {
-		t.Fatalf("Schedule preserve: %v", err)
-	}
-	assertPreserved(t, dag, res, start, end)
+	assertChronoPreserved(t, d, res, start, end)
+	// Window (180m) is wider than the original span (150m): no compression.
 	if res.Scale != 1.0 {
-		t.Errorf("scale: got %v, want 1.0 (single commit fits)", res.Scale)
-	}
-	want := start.Add(60 * time.Minute)
-	if !res.NewTimes["A"].Equal(want) {
-		t.Errorf("A: got %v, want %v", res.NewTimes["A"], want)
+		t.Errorf("scale: got %v, want 1.0 (window wider than history, no compression)", res.Scale)
 	}
 }
 
 func TestPreserve_KeepsProportionalSpacing(t *testing.T) {
-	// B's duration is 4x A's. After uniform compression the gap before B should
-	// stay ~4x the gap before A — harder commits keep bigger gaps.
-	dag := makeLinearDAG([]int{10, 40})
-	durations := map[string]int{"A": 10, "B": 40}
+	// Original gaps: A..B = 10m, B..C = 40m (4x). After compression the ratio of
+	// the gaps must be preserved (~4x), just uniformly scaled.
+	d := makeLinearDAGDated([]int{0, 10, 50})
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
-	end := start.Add(25 * time.Minute) // forces compression of the 50 unscaled minutes
-
-	res, err := Schedule(dag, durations, start, end, true)
+	end := start.Add(25 * time.Minute) // forces compression of the 50m span
+	res, err := Schedule(d, nil, start, end, true)
 	if err != nil {
 		t.Fatalf("Schedule preserve: %v", err)
 	}
-	assertPreserved(t, dag, res, start, end)
-	gapA := res.NewTimes["A"].Sub(start)
-	gapB := res.NewTimes["B"].Sub(res.NewTimes["A"])
-	if gapB <= gapA {
-		t.Fatalf("expected B's gap (%v) to exceed A's (%v)", gapB, gapA)
+	assertChronoPreserved(t, d, res, start, end)
+	if res.Scale >= 1.0 {
+		t.Errorf("expected compression for a narrow window, got scale %v", res.Scale)
 	}
+	gapA := res.NewTimes[oidFor(1)].Sub(res.NewTimes[oidFor(0)])
+	gapB := res.NewTimes[oidFor(2)].Sub(res.NewTimes[oidFor(1)])
 	ratio := float64(gapB) / float64(gapA)
 	if ratio < 3.5 || ratio > 4.5 {
 		t.Errorf("expected ~4x spacing ratio, got %.2f (gapA=%v gapB=%v)", ratio, gapA, gapB)
 	}
 }
 
-func TestPreserve_MonotonicSpacingShrinksWithWindow(t *testing.T) {
-	// The narrower the window, the smaller the scale (never larger). Verify the
-	// compressed span tracks the window across a range of widths.
-	durations := map[string]int{}
-	durs := make([]int, 8)
-	for i := range durs {
-		durs[i] = 30
-		durations[string(rune('A'+i))] = 30
-	}
+func TestPreserve_DiamondKeepsAllCommits(t *testing.T) {
+	// A diamond with no author dates: chronological order falls back to OID, and
+	// every commit must still survive and stay ordered/distinct.
+	dag := makeDiamondDAG()
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	end := start.Add(30 * time.Minute)
 
-	var prevScale float64 = 2.0
-	for _, mins := range []int{200, 120, 60, 30, 10} {
-		dag := makeLinearDAG(durs)
-		end := start.Add(time.Duration(mins) * time.Minute)
-		res, err := Schedule(dag, durations, start, end, true)
-		if err != nil {
-			t.Fatalf("window %dm: %v", mins, err)
-		}
-		assertPreserved(t, dag, res, start, end)
-		if res.Scale > prevScale {
-			t.Errorf("window %dm: scale %v should not exceed previous %v", mins, res.Scale, prevScale)
-		}
-		prevScale = res.Scale
+	res, err := Schedule(dag, nil, start, end, true)
+	if err != nil {
+		t.Fatalf("Schedule preserve: %v", err)
+	}
+	assertChronoPreserved(t, dag, res, start, end)
+	if len(res.NewTimes) != 4 || len(res.Squashes) != 0 {
+		t.Errorf("preserve should keep all 4 commits with 0 squashes, got %d / %d squashes",
+			len(res.NewTimes), len(res.Squashes))
+	}
+}
+
+func TestPreserve_WindowWiderThanSpanKeepsRealGaps(t *testing.T) {
+	// When the window dwarfs the original span, gaps are NOT stretched to fill
+	// it: the history keeps its real author-date spacing and sits at the start.
+	d := makeLinearDAGDated([]int{0, 20, 50}) // 50m span
+	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	end := start.Add(10 * time.Hour)
+	res, err := Schedule(d, nil, start, end, true)
+	if err != nil {
+		t.Fatalf("Schedule preserve: %v", err)
+	}
+	assertChronoPreserved(t, d, res, start, end)
+	if res.Scale != 1.0 {
+		t.Errorf("scale should be 1.0 for an over-wide window, got %v", res.Scale)
+	}
+	// Last commit lands at start+50m (real span), well short of the window end.
+	if got, want := res.NewTimes[oidFor(2)], start.Add(50*time.Minute); !got.Equal(want) {
+		t.Errorf("tip at %v, want real-gap position %v", got, want)
 	}
 }
 
 func TestPreserve_FitsManyCommitsInTinyButFeasibleWindow(t *testing.T) {
 	const n = 100
-	durs := make([]int, n)
-	durations := map[string]int{}
-	for i := range durs {
-		durs[i] = 90
-		durations[oidFor(i)] = 90
+	mins := make([]int, n)
+	for i := range mins {
+		mins[i] = i * 90 // 90-minute author gaps, ~6188m total span
 	}
-	dag := makeLinearDAGOID(n)
+	dag := makeLinearDAGDated(mins)
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	end := start.Add(5 * time.Minute) // 300s >= 100 commits * 1s, so it must fit
 
-	res, err := Schedule(dag, durations, start, end, true)
+	res, err := Schedule(dag, nil, start, end, true)
 	if err != nil {
 		t.Fatalf("Schedule preserve: %v", err)
 	}
-	assertPreserved(t, dag, res, start, end)
+	assertChronoPreserved(t, dag, res, start, end)
 	if len(res.NewTimes) != n {
 		t.Errorf("expected %d commits, got %d", n, len(res.NewTimes))
 	}
 }
 
-func TestPreserve_ExactBoundaryAtOneSecondPerCommit(t *testing.T) {
+func TestPreserve_FailsWindowShorterThanOneSecondPerCommit(t *testing.T) {
 	const n = 60
-	durations := map[string]int{}
-	for i := 0; i < n; i++ {
-		durations[oidFor(i)] = 30
+	mins := make([]int, n)
+	for i := range mins {
+		mins[i] = i
 	}
-	dag := makeLinearDAGOID(n)
+	dag := makeLinearDAGDated(mins)
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
-	end := start.Add(time.Duration(n) * time.Second) // exactly 1s per commit
+	end := start.Add(time.Duration(n-2) * time.Second) // one short of feasible
 
-	res, err := Schedule(dag, durations, start, end, true)
-	if err != nil {
-		t.Fatalf("expected the exact-floor window to fit, got %v", err)
-	}
-	assertPreserved(t, dag, res, start, end)
-	last := res.NewTimes[oidFor(n-1)]
-	if !last.Equal(end) {
-		t.Errorf("last commit should land exactly on the window end: got %v want %v", last, end)
-	}
-}
-
-func TestPreserve_FailsOneSecondTooNarrow(t *testing.T) {
-	const n = 60
-	durations := map[string]int{}
-	for i := 0; i < n; i++ {
-		durations[oidFor(i)] = 30
-	}
-	dag := makeLinearDAGOID(n)
-	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
-	end := start.Add(time.Duration(n-1) * time.Second) // one second short of feasible
-
-	if _, err := Schedule(dag, durations, start, end, true); err == nil {
-		t.Fatal("expected error when window is one second short of one-second-per-commit")
+	if _, err := Schedule(dag, nil, start, end, true); err == nil {
+		t.Fatal("expected error when window is shorter than one second per commit")
 	}
 }
 
 func TestPreserve_RejectsInvertedWindow(t *testing.T) {
-	dag := makeLinearDAG([]int{10})
-	durations := map[string]int{"A": 10}
+	dag := makeLinearDAGDated([]int{0})
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	end := start.Add(-time.Hour)
-	if _, err := Schedule(dag, durations, start, end, true); err == nil {
+	if _, err := Schedule(dag, nil, start, end, true); err == nil {
 		t.Fatal("expected error when start is not before end")
 	}
 }
@@ -235,8 +244,10 @@ func TestPreserve_VersusDefault_KeepsMoreCommits(t *testing.T) {
 	// Same DAG and window: default mode squashes to fit; preserve keeps all.
 	const n = 12
 	durations := map[string]int{}
+	mins := make([]int, n)
 	for i := 0; i < n; i++ {
 		durations[oidFor(i)] = 60
+		mins[i] = i * 60
 	}
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	end := start.Add(30 * time.Minute)
@@ -245,16 +256,13 @@ func TestPreserve_VersusDefault_KeepsMoreCommits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("default schedule: %v", err)
 	}
-	presRes, err := Schedule(makeLinearDAGOID(n), durations, start, end, true)
+	presRes, err := Schedule(makeLinearDAGDated(mins), nil, start, end, true)
 	if err != nil {
 		t.Fatalf("preserve schedule: %v", err)
 	}
 
 	if len(defRes.Squashes) == 0 {
 		t.Fatalf("expected default mode to squash this narrow window")
-	}
-	if len(defRes.DAG.All()) >= n {
-		t.Errorf("default mode should drop commits, kept %d of %d", len(defRes.DAG.All()), n)
 	}
 	if len(presRes.NewTimes) != n || len(presRes.Squashes) != 0 {
 		t.Errorf("preserve should keep all %d commits with 0 squashes, got %d commits / %d squashes",

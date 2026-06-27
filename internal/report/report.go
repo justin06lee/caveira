@@ -69,8 +69,8 @@ func WriteSummary(w io.Writer, src, dst, deadPath string, before, after int, spa
 	fmt.Fprintf(w, "Rewritten:     %s\n", dst)
 	fmt.Fprintf(w, "Original kept: %s\n", deadPath)
 	fmt.Fprintf(w, "Commits:       %d -> %d (%d squashed)\n", before, after, squashes)
-	fmt.Fprintf(w, "Span:          %s within %s window\n", span.Round(time.Minute), window.Round(time.Minute))
-	fmt.Fprintf(w, "Scaling:       s=%.2f\n", scale)
+	fmt.Fprintf(w, "Span:          %s within %s window\n", roundDur(span), roundDur(window))
+	fmt.Fprintf(w, "Scaling:       s=%s\n", formatScale(scale))
 	if pushed {
 		fmt.Fprintln(w, "Pushed:        yes")
 	} else {

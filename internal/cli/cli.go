@@ -144,7 +144,7 @@ func newRootCmd(name string) *cobra.Command {
 	cmd.Flags().BoolVar(&pushProt, "push-protected", false, "allow pushing main/master")
 	cmd.Flags().StringVar(&windowTZ, "window-tz", "Local", "IANA timezone for --start/--end")
 	cmd.Flags().StringVar(&outDir, "out-dir", "", "parent directory for URL clones (default $CWD)")
-	cmd.Flags().BoolVar(&preserve, "preserve", false, "never merge commits; keep all of them and scale spacing down to fit the window")
+	cmd.Flags().BoolVar(&preserve, "preserve", false, "never merge commits; keep all of them in their original chronological order, compressing the spacing to fit the window")
 
 	cmd.Flags().BoolVar(&fabricateFlag, "fabricate", false, "synthesize a new commit history instead of retiming the source")
 	cmd.Flags().IntVar(&pigsN, "pigs", 0, "chaotic single-branch fabricator with N people (requires --fabricate)")

@@ -28,8 +28,6 @@ func ParseDateTime(s string, tz *time.Location, now time.Time) (time.Time, error
 // mishandles am/pm-suffixed times, so we strip and apply them ourselves.
 var ampmSuffixRe = regexp.MustCompile(`(?i)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*$`)
 
-var fourDigitYearRe = regexp.MustCompile(`\b\d{4}\b`)
-
 func parseAbsolute(s string, tz *time.Location, now time.Time) (time.Time, error) {
 	datePart := s
 	var (

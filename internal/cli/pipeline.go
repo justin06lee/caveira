@@ -320,11 +320,13 @@ func headTreeHash(r *git.Repository) (plumbing.Hash, error) {
 // singleAuthorIdentity reads git config user.{name,email} via the system git
 // binary (Caveira already shells out for `git gc`).
 func singleAuthorIdentity() (fabricate.Identity, error) {
-	name, err := exec.Command("git", "config", "user.name").CombinedOutput()
+	// Use Output (not CombinedOutput) so any stderr warnings git emits don't
+	// get folded into the trimmed name/email value.
+	name, err := exec.Command("git", "config", "user.name").Output()
 	if err != nil {
 		return fabricate.Identity{}, fmt.Errorf("git config user.name: %w", err)
 	}
-	email, err := exec.Command("git", "config", "user.email").CombinedOutput()
+	email, err := exec.Command("git", "config", "user.email").Output()
 	if err != nil {
 		return fabricate.Identity{}, fmt.Errorf("git config user.email: %w", err)
 	}
