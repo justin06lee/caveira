@@ -65,14 +65,11 @@ func (c *Config) Validate() error {
 	if c.RatsN < 0 {
 		return errors.New("--rats must be >= 1")
 	}
-	if c.Pick && !c.Fabricate {
-		return errors.New("--pick requires --fabricate")
-	}
+	// Note: "--pick/--earned require --fabricate" is already enforced above by
+	// the fabFlagsUsed check (both Pick and Earned are in that set), so no
+	// separate !Fabricate guard is needed here.
 	if c.Pick && c.PigsN == 0 && c.RatsN == 0 {
 		return errors.New("--pick requires --pigs N or --rats N")
-	}
-	if c.Earned && !c.Fabricate {
-		return errors.New("--earned requires --fabricate")
 	}
 	if c.Earned && c.PigsN == 0 && c.RatsN == 0 {
 		return errors.New("--earned requires --pigs N or --rats N")

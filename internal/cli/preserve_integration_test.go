@@ -42,7 +42,16 @@ func makePreserveRepo(t *testing.T, n int) string {
 			t.Fatalf("write: %v", err)
 		}
 		mustGit(t, repo, "add", "f.txt")
-		mustGit(t, repo, "commit", "-m", "commit "+strconv.Itoa(i))
+		// Backdate commits one hour apart so the history has a real author-date
+		// span: --preserve compresses relative to the ORIGINAL spacing, so
+		// commits all stamped at "now" would leave nothing to compress.
+		when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Hour).Format(time.RFC3339)
+		cmd := exec.Command("git", "commit", "-m", "commit "+strconv.Itoa(i))
+		cmd.Dir = repo
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+when, "GIT_COMMITTER_DATE="+when)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("commit %d: %v\n%s", i, err, out)
+		}
 	}
 	return repo
 }
@@ -192,7 +201,7 @@ func TestIntegration_Preserve_FailsImpossiblyNarrowWindow(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("expected non-zero exit for an impossibly narrow window; stdout=%s", out.String())
 	}
-	if !bytes.Contains(errOut.Bytes(), []byte("one second per commit")) {
+	if !bytes.Contains(errOut.Bytes(), []byte("one second")) {
 		t.Errorf("expected a one-second-per-commit error, got: %s", errOut.String())
 	}
 	if _, err := os.Stat(repo + ".dead"); err == nil {

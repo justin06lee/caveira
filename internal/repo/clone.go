@@ -37,6 +37,10 @@ func CloneURL(repoURL, parentDir string) (string, error) {
 		return "", fmt.Errorf("destination %s already exists", dst)
 	}
 	if _, err := git.PlainClone(dst, false, &git.CloneOptions{URL: repoURL}); err != nil {
+		// PlainClone may leave a partial directory behind on failure. dst was
+		// confirmed not to pre-exist above, so removing it only discards what
+		// this call created.
+		os.RemoveAll(dst)
 		return "", fmt.Errorf("clone %s: %w", repoURL, err)
 	}
 	return dst, nil

@@ -141,18 +141,14 @@ func TestScheduleLinearizesDAGWhenNoLinearEdges(t *testing.T) {
 }
 
 func TestSchedulePreserveKeepsAllCommitsAndScalesToFit(t *testing.T) {
-	// 10 linear commits, 600 unscaled minutes; window 60. The normal path
-	// squashes to fit. With --preserve nothing may be squashed: spacing scales
-	// down instead and every commit survives inside the window.
-	dag := makeLinearDAG([]int{60, 60, 60, 60, 60, 60, 60, 60, 60, 60})
-	durations := map[string]int{}
-	for i := 0; i < 10; i++ {
-		durations[string(rune('A'+i))] = 60
-	}
+	// 10 commits spanning 540 author-minutes; window 60. The normal path
+	// squashes to fit. With --preserve nothing is squashed: the chronology is
+	// compressed and every commit survives inside the window, in order.
+	dag := makeLinearDAGDated([]int{0, 60, 120, 180, 240, 300, 360, 420, 480, 540})
 	windowStart := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	windowEnd := windowStart.Add(60 * time.Minute)
 
-	res, err := Schedule(dag, durations, windowStart, windowEnd, true)
+	res, err := Schedule(dag, nil, windowStart, windowEnd, true)
 	if err != nil {
 		t.Fatalf("Schedule preserve: %v", err)
 	}
@@ -162,18 +158,17 @@ func TestSchedulePreserveKeepsAllCommitsAndScalesToFit(t *testing.T) {
 	if len(res.NewTimes) != 10 {
 		t.Errorf("expected all 10 commits preserved, got %d", len(res.NewTimes))
 	}
-	for oid, tt := range res.NewTimes {
-		if tt.After(windowEnd) {
-			t.Errorf("commit %s ends %v past window end %v", oid, tt, windowEnd)
-		}
-		if tt.Before(windowStart) {
-			t.Errorf("commit %s starts %v before window start %v", oid, tt, windowStart)
-		}
+	if res.Scale >= 1.0 {
+		t.Errorf("expected compression for the narrow window, got scale %v", res.Scale)
 	}
-	// Spacing stays proportional, so commits remain strictly ordered A<B<...<J.
-	prev := windowStart
+	// Commits remain strictly ordered and inside the window; the first lands at
+	// the window start.
+	prev := windowStart.Add(-time.Second)
 	for i := 0; i < 10; i++ {
-		got := res.NewTimes[string(rune('A'+i))]
+		got := res.NewTimes[oidFor(i)]
+		if got.Before(windowStart) || got.After(windowEnd) {
+			t.Errorf("commit %d at %v outside window", i, got)
+		}
 		if !got.After(prev) {
 			t.Errorf("commit %d not after previous: %v <= %v", i, got, prev)
 		}
@@ -182,12 +177,14 @@ func TestSchedulePreserveKeepsAllCommitsAndScalesToFit(t *testing.T) {
 }
 
 func TestSchedulePreserveDoesNotScaleWhenItAlreadyFits(t *testing.T) {
-	dag := makeLinearDAG([]int{10, 20, 30})
-	durations := map[string]int{"A": 10, "B": 20, "C": 30}
+	// 3 commits spanning 60 author-minutes; the 2-hour window is wider, so the
+	// real author-date gaps are kept (no compression) and the tip lands at
+	// start+60m rather than being stretched to the window end.
+	dag := makeLinearDAGDated([]int{0, 20, 60})
 	windowStart := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	windowEnd := windowStart.Add(2 * time.Hour)
 
-	res, err := Schedule(dag, durations, windowStart, windowEnd, true)
+	res, err := Schedule(dag, nil, windowStart, windowEnd, true)
 	if err != nil {
 		t.Fatalf("Schedule preserve: %v", err)
 	}
@@ -195,8 +192,8 @@ func TestSchedulePreserveDoesNotScaleWhenItAlreadyFits(t *testing.T) {
 		t.Errorf("Scale: got %v, want 1.0 (no compression needed)", res.Scale)
 	}
 	wantC := windowStart.Add(60 * time.Minute)
-	if !res.NewTimes["C"].Equal(wantC) {
-		t.Errorf("C: got %v, want %v", res.NewTimes["C"], wantC)
+	if !res.NewTimes[oidFor(2)].Equal(wantC) {
+		t.Errorf("C: got %v, want %v", res.NewTimes[oidFor(2)], wantC)
 	}
 }
 
@@ -223,5 +220,43 @@ func TestScheduleHardFailsWhenWindowImpossiblyNarrow(t *testing.T) {
 	_, err := Schedule(d, durations, windowStart, windowEnd, false)
 	if err == nil {
 		t.Fatal("expected hard-fail error")
+	}
+}
+
+func TestSchedule_EmptyDAGReturnsEmptyResult(t *testing.T) {
+	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	for _, preserve := range []bool{false, true} {
+		res, err := Schedule(walk.NewDAG(), nil, start, end, preserve)
+		if err != nil {
+			t.Fatalf("preserve=%v: unexpected error: %v", preserve, err)
+		}
+		if len(res.NewTimes) != 0 {
+			t.Errorf("preserve=%v: want 0 scheduled times, got %d", preserve, len(res.NewTimes))
+		}
+	}
+}
+
+func TestApplySquash_PropagatesIsMergeFromMergeParent(t *testing.T) {
+	// p (M) is a merge with two parents; its single child C has only M as parent.
+	// Squashing M into C must leave C with two parents AND IsMerge=true.
+	d := walk.NewDAG()
+	d.Add(&walk.Commit{OID: "X", IsRoot: true})
+	d.Add(&walk.Commit{OID: "Y", IsRoot: true})
+	d.Add(&walk.Commit{OID: "M", Parents: []string{"X", "Y"}, IsMerge: true})
+	d.Add(&walk.Commit{OID: "C", Parents: []string{"M"}})
+	durations := map[string]int{"X": 5, "Y": 5, "M": 1, "C": 10}
+
+	applySquash(d, durations, Squash{Parent: "M", Child: "C"})
+
+	c := d.Get("C")
+	if c == nil {
+		t.Fatal("survivor C missing after squash")
+	}
+	if len(c.Parents) != 2 {
+		t.Fatalf("survivor parents = %v, want two (X, Y)", c.Parents)
+	}
+	if !c.IsMerge {
+		t.Error("survivor that inherited a merge's two parents must have IsMerge=true")
 	}
 }

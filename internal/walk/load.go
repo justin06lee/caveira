@@ -68,11 +68,13 @@ func walkFrom(repo *git.Repository, start *object.Commit, dag *DAG, visited map[
 		visited[c.Hash] = true
 
 		parents := make([]string, 0, c.NumParents())
-		_ = c.Parents().ForEach(func(p *object.Commit) error {
+		if err := c.Parents().ForEach(func(p *object.Commit) error {
 			parents = append(parents, p.Hash.String())
 			stack = append(stack, p)
 			return nil
-		})
+		}); err != nil {
+			return fmt.Errorf("iterate parents of %s: %w", c.Hash, err)
+		}
 
 		lines, files, newFiles, err := diffStats(c)
 		if err != nil {

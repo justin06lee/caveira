@@ -92,7 +92,6 @@ func Apply(src, dst *git.Repository, dag *walk.DAG, res *schedule.Result) (map[s
 		// (e.g. a source spanning a DST boundary mixes -08:00 and -07:00),
 		// making git log render the commits with inconsistent, out-of-order
 		// local times even though the underlying instants are correct.
-		newTimeInTZ := newTime
 
 		var newParents []plumbing.Hash
 		for _, p := range c.Parents {
@@ -103,18 +102,26 @@ func Apply(src, dst *git.Repository, dag *walk.DAG, res *schedule.Result) (map[s
 			newParents = append(newParents, nh)
 		}
 
+		// Author/committer/message come from the DAG node, not from the source
+		// commit re-read by OID. For a squash survivor the scheduler may have
+		// copied the parent's identity and message onto this node (when the
+		// parent had the larger original duration); reading from src by the
+		// survivor's OID would discard that choice and always emit the child's
+		// metadata. For unsquashed commits the DAG node mirrors the source, so
+		// this is identical to the original behavior. The tree is unaffected by
+		// the metadata choice and still comes from the source commit.
 		newCommit := &object.Commit{
 			Author: object.Signature{
-				Name:  oldCommit.Author.Name,
-				Email: oldCommit.Author.Email,
-				When:  newTimeInTZ,
+				Name:  c.Author.Name,
+				Email: c.Author.Email,
+				When:  newTime,
 			},
 			Committer: object.Signature{
-				Name:  oldCommit.Committer.Name,
-				Email: oldCommit.Committer.Email,
-				When:  newTimeInTZ,
+				Name:  c.Committer.Name,
+				Email: c.Committer.Email,
+				When:  newTime,
 			},
-			Message:      oldCommit.Message,
+			Message:      c.Message,
 			TreeHash:     oldCommit.TreeHash,
 			ParentHashes: newParents,
 		}
@@ -129,21 +136,52 @@ func Apply(src, dst *git.Repository, dag *walk.DAG, res *schedule.Result) (map[s
 		oldToNew[oid] = nh
 	}
 
-	// Replace HEAD with the new tip (use the last commit in topo order as a
-	// reasonable default; refs are rebuilt in Task 16).
+	// Point dst HEAD at the same branch the source had checked out, retargeted
+	// to that branch's rewritten tip. The branch refs themselves are rebuilt by
+	// RebuildRefs (which preserves HEAD); we only need HEAD to track the source's
+	// real branch. The old code hardcoded master/main, so for any repo whose
+	// default branch was named anything else (e.g. "trunk", "develop") HEAD was
+	// left pointing at a branch RebuildRefs never created — leaving the rewritten
+	// repo with a dangling HEAD ("current branch has no commits") even though the
+	// history was written correctly.
 	if len(order) > 0 {
-		last := oldToNew[order[len(order)-1]]
-		headRef := plumbing.NewBranchReferenceName("master")
-		if _, err := src.Reference(plumbing.NewBranchReferenceName("main"), false); err == nil {
-			headRef = plumbing.NewBranchReferenceName("main")
-		}
-		if err := dst.Storer.SetReference(plumbing.NewHashReference(headRef, last)); err != nil {
-			return nil, err
-		}
-		if err := dst.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, headRef)); err != nil {
+		if err := setHead(src, dst, oldToNew, order[len(order)-1]); err != nil {
 			return nil, err
 		}
 	}
 
 	return oldToNew, nil
+}
+
+// setHead mirrors src's HEAD onto dst, retargeted through oldToNew. A symbolic
+// HEAD (the usual "on a branch" case) is reproduced as a symbolic ref so the
+// rewritten repo stays checked out on the same branch name; a detached HEAD is
+// reproduced as a direct hash ref. fallbackOID is the topo-last commit, used as
+// the tip when HEAD can't be resolved or mapped.
+func setHead(src, dst *git.Repository, oldToNew map[string]plumbing.Hash, fallbackOID string) error {
+	fallbackTip := oldToNew[fallbackOID]
+
+	// Resolve HEAD without dereferencing so we can detect a symbolic target.
+	if head, err := src.Reference(plumbing.HEAD, false); err == nil && head.Type() == plumbing.SymbolicReference {
+		branch := head.Target()
+		tip := fallbackTip
+		if ref, err := src.Reference(branch, true); err == nil {
+			if nh, ok := oldToNew[ref.Hash().String()]; ok {
+				tip = nh
+			}
+		}
+		if err := dst.Storer.SetReference(plumbing.NewHashReference(branch, tip)); err != nil {
+			return err
+		}
+		return dst.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, branch))
+	}
+
+	// Detached HEAD (or unreadable): point HEAD straight at the rewritten tip.
+	tip := fallbackTip
+	if resolved, err := src.Head(); err == nil {
+		if nh, ok := oldToNew[resolved.Hash().String()]; ok {
+			tip = nh
+		}
+	}
+	return dst.Storer.SetReference(plumbing.NewHashReference(plumbing.HEAD, tip))
 }

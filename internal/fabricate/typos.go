@@ -76,7 +76,7 @@ func typoDrop(s string, rng *rand.Rand) string {
 
 func typoDouble(s string, rng *rand.Rand) string {
 	i := rng.Intn(len(s))
-	return s[:i+1] + string(s[i]) + s[i+1:]
+	return s[:i+1] + s[i:i+1] + s[i+1:]
 }
 
 var keyboardNeighbors = map[byte]string{
