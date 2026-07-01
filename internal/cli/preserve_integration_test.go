@@ -317,3 +317,55 @@ func commitAuthorUnix(t *testing.T, repo string) []int64 {
 	}
 	return ts
 }
+
+func TestIntegration_PreservePreservesAndRetimesTags(t *testing.T) {
+	repo := makePreserveRepo(t, 5)
+	// An annotated tag on HEAD (dated 2026-01, far from the target window) and a
+	// lightweight tag on an earlier commit.
+	tagDate := "2026-01-10T00:00:00Z"
+	cmd := exec.Command("git", "tag", "-a", "v1.0.0", "-m", "release one")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "GIT_COMMITTER_DATE="+tagDate)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("annotated tag: %v\n%s", err, out)
+	}
+	mustGit(t, repo, "tag", "lightweight", "HEAD~2")
+
+	winStart := time.Date(2026, 5, 14, 9, 0, 0, 0, time.UTC)
+	winEnd := winStart.Add(30 * time.Minute)
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{
+		"--repo", repo,
+		"--start", winStart.Format("2006-01-02 15:04"),
+		"--end", winEnd.Format("2006-01-02 15:04"),
+		"--window-tz", "UTC",
+		"--preserve",
+		"--seed", "1",
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, errOut.String())
+	}
+
+	// Both tags survive.
+	for _, name := range []string{"v1.0.0", "lightweight"} {
+		if err := exec.Command("git", "-C", repo, "rev-parse", "--verify", name).Run(); err != nil {
+			t.Errorf("tag %s did not survive --preserve", name)
+		}
+	}
+
+	// The annotated tag's date must be retimed into the new window, not left at
+	// its original 2026-01 timestamp.
+	dOut, err := exec.Command("git", "-C", repo, "for-each-ref",
+		"--format=%(taggerdate:unix)", "refs/tags/v1.0.0").CombinedOutput()
+	if err != nil {
+		t.Fatalf("for-each-ref: %v\n%s", err, dOut)
+	}
+	unix, err := strconv.ParseInt(strings.TrimSpace(string(dOut)), 10, 64)
+	if err != nil {
+		t.Fatalf("parse tagger unix %q: %v", dOut, err)
+	}
+	got := time.Unix(unix, 0).UTC()
+	if got.Before(winStart) || got.After(winEnd) {
+		t.Errorf("annotated tag date %s is outside the window [%s, %s]", got, winStart, winEnd)
+	}
+}

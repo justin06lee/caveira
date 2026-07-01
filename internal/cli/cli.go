@@ -68,6 +68,9 @@ func newRootCmd(name string) *cobra.Command {
 		ratIDs        []string
 		pickFlag      bool
 		earnedFlag    bool
+
+		leechesN int
+		leechIDs []string
 	)
 
 	cmd := &cobra.Command{
@@ -86,7 +89,11 @@ func newRootCmd(name string) *cobra.Command {
 
   ` + name + ` --repo /path/to/myrepo --fabricate \
       --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
-      --pigs 3`,
+      --pigs 3
+
+  ` + name + ` --repo /path/to/myrepo \
+      --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
+      --leeches 3 --leech "Alice <a@x.com>" --leech "Bob <b@x.com>"`,
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			tz, err := time.LoadLocation(windowTZ)
@@ -121,6 +128,9 @@ func newRootCmd(name string) *cobra.Command {
 				RatIdentities: ratIDs,
 				Pick:          pickFlag,
 				Earned:        earnedFlag,
+
+				LeechesN:        leechesN,
+				LeechIdentities: leechIDs,
 			}
 			if err := cfg.Validate(); err != nil {
 				return err
@@ -151,8 +161,11 @@ func newRootCmd(name string) *cobra.Command {
 	cmd.Flags().IntVar(&ratsN, "rats", 0, "branched fabricator with N people (requires --fabricate)")
 	cmd.Flags().StringArrayVar(&pigIDs, "pig", nil, "pig identity as \"Name <email>\"; repeatable (requires --pigs)")
 	cmd.Flags().StringArrayVar(&ratIDs, "rat", nil, "rat identity as \"Name <email>\"; repeatable (requires --rats)")
-	cmd.Flags().BoolVar(&pickFlag, "pick", false, "always open the interactive player picker (requires --pigs/--rats)")
+	cmd.Flags().BoolVar(&pickFlag, "pick", false, "always open the interactive player picker (requires --pigs/--rats/--leeches)")
 	cmd.Flags().BoolVar(&earnedFlag, "earned", false, "weight author assignment by real commit-count distribution (requires --pigs/--rats)")
+
+	cmd.Flags().IntVar(&leechesN, "leeches", 0, "retime the existing history and scatter authorship across N people plus the original authors")
+	cmd.Flags().StringArrayVar(&leechIDs, "leech", nil, "leech identity as \"Name <email>\"; repeatable (requires --leeches)")
 
 	_ = cmd.MarkFlagRequired("repo")
 	_ = cmd.MarkFlagRequired("start")

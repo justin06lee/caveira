@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-14
 **Status:** Approved for planning
-**Scope:** Phase 1 — `--fabricate` + `--flurry` (NLP-only) + `--pigs` / `--rats` workflow modes. Phase 2 (LLM providers: Groq, claude-code subprocess, Codex, NVIDIA, OpenCode, …) is a separate spec.
+**Scope:** `--fabricate` + `--flurry` (NLP-only) + `--pigs` / `--rats` workflow modes. LLM-backed fabrication was previously scoped as a follow-up phase; it has been dropped — fabrication stays entirely templated / NLP-only.
 
 ## 1. Purpose
 
@@ -45,7 +45,7 @@ caveira ... [existing flags] ...
 - `--flurry`, `--pigs`, `--rats`, `--pig`, `--rat` all require `--fabricate`. Without it: refuse with a clear error.
 - `--pigs` and `--rats` are mutually exclusive.
 - `--pig` flags only valid with `--pigs`; `--rat` flags only valid with `--rats`.
-- `--fabricate` without `--flurry` errors with `no LLM provider configured (see Phase 2)`.
+- `--flurry` is the only base engine; `--fabricate` uses it by default.
 - Without `--pigs` / `--rats`: defaults to a single author, linear history, no noise.
 
 ### 3.2 Help
@@ -137,7 +137,7 @@ A small templated message pool, with the variation seeded by `--seed`:
 | code  | `feat(<n>): add <n>`, `feat(<n>): introduce <n>`, `feat(<n>): scaffold <n>` |
 | test  | `test(<n>): tests for <n>`, `test(<n>): add tests for <n>`        |
 
-Stays templated. Sophisticated message synthesis is Phase 2 (LLM-backed).
+Stays templated. Sophisticated (LLM-backed) message synthesis is out of scope.
 
 ### 5.5 Edge cases
 
@@ -320,11 +320,11 @@ Wire-in points:
   - Total reachable commit count matches `flurry_count + noise_count + merge_count + conflict_fix_count`.
   - All author/committer signatures come from the resolved identity set.
 
-## 11. Non-goals (Phase 1)
+## 11. Non-goals
 
-- LLM providers (`--groq`, `--claude-code`, `--codex`, `--nvidia`, `--opencode`). These come in Phase 2 with their own design pass.
-- Smarter feature grouping (e.g., import-graph clustering, function-level grouping). Phase 2.
-- Real merge-conflict diffs (where two commits actually modify the same line and a fix commit resolves the diff). Phase 1 simulates conflicts purely with cosmetic fix commits.
-- Layered scaffold → impl → tests within a single file (requires content modification within a feature). Phase 2.
-- Configurable noise / conflict / fork probabilities at the CLI. These are constants in code for Phase 1.
+- LLM providers (`--groq`, `--claude-code`, `--codex`, `--nvidia`, `--opencode`). Dropped — fabrication stays templated / NLP-only.
+- Smarter feature grouping (e.g., import-graph clustering, function-level grouping). Out of scope.
+- Real merge-conflict diffs (where two commits actually modify the same line and a fix commit resolves the diff). Conflicts are simulated purely with cosmetic fix commits.
+- Layered scaffold → impl → tests within a single file (requires content modification within a feature). Out of scope.
+- Configurable noise / conflict / fork probabilities at the CLI. These are constants in code.
 - Non-Git VCS support.

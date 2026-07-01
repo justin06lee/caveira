@@ -137,6 +137,33 @@ func WriteToRepo(src, dst *git.Repository, plan *Plan, times map[string]time.Tim
 		}
 	}
 
+	for _, t := range plan.Tags {
+		target, ok := mapping[SyntheticOID(t.CommitID)]
+		if !ok {
+			return nil, fmt.Errorf("tag %q targets unknown commit %d", t.Name, t.CommitID)
+		}
+		when := times[SyntheticOID(t.CommitID)]
+		tag := &object.Tag{
+			Name:       t.Name,
+			Tagger:     object.Signature{Name: t.Tagger.Name, Email: t.Tagger.Email, When: when},
+			Message:    t.Message,
+			TargetType: plumbing.CommitObject,
+			Target:     target,
+		}
+		ne := dst.Storer.NewEncodedObject()
+		if err := tag.Encode(ne); err != nil {
+			return nil, err
+		}
+		tagHash, err := dst.Storer.SetEncodedObject(ne)
+		if err != nil {
+			return nil, err
+		}
+		refName := plumbing.ReferenceName("refs/tags/" + t.Name)
+		if err := dst.Storer.SetReference(plumbing.NewHashReference(refName, tagHash)); err != nil {
+			return nil, err
+		}
+	}
+
 	return mapping, nil
 }
 

@@ -75,9 +75,36 @@ func Pipeline(cfg *input.Config, out, errOut io.Writer) int {
 		return 1
 	}
 
+	// --leeches: scatter authorship across the resolved leeches plus the
+	// original authors. Apply reads author/committer from the DAG it writes
+	// (res.DAG when scheduling squashed, else the loaded dag), so we mutate that
+	// same DAG in place; trees, messages and structure are untouched.
+	var leechScatter string
+	if cfg.LeechesN > 0 {
+		applyDAG := dag
+		if res.DAG != nil {
+			applyDAG = res.DAG
+		}
+		mm, err := fabricate.LoadMailmap(srcPath)
+		if err != nil {
+			fmt.Fprintln(errOut, "error: read .mailmap:", err)
+			return 1
+		}
+		pool, err := resolveLeechPool(srcRepo, cfg, mm, os.Stdin, out)
+		if err != nil {
+			fmt.Fprintln(errOut, "error: leech identity resolution:", err)
+			return 1
+		}
+		counts := scatterLeechAuthors(applyDAG, pool, rng)
+		leechScatter = formatLeechScatter(counts)
+	}
+
 	if cfg.DryRun {
 		rows := rowsFor(dag, durations, diffs, res, srcRepo)
 		report.WriteDryRun(out, rows, res, cfg.Start, cfg.End)
+		if leechScatter != "" {
+			fmt.Fprint(out, "\n"+leechScatter)
+		}
 		return 0
 	}
 
@@ -124,7 +151,10 @@ func Pipeline(cfg *input.Config, out, errOut io.Writer) int {
 	before := len(dag.All())
 	after := before - len(res.Squashes)
 	span := windowSpan(res, cfg.Start)
-	report.WriteSummary(out, srcPath, srcPath, deadPath, before, after, span, cfg.End.Sub(cfg.Start), res.Scale, len(res.Squashes), pushed)
+	report.WriteSummary(out, srcPath, srcPath, deadPath, before, after, span, cfg.End.Sub(cfg.Start), res.Scale, len(res.Squashes), 0, pushed)
+	if leechScatter != "" {
+		fmt.Fprint(out, "\n"+leechScatter)
+	}
 	return 0
 }
 
@@ -230,6 +260,7 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 	if cfg.DryRun {
 		rows := rowsFor(dag, durations, diffs, res, srcRepo)
 		report.WriteDryRun(out, rows, res, cfg.Start, cfg.End)
+		report.WriteTagList(out, tagNames(plan.Tags))
 		return 0
 	}
 
@@ -284,8 +315,17 @@ func fabricatePipeline(cfg *input.Config, srcPath, stagePath string, srcRepo *gi
 	before := origCommitCount
 	after := len(plan.Commits)
 	span := windowSpan(res, cfg.Start)
-	report.WriteSummary(out, srcPath, srcPath, deadPath, before, after, span, cfg.End.Sub(cfg.Start), res.Scale, len(res.Squashes), pushed)
+	report.WriteSummary(out, srcPath, srcPath, deadPath, before, after, span, cfg.End.Sub(cfg.Start), res.Scale, len(res.Squashes), len(plan.Tags), pushed)
 	return 0
+}
+
+// tagNames returns the fabricated tag names in plan order, for dry-run display.
+func tagNames(tags []fabricate.SynthTag) []string {
+	names := make([]string, len(tags))
+	for i, t := range tags {
+		names[i] = t.Name
+	}
+	return names
 }
 
 // verifyTreeMatch confirms the rewritten repo's HEAD tree equals the source
