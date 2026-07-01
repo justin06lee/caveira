@@ -122,7 +122,7 @@ func (c *Config) Validate() error {
 		return errors.New("--flurry, --pigs, --rats, --pig, --rat all require --fabricate")
 	}
 	if c.Fabricate && !c.Flurry {
-		return errors.New("--fabricate requires --flurry (LLM providers are Phase 2)")
+		return errors.New("--fabricate requires --flurry")
 	}
 	if c.PigsN > 0 && c.RatsN > 0 {
 		return errors.New("--pigs and --rats are mutually exclusive")
@@ -3547,8 +3547,8 @@ If `--pigs N` or `--rats N` is set and fewer than N identities are supplied via
 and prompts interactively for any still missing. If too many are found, it
 shows a picker.
 
-LLM-backed fabricators (Groq, Claude Code as a subprocess, Codex, NVIDIA,
-OpenCode) are Phase 2 of this feature.
+Fabrication is entirely templated / NLP-only; there are no LLM-backed
+fabricators.
 ````
 
 - [ ] **Step 2: Commit**

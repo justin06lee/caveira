@@ -83,6 +83,11 @@ func SquashPlan(plan *Plan, squashes []SquashOp, durations map[string]int) error
 				plan.Refs[ref] = childID
 			}
 		}
+		for i := range plan.Tags {
+			if plan.Tags[i].CommitID == parentID {
+				plan.Tags[i].CommitID = childID
+			}
+		}
 		if plan.HEAD == parentID {
 			plan.HEAD = childID
 		}

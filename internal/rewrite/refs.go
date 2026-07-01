@@ -49,9 +49,17 @@ func RebuildRefs(src, dst *git.Repository, mapping map[string]plumbing.Hash) err
 			if !ok {
 				return nil
 			}
+			// Retime the tagger date onto the target commit's new time so the
+			// tag moves into the window with its commit instead of keeping its
+			// original (now out-of-window) timestamp. The tagger's name/email
+			// are preserved, mirroring how commit identities are kept.
+			tagger := o.Tagger
+			if nc, err := dst.CommitObject(newTarget); err == nil {
+				tagger.When = nc.Committer.When
+			}
 			nt := &object.Tag{
 				Name:       o.Name,
-				Tagger:     o.Tagger,
+				Tagger:     tagger,
 				Message:    o.Message,
 				TargetType: plumbing.CommitObject,
 				Target:     newTarget,

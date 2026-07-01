@@ -20,6 +20,10 @@ Caveira has three modes:
   preserved exactly; only timestamps change. Pass `--preserve` to keep every
   commit instead of squashing — new timestamps follow each commit's original
   chronological order and proportional spacing, compressed to fit the window.
+  Pass `--leeches N` to also **scatter authorship**: the real commits, trees and
+  messages are kept, but each commit's author is reassigned at random among N
+  listed people plus the repo's original authors, so the history reads as
+  collaborative.
 - **Fabricate** (`--fabricate`) — synthesizes a brand-new commit history that
   ends at the source repo's exact HEAD tree.
 - **Interrogate** (`cav interrogate`) — a read-only scan that reports the
@@ -89,8 +93,10 @@ cav interrogate --repo /path/to/myrepo
 | `--rats N`         |          | Branched fabrication with N people                        |
 | `--pig "Name <email>"` |      | A pig identity; repeatable (requires `--pigs`)            |
 | `--rat "Name <email>"` |      | A rat identity; repeatable (requires `--rats`)            |
-| `--pick`           |          | Always open the interactive identity picker (requires `--pigs`/`--rats`) |
+| `--pick`           |          | Always open the interactive identity picker (requires `--pigs`/`--rats`/`--leeches`) |
 | `--earned`         |          | Weight fabricated authorship by each player's real commit count (requires `--pigs`/`--rats`) |
+| `--leeches N`      |          | Retime mode: scatter authorship across N people + the original authors |
+| `--leech "Name <email>"` |    | A leech identity; repeatable (requires `--leeches`)       |
 
 Run `caveira --help` for the live flag reference, or `cav interrogate --help`
 for the interrogate subcommand.
@@ -122,6 +128,34 @@ for the interrogate subcommand.
 
 Full design: [`docs/superpowers/specs/2026-05-14-caveira-design.md`](docs/superpowers/specs/2026-05-14-caveira-design.md).
 
+## Leeches (scatter authorship)
+
+`--leeches N` is a retime-mode option that latches new authors onto the existing
+history. The real commits, trees, messages, branches and tags are all kept and
+retimed exactly as normal retiming — but each commit's author **and** committer
+are reassigned at random, drawn uniformly from a pool of the N resolved leeches
+**plus** the repo's original authors. The result reads like everyone worked on
+it together: names are scattered, not rotated, and the originals stay in the mix.
+
+```bash
+caveira --repo /path/to/myrepo \
+        --start "2026-05-14 09:00" --end "2026-05-14 17:00" \
+        --leeches 3 \
+        --leech "Alice <a@x.com>" --leech "Bob <b@x.com>" --leech "Carol <c@x.com>"
+```
+
+- Identity resolution mirrors `--pigs`/`--rats`: `--leech` flags first, then the
+  `.git` history, then interactive prompts for any shortfall; `--pick` forces the
+  picker. A repo's `.mailmap` is honored, and AI coding agents are never drawn as
+  authors.
+- The draw is deterministic under `--seed`, and the run prints a per-identity
+  commit count. `--dry-run` shows the scatter without writing.
+- Composes with `--preserve` (keep every commit, compress spacing, and scatter
+  authors) and with `--push`.
+- `--leeches` retimes existing commits, so it cannot be combined with
+  `--fabricate`; use `--pigs`/`--rats` to scatter authorship in fabricated
+  history instead.
+
 ## Fabrication mode
 
 `--fabricate` synthesizes a new commit history from scratch using the source
@@ -152,6 +186,23 @@ caveira --repo /path/to/myrepo --fabricate \
 tree. Each commit's author is drawn at random from the players — pigs draw per
 commit, rats per feature — so authorship looks jittery rather than mechanically
 cyclic. Over many commits the split is roughly even.
+
+### Release tags
+
+Fabricated histories also get **annotated semver release tags** (`v0.1.0`,
+`v0.1.1`, `v1.0.0`, …) placed along the main branch — roughly one every few
+commits, with natural release messages ("Release v0.2.0"). Names and placement
+are templated (no LLM) and deterministic under `--seed`; the tagger is the
+author of the tagged commit, and each tag's date matches that commit's scheduled
+time. Short histories (fewer than one release interval of commits) get no tags.
+In `--pigs` mode, if a tagged commit is squashed to fit a narrow window the tag
+follows onto the surviving commit.
+
+Retime mode (including `--preserve`) keeps the source repo's real tags: both
+lightweight and annotated tags are retargeted onto their rewritten commits, and
+an annotated tag's tagger date is retimed to its commit's new timestamp so the
+tag moves into the window instead of keeping its original (now out-of-window)
+date. Tagger name and email are preserved.
 
 ### Identities
 

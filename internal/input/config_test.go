@@ -201,3 +201,39 @@ func TestValidate_PreserveHasNoDependencies(t *testing.T) {
 		t.Fatalf("--preserve with --fabricate --pigs should validate, got: %v", err)
 	}
 }
+
+func TestValidate_LeechesValidInRetime(t *testing.T) {
+	c := baseValidConfig()
+	c.LeechesN = 3
+	c.LeechIdentities = []string{"Alice <a@x.com>"}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("--leeches in retime mode should validate, got: %v", err)
+	}
+}
+
+func TestValidate_LeechesRejectsFabricate(t *testing.T) {
+	c := baseValidConfig()
+	c.Fabricate = true
+	c.LeechesN = 2
+	err := c.Validate()
+	if err == nil || !strings.Contains(err.Error(), "--fabricate") {
+		t.Fatalf("expected --leeches+--fabricate to be rejected, got: %v", err)
+	}
+}
+
+func TestValidate_LeechRequiresLeeches(t *testing.T) {
+	c := baseValidConfig()
+	c.LeechIdentities = []string{"Alice <a@x.com>"}
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected --leech without --leeches to be rejected")
+	}
+}
+
+func TestValidate_PickAllowedWithLeeches(t *testing.T) {
+	c := baseValidConfig()
+	c.Pick = true
+	c.LeechesN = 2
+	if err := c.Validate(); err != nil {
+		t.Fatalf("--pick with --leeches should validate, got: %v", err)
+	}
+}

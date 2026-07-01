@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -63,12 +64,16 @@ func formatScale(s float64) string {
 	return fmt.Sprintf("%.3g", s)
 }
 
-// WriteSummary prints the post-run summary.
-func WriteSummary(w io.Writer, src, dst, deadPath string, before, after int, span, window time.Duration, scale float64, squashes int, pushed bool) {
+// WriteSummary prints the post-run summary. tags is the number of tags written
+// (0 hides the line — e.g. retime, which preserves tags without counting them).
+func WriteSummary(w io.Writer, src, dst, deadPath string, before, after int, span, window time.Duration, scale float64, squashes, tags int, pushed bool) {
 	fmt.Fprintf(w, "Source:        %s\n", src)
 	fmt.Fprintf(w, "Rewritten:     %s\n", dst)
 	fmt.Fprintf(w, "Original kept: %s\n", deadPath)
 	fmt.Fprintf(w, "Commits:       %d -> %d (%d squashed)\n", before, after, squashes)
+	if tags > 0 {
+		fmt.Fprintf(w, "Tags:          %d\n", tags)
+	}
 	fmt.Fprintf(w, "Span:          %s within %s window\n", roundDur(span), roundDur(window))
 	fmt.Fprintf(w, "Scaling:       s=%s\n", formatScale(scale))
 	if pushed {
@@ -76,4 +81,13 @@ func WriteSummary(w io.Writer, src, dst, deadPath string, before, after int, spa
 	} else {
 		fmt.Fprintln(w, "Pushed:        no")
 	}
+}
+
+// WriteTagList prints the fabricated release tags for the dry-run preview.
+// Nothing is printed when names is empty.
+func WriteTagList(w io.Writer, names []string) {
+	if len(names) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "Tags: %d (%s)\n", len(names), strings.Join(names, ", "))
 }

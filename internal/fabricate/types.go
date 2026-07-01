@@ -36,10 +36,19 @@ type SynthCommit struct {
 	Feature string // feature/scope name; "" for chore or non-feature commits
 }
 
+// SynthTag is one fabricated annotated release tag pointing at a commit.
+type SynthTag struct {
+	Name     string   // short tag name, e.g. "v1.2.0"
+	CommitID int      // the SynthCommit.ID this tag points at
+	Tagger   Identity // who cut the release
+	Message  string   // annotation message
+}
+
 // Plan is the full fabricated history.
 type Plan struct {
 	Commits []SynthCommit
 	Refs    map[string]int
+	Tags    []SynthTag
 	HEAD    int
 	HeadRef string
 }

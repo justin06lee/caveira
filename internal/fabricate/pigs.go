@@ -65,10 +65,12 @@ func reshapePigs(base []SynthCommit, ids []Identity, weights []int, rng *rand.Ra
 		out = append(out, base[i])
 	}
 
-	return &Plan{
+	plan := &Plan{
 		Commits: out,
 		Refs:    map[string]int{defaultBranch: out[len(out)-1].ID},
 		HEAD:    out[len(out)-1].ID,
 		HeadRef: defaultBranch,
 	}
+	generateReleaseTags(plan, rng)
+	return plan
 }

@@ -27,6 +27,12 @@ type Config struct {
 	RatIdentities []string // raw strings from --rat flags
 	Pick          bool     // --pick: always open the interactive player picker
 	Earned        bool     // --earned: weight author assignment by real commit-count distribution
+
+	// Leeches-mode fields (retime mode). Reassigns authorship across the
+	// existing commits, scattering the resolved leeches plus the original
+	// authors randomly. Retimes as usual; only identities change.
+	LeechesN        int      // 0 = not set
+	LeechIdentities []string // raw strings from --leech flags
 }
 
 // Validate returns an error if the configuration is unusable.
@@ -45,9 +51,22 @@ func (c *Config) Validate() error {
 	}
 
 	fabFlagsUsed := c.PigsN > 0 || c.RatsN > 0 ||
-		len(c.PigIdentities) > 0 || len(c.RatIdentities) > 0 || c.Pick || c.Earned
+		len(c.PigIdentities) > 0 || len(c.RatIdentities) > 0 || c.Earned
 	if fabFlagsUsed && !c.Fabricate {
-		return errors.New("--pigs, --rats, --pig, --rat, --pick, --earned all require --fabricate")
+		return errors.New("--pigs, --rats, --pig, --rat, --earned all require --fabricate")
+	}
+
+	// --leeches is a retime-mode feature: it reassigns authorship across the
+	// existing history, so it cannot combine with --fabricate (which discards
+	// that history). Use --pigs/--rats to scatter authors in fabricated output.
+	if c.LeechesN > 0 && c.Fabricate {
+		return errors.New("--leeches cannot be combined with --fabricate; it retimes and reassigns the existing history (use --pigs/--rats for fabricated authorship)")
+	}
+	if len(c.LeechIdentities) > 0 && c.LeechesN == 0 {
+		return errors.New("--leech requires --leeches N")
+	}
+	if c.LeechesN < 0 {
+		return errors.New("--leeches must be >= 1")
 	}
 
 	if c.PigsN > 0 && c.RatsN > 0 {
@@ -65,11 +84,11 @@ func (c *Config) Validate() error {
 	if c.RatsN < 0 {
 		return errors.New("--rats must be >= 1")
 	}
-	// Note: "--pick/--earned require --fabricate" is already enforced above by
-	// the fabFlagsUsed check (both Pick and Earned are in that set), so no
-	// separate !Fabricate guard is needed here.
-	if c.Pick && c.PigsN == 0 && c.RatsN == 0 {
-		return errors.New("--pick requires --pigs N or --rats N")
+	// --pick curates the interactive player/leech picker; it needs a mode that
+	// resolves identities (--pigs/--rats under --fabricate, or --leeches). The
+	// "requires --fabricate" case for pigs/rats is already enforced above.
+	if c.Pick && c.PigsN == 0 && c.RatsN == 0 && c.LeechesN == 0 {
+		return errors.New("--pick requires --pigs N, --rats N, or --leeches N")
 	}
 	if c.Earned && c.PigsN == 0 && c.RatsN == 0 {
 		return errors.New("--earned requires --pigs N or --rats N")

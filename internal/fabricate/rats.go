@@ -172,7 +172,9 @@ func reshapeRats(base []SynthCommit, ids []Identity, weights []int, rng *rand.Ra
 	}
 
 	refs[defaultBranch] = masterTip
-	return &Plan{Commits: commits, Refs: refs, HEAD: masterTip, HeadRef: defaultBranch}, nil
+	plan := &Plan{Commits: commits, Refs: refs, HEAD: masterTip, HeadRef: defaultBranch}
+	generateReleaseTags(plan, rng)
+	return plan, nil
 }
 
 func trimRefsHeads(ref string) string {

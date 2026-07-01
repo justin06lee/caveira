@@ -460,3 +460,69 @@ func TestIntegration_Fabricate_EarnedFavorsHeavyContributor(t *testing.T) {
 		t.Fatalf("--earned did not favor the heavy contributor: heavy=%d light=%d\n%s", heavy, light, emails)
 	}
 }
+
+func TestIntegration_FabricateEmitsAnnotatedTags(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not on PATH")
+	}
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "src")
+	mustGit(t, dir, "init", repo)
+	mustGit(t, repo, "config", "user.email", "t@e.com")
+	mustGit(t, repo, "config", "user.name", "T")
+	// Enough feature directories that the flurry base exceeds one release
+	// interval of mainline commits, so at least one tag is produced.
+	for _, d := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		sub := filepath.Join(repo, d)
+		_ = os.MkdirAll(sub, 0755)
+		_ = os.WriteFile(filepath.Join(sub, "x.go"), []byte("package "+d+"\n"), 0644)
+		_ = os.WriteFile(filepath.Join(sub, "x_test.go"), []byte("package "+d+"\n"), 0644)
+	}
+	_ = os.WriteFile(filepath.Join(repo, "README.md"), []byte("# x\n"), 0644)
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "commit", "-m", "initial")
+
+	var out, errOut bytes.Buffer
+	code := RunWithArgs([]string{
+		"--repo", repo,
+		"--start", "2026-05-14 09:00",
+		"--end", "2026-05-16 17:00",
+		"--window-tz", "UTC",
+		"--fabricate",
+		"--seed", "7",
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr=%s", code, errOut.String())
+	}
+
+	tagsOut, err := exec.Command("git", "-C", repo, "tag").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git tag: %v\n%s", err, tagsOut)
+	}
+	if len(bytes.TrimSpace(tagsOut)) == 0 {
+		t.Fatalf("expected at least one fabricated tag; got none\nsummary:\n%s", out.String())
+	}
+	if !bytes.Contains(tagsOut, []byte("v0.1.0")) {
+		t.Errorf("expected first release v0.1.0 among tags:\n%s", tagsOut)
+	}
+
+	// Every fabricated tag must be an annotated tag object pointing at a commit.
+	for _, name := range bytes.Fields(tagsOut) {
+		typ, err := exec.Command("git", "-C", repo, "cat-file", "-t", string(name)).CombinedOutput()
+		if err != nil {
+			t.Fatalf("cat-file %s: %v\n%s", name, err, typ)
+		}
+		if got := string(bytes.TrimSpace(typ)); got != "tag" {
+			t.Errorf("tag %s is a %q object, want annotated \"tag\"", name, got)
+		}
+		// The tag's target must resolve to a real commit on HEAD's history.
+		merge := exec.Command("git", "-C", repo, "merge-base", "--is-ancestor", string(name)+"^{commit}", "HEAD")
+		if err := merge.Run(); err != nil {
+			t.Errorf("tag %s does not point into HEAD history: %v", name, err)
+		}
+	}
+
+	if !bytes.Contains(out.Bytes(), []byte("Tags:")) {
+		t.Errorf("expected summary to report a Tags line:\n%s", out.String())
+	}
+}
