@@ -15,7 +15,24 @@ caveira is an agentic coding assistant in the spirit of Claude Code, built to dr
 
 ## Layout
 
-- `web-client/` is the browser client.
-- `tui/` is the terminal client.
+- `web-client/` is the browser client: Next.js (App Router), TypeScript, and Tailwind CSS, managed with bun. See [web-client/README.md](web-client/README.md).
+- `tui/` is the terminal client: Go with Bubble Tea v2. See [tui/README.md](tui/README.md).
 
-Both are empty scaffolds for now. Stacks, setup, and run instructions will go here as each client takes shape.
+Both clients are fresh scaffolds so far. Neither talks to a model yet.
+
+## Quick start
+
+Terminal client, built and installed as `caveira` in `~/.local/bin`:
+
+```sh
+make
+caveira
+```
+
+Web client, served at http://localhost:3000:
+
+```sh
+cd web-client
+bun install
+bun run dev
+```
