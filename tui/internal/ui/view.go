@@ -110,24 +110,38 @@ func (m Model) viewPlans() string {
 		return m.viewChecking()
 	}
 
-	cards := make([]string, 0, len(m.plans))
-	for i, plan := range m.plans {
+	// Wrap to the card's inner width ourselves, so lipgloss never re-wraps a
+	// line we already broke and bullets keep their hanging indent.
+	inner := cardWidth - cardStyle.GetHorizontalFrameSize()
+	bodies := make([]string, 0, len(m.plans))
+	for _, plan := range m.plans {
 		lines := []string{
 			titleStyle.Render(plan.Name),
 			accentStyle.Render(fmt.Sprintf("$%d", plan.PriceUSD)) + hintStyle.Render("/"+plan.Interval),
 			"",
-			subtitleStyle.Render(wrap(plan.Tagline, 26)),
+			subtitleStyle.Render(wrap(plan.Tagline, inner)),
 			"",
 		}
 		for _, f := range plan.Features {
-			lines = append(lines, bodyStyle.Render("• "+wrap(f, 24)))
+			item := strings.ReplaceAll(wrap(f, inner-2), "\n", "\n  ")
+			lines = append(lines, bodyStyle.Render("• "+item))
 		}
+		bodies = append(bodies, lipgloss.JoinVertical(lipgloss.Left, lines...))
+	}
 
+	// Equal heights, so the row reads as a set of options rather than a
+	// ragged skyline, and the selection border does not jump around.
+	tallest := 0
+	for _, b := range bodies {
+		tallest = max(tallest, lipgloss.Height(b))
+	}
+	cards := make([]string, 0, len(bodies))
+	for i, b := range bodies {
 		style := cardStyle
 		if i == m.cursor {
 			style = cardSelectedStyle
 		}
-		cards = append(cards, style.Render(lipgloss.JoinVertical(lipgloss.Left, lines...)))
+		cards = append(cards, style.Height(tallest+cardStyle.GetVerticalFrameSize()).Render(b))
 	}
 
 	greeting := "Pick a plan to get started."

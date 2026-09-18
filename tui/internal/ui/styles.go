@@ -4,6 +4,8 @@ import "charm.land/lipgloss/v2"
 
 // The palette is the banner's: bone on near-black, slate for anything the eye
 // should skip, ember red used only where it means something.
+const cardWidth = 30
+
 var (
 	bone  = lipgloss.Color("#D9D2C3")
 	slate = lipgloss.Color("#6F7B8F")
@@ -23,7 +25,7 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(slate).
 			Padding(1, 2).
-			Width(30)
+			Width(cardWidth)
 
 	cardSelectedStyle = cardStyle.
 				BorderForeground(ember).

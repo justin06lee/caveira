@@ -182,11 +182,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case stateReady:
 		if msg.String() == "s" {
+			revoke := logout(m.client)
 			_ = config.Clear()
 			m.client = api.New(config.BaseURL(), "")
 			m.me = nil
 			m.state = stateWelcome
 			m.notice = "Signed out."
+			return m, revoke
 		}
 
 	case stateFatal:

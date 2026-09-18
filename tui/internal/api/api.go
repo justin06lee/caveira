@@ -195,3 +195,8 @@ func (c *Client) Checkout(ctx context.Context, planID string) (*Checkout, error)
 	}
 	return &out, nil
 }
+
+// Logout revokes this client's session on the server.
+func (c *Client) Logout(ctx context.Context) error {
+	return c.do(ctx, http.MethodPost, "/api/auth/logout", struct{}{}, nil)
+}

@@ -84,3 +84,14 @@ func checkout(c *api.Client, planID string) tea.Cmd {
 func tick(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return pollTickMsg{} })
 }
+
+// logout is best-effort: offline, the local token is still deleted, and the
+// server-side session simply expires on its own schedule.
+func logout(c *api.Client) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = c.Logout(ctx)
+		return nil
+	}
+}
