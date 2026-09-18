@@ -11,3 +11,4 @@ build/
 *.log
 .ruri/
 tui/bin/
+tui/tui

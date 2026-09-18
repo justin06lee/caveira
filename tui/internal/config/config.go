@@ -14,13 +14,18 @@ type Auth struct {
 	Email string `json:"email"`
 }
 
-// BaseURL is the caveira backend the CLI talks to. Overridable so a developer
-// can point the binary at a local Next.js server without rebuilding it.
+// defaultBaseURL is baked in at build time (`make API_URL=...`) so a release
+// binary knows its production backend. Until one exists, the default is the
+// local web-client, which is the only backend there is.
+var defaultBaseURL = "http://localhost:3000"
+
+// BaseURL is the caveira backend the CLI talks to. CAVEIRA_API_URL overrides
+// the baked-in default without a rebuild.
 func BaseURL() string {
 	if v := os.Getenv("CAVEIRA_API_URL"); v != "" {
 		return v
 	}
-	return "https://caveira.dev"
+	return defaultBaseURL
 }
 
 func dir() (string, error) {

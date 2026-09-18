@@ -12,17 +12,17 @@ On launch it decides between three screens:
 
 ## Run
 
-From this folder, against a backend:
+Start the backend (`bun run dev` in `web-client`), then from this folder:
 
 ```sh
-CAVEIRA_API_URL=http://localhost:3000 go run .
+go run .
 ```
 
-`CAVEIRA_API_URL` defaults to `https://caveira.dev`, which does not exist yet, so point it at your local `web-client` while developing. `q` or `Ctrl+C` quits; `s` on the session screen signs out and deletes the saved token.
+The CLI talks to `http://localhost:3000` by default. Set `CAVEIRA_API_URL` to point one run somewhere else, or build with `make API_URL=...` from the repo root to change the default in the binary. `q` or `Ctrl+C` quits; `s` on the session screen signs out: it revokes the session on the server and deletes the saved token.
 
 ## Install
 
-From the repo root, `make` builds the binary and installs it as `caveira` in `~/.local/bin`. Set `BINDIR` to install somewhere else, for example `make BINDIR=/usr/local/bin`. `make update` removes the old binary and installs a fresh build.
+From the repo root, `make` sets up the backend, builds both clients, and installs this binary as `caveira` in `~/.local/bin`. Set `BINDIR` to install somewhere else, for example `make BINDIR=/usr/local/bin`. `make update` removes the old binary and installs a fresh build.
 
 ## Layout
 
