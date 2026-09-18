@@ -1,26 +1,139 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Tokens are lifted straight from the banner art so the site and the SVG read
+   as one object: near-black ground, bone text, slate for anything secondary,
+   and exactly one ember accent. */
+@theme {
+  --color-void: #0c0c0f;
+  --color-panel: #16161b;
+  --color-edge: #26262e;
+  --color-edge-soft: #1e1e25;
+  --color-bone: #d9d2c3;
+  --color-bone-dim: #a89f8e;
+  --color-slate: #6f7b8f;
+  --color-slate-deep: #4a5364;
+  --color-ember: #d0463b;
+  --color-brass: #b8863f;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", "Menlo",
+    monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-void);
+  color: var(--color-bone);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--color-ember) 35%, transparent);
+  color: var(--color-bone);
+}
+
+/* One focus treatment everywhere: visible on dark, never removed. */
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--color-ember);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@layer components {
+  .panel {
+    background-color: var(--color-panel);
+    border: 1px solid var(--color-edge);
+    border-radius: 0.75rem;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid transparent;
+    padding: 0.625rem 1.1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    cursor: pointer;
+    transition: background-color 140ms ease, border-color 140ms ease,
+      color 140ms ease;
+  }
+
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background-color: var(--color-ember);
+    color: #140a09;
+    font-weight: 600;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background-color: #e05246;
+  }
+
+  .btn-ghost {
+    border-color: var(--color-edge);
+    color: var(--color-bone);
+    background-color: transparent;
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    border-color: var(--color-slate-deep);
+    background-color: var(--color-edge-soft);
+  }
+
+  .btn-quiet {
+    color: var(--color-slate);
+    background-color: transparent;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .btn-quiet:hover:not(:disabled) {
+    color: var(--color-bone);
+  }
+
+  .field {
+    width: 100%;
+    background-color: #101014;
+    border: 1px solid var(--color-edge);
+    border-radius: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    color: var(--color-bone);
+    font-size: 0.9375rem;
+  }
+
+  .field::placeholder {
+    color: var(--color-slate-deep);
+  }
+
+  .field:hover {
+    border-color: var(--color-slate-deep);
+  }
+
+  .link {
+    color: var(--color-bone);
+    text-decoration: underline;
+    text-decoration-color: var(--color-slate-deep);
+    text-underline-offset: 3px;
+  }
+
+  .link:hover {
+    text-decoration-color: var(--color-ember);
+  }
+
+  .hairline {
+    border-top: 1px solid var(--color-edge);
+  }
 }

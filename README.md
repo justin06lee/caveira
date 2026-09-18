@@ -13,26 +13,29 @@
 
 caveira is an agentic coding assistant in the spirit of Claude Code, built to drive abliterated open-weight models, meaning models whose refusal behavior has been removed. It comes in two clients that share the same idea: you give the agent a task and it reads, edits, and runs code in your project.
 
+## How it fits together
+
+There is one backend, and it lives inside `web-client`: the Next.js app serves the website and the JSON API that both clients use. Accounts, sessions, and subscriptions are in SQLite through Drizzle, a local file in development and Turso in production.
+
+The terminal client never takes a password. When you launch `caveira` for the first time it offers *Log in* or *Sign up*, shows a short code, and opens your browser. You sign in or create an account there and approve the code, and the CLI receives a session token that it keeps in `~/.caveira/auth.json`. If you have no subscription yet, the CLI shows the plans as cards; picking one opens Stripe Checkout in the browser.
+
+Until Stripe keys are configured the backend runs in dev billing mode, where picking a plan activates it straight away with no card involved. The whole flow works on a fresh checkout with nothing configured.
+
 ## Layout
 
-- `web-client/` is the browser client: Next.js (App Router), TypeScript, and Tailwind CSS, managed with bun. See [web-client/README.md](web-client/README.md).
+- `web-client/` is the website and the shared backend: Next.js (App Router), TypeScript, Tailwind CSS, Drizzle, managed with bun. See [web-client/README.md](web-client/README.md).
 - `tui/` is the terminal client: Go with Bubble Tea v2. See [tui/README.md](tui/README.md).
 
-Both clients are fresh scaffolds so far. Neither talks to a model yet.
+The coding agent itself is not built yet. Signing in and choosing a plan lead to a placeholder screen.
 
 ## Quick start
 
-Terminal client, built and installed as `caveira` in `~/.local/bin`:
-
 ```sh
-make
-caveira
+make                          # web deps, database, both builds, `caveira` on PATH
+cd web-client && bun run dev  # the backend, at http://localhost:3000
+caveira                       # in another terminal
 ```
 
-Web client, served at http://localhost:3000:
+`make` installs `caveira` into `~/.local/bin`, pointed at `http://localhost:3000`. For a build aimed at a real deployment, run `make API_URL=https://your.deployment`. `make update` replaces an installed binary with a fresh build.
 
-```sh
-cd web-client
-bun install
-bun run dev
-```
+Configuration (Turso, Stripe, the public URL) is described in [web-client/.env.example](web-client/.env.example). None of it is needed to try the app locally.
