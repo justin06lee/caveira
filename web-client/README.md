@@ -35,6 +35,17 @@ The schema is in `src/db/schema.ts` and migrations live in `drizzle/`.
 - `/cli` is where the terminal client sends you to approve its login code.
 - `/account` shows your plan and links to Stripe's billing portal.
 
+## Site editor
+
+`/editor` is a local design tool for laying out the marketing site. It is **dev only**: under `next start` the page 404s and the API behind it refuses, because it writes a file into the working tree.
+
+A layout is an ordered list of blocks — hero, ticker, statement, feature grid, split, chip row, steps, pricing, quotes, FAQ, closing CTA. Pick a block in the outline on the left, edit its fields on the right, and the middle pane renders it with the real site components, so the preview is the page. Changes autosave to `site-layout.json` about a second after you stop typing; *reset* restores the page as it currently ships.
+
+- `src/lib/site-blocks.ts` is the vocabulary: block types, their defaults, and the field schema that generates the inspector. Adding a field there adds it to the UI.
+- `src/lib/default-layout.ts` is the shipped landing page expressed as blocks — what the editor opens on when there is no file yet.
+- `src/components/site/block-renderer.tsx` draws a layout. It has no server-only imports, so both the editor and a page can use it.
+- `site-layout.json` is the saved layout. It is a design document, not something the site reads at runtime: `src/app/page.tsx` stays hand-written.
+
 ## API
 
 Every route reads the session from the `caveira_session` cookie or from an `Authorization: Bearer` header, so the website and the CLI go through the same checks.
