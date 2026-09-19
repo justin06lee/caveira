@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Caveira app icon</title>
+  <desc id="desc">A black skull eye socket on a bone-white rounded square.</desc>
+  <rect width="512" height="512" rx="96" fill="#F2EBDD"/>
+  <path fill="#000000" d="M340 78
+    C305 78 281 86 252 107
+    C211 137 171 175 132 215
+    C103 245 82 271 82 296
+    C82 327 95 351 123 364
+    C180 390 262 410 314 410
+    H354
+    C389 410 412 394 421 363
+    C431 330 434 301 434 271
+    C434 233 429 212 415 175
+    C401 138 382 101 361 84
+    C355 79 348 78 340 78Z"/>
+</svg>
