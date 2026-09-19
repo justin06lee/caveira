@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
   <title id="title">Caveira app icon</title>
-  <desc id="desc">A smooth, rounded black guitar-pick eye socket on a bright white squircle.</desc>
+  <desc id="desc">A softly rounded black skull eye socket on a bright white squircle.</desc>
   <!-- 824-pixel desktop tile with 100-pixel transparent margins. -->
   <path fill="#FAFAF8" d="M512 100
     C541.889 100.000 571.778 99.973 601.667 100.040
@@ -35,9 +35,14 @@
     C272.889 104.268 302.778 102.382 332.667 101.296
     C362.555 100.209 392.444 100.107 422.333 100.040
     C452.222 99.973 482.111 100.000 512.000 100.000Z"/>
-  <path fill="#000000" transform="translate(30 -17) rotate(30 512 512)" d="M512 228
-    C594 228 786 432 786 574
-    C786 714 674 786 512 786
-    C350 786 238 714 238 574
-    C238 432 430 228 512 228Z"/>
+  <!-- A closed cubic spline keeps the eye socket smoothly rounded at every join. -->
+  <path fill="#000000" d="M616.441 237.244
+    C672.774 250.244 724.774 292.244 752.774 356.911
+    C780.774 421.577 784.774 508.911 773.441 585.911
+    C762.108 662.911 735.441 729.577 681.441 763.577
+    C627.441 797.577 546.108 798.911 464.108 774.577
+    C382.108 750.244 299.441 700.244 264.774 640.577
+    C230.108 580.911 243.441 511.577 280.441 445.911
+    C317.441 380.244 378.108 318.244 438.774 279.244
+    C499.441 240.244 560.108 224.244 616.441 237.244Z"/>
 </svg>
