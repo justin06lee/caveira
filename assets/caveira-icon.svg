@@ -2,7 +2,7 @@
   <title id="title">Caveira app icon</title>
   <desc id="desc">A softly rounded black skull eye socket on a subtle off-white squircle.</desc>
   <!-- 824-pixel desktop tile with 100-pixel transparent margins. -->
-  <path fill="#F8F8F5" d="M512 100
+  <path fill="#F8F7F2" d="M512 100
     C541.889 100.000 571.778 99.973 601.667 100.040
     C631.556 100.107 661.445 100.209 691.333 101.296
     C721.222 102.382 751.111 104.268 781.000 110.277

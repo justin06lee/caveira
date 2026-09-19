@@ -23,7 +23,7 @@ Until Stripe keys are configured the backend runs in dev billing mode, where pic
 
 ## Layout
 
-- `assets/caveira-icon.svg` is the desktop app icon: a softly rounded, pure-black skull eye socket on a subtle off-white (`#F8F8F5`) squircle. The 1024 × 1024 SVG uses an 824 × 824 tile with transparent desktop-icon margins.
+- `assets/caveira-icon.svg` is the desktop app icon: a softly rounded, pure-black skull eye socket on a subtle off-white (`#F8F7F2`) squircle. The 1024 × 1024 SVG uses an 824 × 824 tile with transparent desktop-icon margins.
 - `web-client/` is the website and the shared backend: Next.js (App Router), TypeScript, Tailwind CSS, Drizzle, managed with bun. See [web-client/README.md](web-client/README.md).
 - `tui/` is the terminal client: Go with Bubble Tea v2. See [tui/README.md](tui/README.md).
 
