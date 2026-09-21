@@ -26,6 +26,7 @@ Until Stripe keys are configured the backend runs in dev billing mode, where pic
 - `assets/caveira-icon.svg` is the desktop app icon: a softly rounded, pure-black skull eye socket on a subtle off-white (`#F8F7F2`) squircle. The 1024 × 1024 SVG uses an 824 × 824 tile with transparent desktop-icon margins.
 - `web-client/` is the website and the shared backend: Next.js (App Router), TypeScript, Tailwind CSS, Drizzle, managed with bun. See [web-client/README.md](web-client/README.md).
 - `tui/` is the terminal client: Go with Bubble Tea v2. See [tui/README.md](tui/README.md).
+- `cell-editor/` is a web editor for designing the TUI as terminal cell art. You draw lipgloss boxes, text, lines and paint, and it saves each design to `tui/designs/` as JSON, ANSI and plain text, with a lipgloss Go export. Run it with `cd cell-editor && bun run dev`. See [cell-editor/README.md](cell-editor/README.md).
 
 The coding agent itself is not built yet. Signing in and choosing a plan lead to a placeholder screen.
 
