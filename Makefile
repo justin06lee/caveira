@@ -5,13 +5,13 @@ BINDIR  ?= $(HOME)/.local/bin
 API_URL ?= http://localhost:3000
 LDFLAGS := -s -w -X github.com/justin06lee/caveira/tui/internal/config.defaultBaseURL=$(API_URL)
 
-.PHONY: all build install update web-deps db tui web
+.PHONY: all build install update web-deps db tui web editor
 
 # The golden path: web dependencies, database migrations, both builds, and
 # `caveira` installed on PATH. Safe to run again at any time.
 all: build db install
 
-build: tui web
+build: tui web editor
 
 install: tui
 	mkdir -p $(BINDIR)
@@ -31,6 +31,10 @@ web: web-deps
 
 web-deps:
 	cd web-client && bun install
+
+# The cell editor: typecheck and bundle. Run it with `bun run dev` in cell-editor.
+editor:
+	cd cell-editor && bun install && bun run build
 
 # Applies drizzle/ to the local SQLite file, or to Turso when
 # TURSO_DATABASE_URL is set in the environment or web-client/.env.
