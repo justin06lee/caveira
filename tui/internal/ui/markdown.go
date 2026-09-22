@@ -65,6 +65,8 @@ func transcriptStyle() ansi.StyleConfig {
 	s.LinkText.Color = strPtr("#B8863F")
 	s.Code.Color = strPtr("#B8863F")
 	s.Code.BackgroundColor = nil
+	s.Code.Prefix = ""
+	s.Code.Suffix = ""
 	s.Emph.Color = strPtr("#D9D2C3")
 	s.Strong.Color = strPtr("#D9D2C3")
 	s.Item.Color = strPtr("#D9D2C3")
