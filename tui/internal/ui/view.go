@@ -8,20 +8,22 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/justin06lee/caveira/tui/internal/art"
 )
 
-const skull = `  ▄███████▄
- ███████████
- ██ ▀█ █▀ ██
- ███  █  ███
- ▀██ ███ ██▀
-  ▀███████▀`
-
 const (
-	headerLines = 2
+	headerLines = 5 // four rows of wordmark, one blank
 	statusLines = 1
 	sideMargin  = 1
 )
+
+// button is a clickable region in the header. They are placeholders for
+// now: clicking one says so.
+type button struct {
+	label          string
+	x0, x1, y0, y1 int
+}
 
 // layout recomputes the sizes of the moving parts. Called on resize, on
 // every input change (the box grows with its content), and when an approval
@@ -34,7 +36,11 @@ func (m *Model) layout() {
 	if inner < 20 {
 		inner = 20
 	}
-	m.input.SetWidth(inner - styleInputBox.GetHorizontalFrameSize())
+	if m.phase == phaseHero {
+		m.input.SetWidth(m.heroLayout().boxW - styleInputBox.GetHorizontalFrameSize())
+	} else if m.phase == phaseSession {
+		m.input.SetWidth(inner - styleInputBox.GetHorizontalFrameSize())
+	}
 	bottom := m.bottomHeight()
 	vh := m.height - headerLines - statusLines - bottom
 	if vh < 3 {
@@ -60,13 +66,30 @@ func (m *Model) bottomHeight() int {
 }
 
 func (m *Model) View() tea.View {
+	v := tea.NewView("")
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	v.WindowTitle = "caveira"
 	if m.width == 0 {
-		v := tea.NewView("")
-		v.AltScreen = true
 		return v
 	}
-	m.refreshTranscript()
 
+	switch m.phase {
+	case phaseSplash:
+		v.Content = m.renderSplash()
+		return v
+	case phaseHero:
+		content, cur := m.renderHero(0)
+		v.Content = content
+		v.Cursor = cur
+		return v
+	case phaseSlide:
+		content, _ := m.renderHero(m.slideT)
+		v.Content = content
+		return v
+	}
+
+	m.refreshTranscript()
 	header := m.renderHeader()
 	transcript := m.vp.View()
 	status := m.renderStatus()
@@ -74,24 +97,19 @@ func (m *Model) View() tea.View {
 	if m.approval != nil {
 		bottom = m.renderApproval()
 	} else {
-		bottom = m.renderInput()
+		bottom = m.renderInputBox(m.width - 2*sideMargin)
 	}
 
 	margin := strings.Repeat(" ", sideMargin)
 	indent := func(s string) string {
 		return margin + strings.ReplaceAll(s, "\n", "\n"+margin)
 	}
-	content := lipgloss.JoinVertical(lipgloss.Left,
+	v.Content = lipgloss.JoinVertical(lipgloss.Left,
 		indent(header),
 		indent(transcript),
 		indent(status),
 		indent(bottom),
 	)
-
-	v := tea.NewView(content)
-	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
-	v.WindowTitle = "caveira"
 	if m.approval == nil && m.input.Focused() {
 		if cur := m.input.Cursor(); cur != nil {
 			cur.Position.X += sideMargin + 2 + 1 // margin, border+padding, prompt mark
@@ -108,11 +126,6 @@ func (m *Model) refreshTranscript() {
 		return
 	}
 	m.dirty = false
-	if len(m.items) == 0 {
-		m.vp.SetContent(m.renderWelcome())
-		m.vp.GotoTop()
-		return
-	}
 	parts := make([]string, 0, len(m.items))
 	for _, it := range m.items {
 		s := m.rend.render(it)
@@ -127,22 +140,87 @@ func (m *Model) refreshTranscript() {
 	}
 }
 
+// renderHeader is the wordmark on the left, the model and directory on the
+// top right, and the two placeholder buttons under them. Always headerLines
+// rows, the last one blank.
 func (m *Model) renderHeader() string {
-	left := styleTitle.Render("caveira") + styleDim.Render("  ·  ") + styleSlate.Render(m.agent.Model)
-	if m.agent.Effort != "" {
-		left += styleDim.Render("  ·  effort ") + styleSlate.Render(m.agent.Effort)
-	}
-	if m.cfg.Confirm {
-		left += styleDim.Render("  ·  ") + styleBrass.Render("confirm")
-	}
-	right := styleDim.Render(shortPath(m.workDir))
 	inner := m.width - 2*sideMargin
-	gap := inner - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 2 {
-		right = ""
-		gap = 0
+	rows := make([]string, headerLines)
+	m.buttons = m.buttons[:0]
+
+	// Left: the pixel wordmark, or plain text when there is no room.
+	var left []string
+	leftW := art.WordmarkWidth(1)
+	if inner >= leftW+24 {
+		left = art.Wordmark(1, 0xD9, 0xD2, 0xC3, art.Options{})
+	} else {
+		left = []string{"", styleTitle.Render("caveira"), "", ""}
+		leftW = 7
 	}
-	return left + strings.Repeat(" ", gap) + right + "\n"
+
+	// Right: info line, then the buttons.
+	info := ""
+	if m.agent != nil {
+		info = m.agent.Model
+		if m.agent.Effort != "" {
+			info += "  ·  effort " + m.agent.Effort
+		}
+		if m.cfg.Confirm {
+			info += "  ·  confirm"
+		}
+		if m.workDir != "" {
+			info += "  ·  " + shortPath(m.workDir)
+		}
+	}
+	info = styleDim.Render(info)
+	if lipgloss.Width(info) > inner-leftW-2 {
+		info = styleDim.Render(shortPath(m.workDir))
+	}
+
+	btnOptions := styleButton.Render("options")
+	btnTree := styleButton.Render("▤")
+	btnW := lipgloss.Width(btnOptions) + 1 + lipgloss.Width(btnTree)
+	showButtons := inner >= leftW+btnW+4
+
+	optLines := strings.Split(btnOptions, "\n")
+	treeLines := strings.Split(btnTree, "\n")
+
+	for i := 0; i < headerLines-1; i++ {
+		l := ""
+		if i < len(left) {
+			l = left[i]
+		}
+		lw := leftW
+		if i >= len(left) || left[i] == "" {
+			lw = 0
+			if i < len(left) {
+				lw = lipgloss.Width(left[i])
+			}
+		}
+		right := ""
+		switch {
+		case i == 0:
+			right = info
+		case showButtons && i-1 < len(optLines):
+			right = optLines[i-1] + " " + treeLines[i-1]
+		}
+		gap := inner - lw - lipgloss.Width(right)
+		if gap < 1 {
+			right = ""
+			gap = inner - lw
+		}
+		rows[i] = l + strings.Repeat(" ", max(gap, 0)) + right
+	}
+	if showButtons {
+		x1 := sideMargin + inner
+		treeW := lipgloss.Width(treeLines[0])
+		optW := lipgloss.Width(optLines[0])
+		m.buttons = append(m.buttons,
+			button{label: "file tree", x0: x1 - treeW, x1: x1, y0: 1, y1: 4},
+			button{label: "options", x0: x1 - treeW - 1 - optW, x1: x1 - treeW - 1, y0: 1, y1: 4},
+		)
+	}
+	return strings.Join(rows, "\n")
 }
 
 func (m *Model) renderStatus() string {
@@ -198,7 +276,8 @@ func (m *Model) renderStatus() string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
-func (m *Model) renderInput() string {
+// renderInputBox draws the prompt box at a given outer width.
+func (m *Model) renderInputBox(width int) string {
 	box := styleInputBox
 	if m.running {
 		box = styleInputBoxBusy
@@ -213,7 +292,7 @@ func (m *Model) renderInput() string {
 		marks += "\n" + " "
 	}
 	body := lipgloss.JoinHorizontal(lipgloss.Top, marks+" ", m.input.View())
-	return box.Width(m.width - 2*sideMargin).Render(body)
+	return box.Width(width).Render(body)
 }
 
 func (m *Model) renderApproval() string {
@@ -237,27 +316,6 @@ func (m *Model) renderApproval() string {
 		styleKey.Render("[a]") + styleDim.Render(" always allow "+a.Name+"   ") +
 		styleKey.Render("[n]") + styleDim.Render(" deny")
 	return styleApprovalBox.Width(m.width - 2*sideMargin).Render(head + "\n" + body + "\n" + keys)
-}
-
-func (m *Model) renderWelcome() string {
-	tips := []string{
-		"Describe what you want built, fixed, or explained.",
-		"caveira reads and edits files, runs commands, and checks its work.",
-		"",
-		styleSlate.Render("/help for commands  ·  /model to switch models  ·  esc interrupts"),
-	}
-	block := lipgloss.JoinVertical(lipgloss.Center,
-		styleBody.Render(skull),
-		"",
-		styleTitle.Render("caveira")+styleDim.Render("  "+m.version),
-		styleSlate.Render("your model, your machine, no refusals"),
-		"",
-		styleDim.Render(strings.Join(tips, "\n")),
-	)
-	if m.fatal != nil {
-		block = lipgloss.JoinVertical(lipgloss.Center, block, "", styleEmber.Render(lipgloss.Wrap(m.fatal.Error(), min(m.vp.Width()-4, 80), "")))
-	}
-	return lipgloss.Place(m.vp.Width(), m.vp.Height(), lipgloss.Center, lipgloss.Center, block)
 }
 
 func shortPath(p string) string {

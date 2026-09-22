@@ -20,8 +20,6 @@ import (
 	"strings"
 	"syscall"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/justin06lee/caveira/tui/internal/agent"
 	"github.com/justin06lee/caveira/tui/internal/config"
 	"github.com/justin06lee/caveira/tui/internal/llm"
@@ -118,73 +116,91 @@ func run() error {
 		return nil
 	}
 
-	cfg, cfgErr := config.Load(workDir)
-	if model != "" {
-		cfg.Model = model
-	}
-	if effort != "" {
-		cfg.ReasoningEffort = effort
-	}
-	if baseURL != "" {
-		cfg.BaseURL = strings.TrimRight(baseURL, "/")
-	}
-	if apiKey != "" {
-		cfg.APIKey = apiKey
-		cfg.KeySource = "flag"
-	}
-	if confirm {
-		cfg.Confirm = true
-	}
-	if cfg.ReasoningEffort != "" && !config.ValidEffort(cfg.ReasoningEffort) {
-		return fmt.Errorf("reasoning effort must be one of %s", strings.Join(config.Efforts, ", "))
-	}
+	initial := strings.TrimSpace(strings.Join(fs.Args(), " "))
 
-	system := prompt.Build(prompt.Options{WorkDir: workDir, Model: cfg.Model})
 	if showPrompt {
-		fmt.Println(system)
+		fmt.Println(prompt.Build(prompt.Options{WorkDir: workDir, Model: firstNonEmpty(model, config.DefaultModel)}))
 		return nil
 	}
 
-	var fatal error
-	if cfgErr != nil {
-		fatal = cfgErr
-	}
-	if cfg.APIKey == "" && !isLocal(cfg.BaseURL) {
-		fatal = errors.New("no API key. Put ABLITERATION_API_KEY in your environment or in a .env.local in the project, " +
-			"or add \"api_key\" to " + config.Path())
-	}
-
-	client := llm.New(cfg.BaseURL, cfg.APIKey)
-	ag := agent.New(client, cfg, workDir, system)
-
-	var resumed *agent.Session
-	switch {
-	case resume != "":
-		s, err := agent.LoadSession(resume)
-		if err != nil {
-			return fmt.Errorf("cannot resume %s: %w", resume, err)
+	// load does the startup work: settings, system prompt, client, agent,
+	// and the session to continue. The TUI runs it behind the splash.
+	load := func() (ui.Options, error) {
+		cfg, cfgErr := config.Load(workDir)
+		if model != "" {
+			cfg.Model = model
 		}
-		ag.Attach(s)
-		resumed = s
-	case cont:
-		s, err := agent.LatestSession(workDir)
+		if effort != "" {
+			cfg.ReasoningEffort = effort
+		}
+		if baseURL != "" {
+			cfg.BaseURL = strings.TrimRight(baseURL, "/")
+		}
+		if apiKey != "" {
+			cfg.APIKey = apiKey
+			cfg.KeySource = "flag"
+		}
+		if confirm {
+			cfg.Confirm = true
+		}
+		if cfg.ReasoningEffort != "" && !config.ValidEffort(cfg.ReasoningEffort) {
+			return ui.Options{}, fmt.Errorf("reasoning effort must be one of %s", strings.Join(config.Efforts, ", "))
+		}
+
+		system := prompt.Build(prompt.Options{WorkDir: workDir, Model: cfg.Model})
+
+		var fatal error
+		if cfgErr != nil {
+			fatal = cfgErr
+		}
+		if cfg.APIKey == "" && !isLocal(cfg.BaseURL) {
+			fatal = errors.New("no API key. Put ABLITERATION_API_KEY in your environment or in a .env.local in the project, " +
+				"or add \"api_key\" to " + config.Path())
+		}
+
+		client := llm.New(cfg.BaseURL, cfg.APIKey)
+		ag := agent.New(client, cfg, workDir, system)
+
+		var resumed *agent.Session
+		switch {
+		case resume != "":
+			s, err := agent.LoadSession(resume)
+			if err != nil {
+				return ui.Options{}, fmt.Errorf("cannot resume %s: %w", resume, err)
+			}
+			ag.Attach(s)
+			resumed = s
+		case cont:
+			s, err := agent.LatestSession(workDir)
+			if err != nil {
+				return ui.Options{}, err
+			}
+			ag.Attach(s)
+			resumed = s
+		}
+		if ag.Session != nil {
+			client.Headers["x-abliteration-session-id"] = ag.Session.ID
+		} else {
+			client.Headers["x-abliteration-session-id"] = ag.NewSession().ID
+		}
+		return ui.Options{
+			Agent:    ag,
+			Settings: cfg,
+			WorkDir:  workDir,
+			Version:  version,
+			Initial:  initial,
+			Resumed:  resumed,
+			Fatal:    fatal,
+		}, nil
+	}
+
+	if printMode {
+		o, err := load()
 		if err != nil {
 			return err
 		}
-		ag.Attach(s)
-		resumed = s
-	}
-	if ag.Session != nil {
-		client.Headers["x-abliteration-session-id"] = ag.Session.ID
-	} else {
-		client.Headers["x-abliteration-session-id"] = ag.NewSession().ID
-	}
-
-	initial := strings.TrimSpace(strings.Join(fs.Args(), " "))
-
-	if printMode {
-		if fatal != nil {
-			return fatal
+		if o.Fatal != nil {
+			return o.Fatal
 		}
 		if initial == "" || initial == "-" {
 			b, err := io.ReadAll(bufio.NewReader(os.Stdin))
@@ -196,20 +212,17 @@ func run() error {
 		if initial == "" {
 			return errors.New("nothing to do: pass a prompt as an argument or on stdin")
 		}
-		return runPrint(ag, initial)
+		return runPrint(o.Agent, initial)
 	}
 
-	m := ui.New(ui.Options{
-		Agent:    ag,
-		Settings: cfg,
-		WorkDir:  workDir,
-		Version:  version,
-		Initial:  initial,
-		Resumed:  resumed,
-		Fatal:    fatal,
-	})
-	_, err = tea.NewProgram(m).Run()
-	return err
+	return ui.Run(version, load)
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 // runPrint is the non-interactive path: the reply streams to stdout, tool

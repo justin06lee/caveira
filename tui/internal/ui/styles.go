@@ -47,3 +47,9 @@ var (
 
 	styleKey = lipgloss.NewStyle().Foreground(bone)
 )
+
+var styleButton = lipgloss.NewStyle().
+	Border(lipgloss.RoundedBorder()).
+	BorderForeground(slate).
+	Foreground(dim).
+	Padding(0, 1)
