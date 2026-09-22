@@ -1,309 +1,618 @@
-// Package ui is the caveira terminal client: the sign-in gate, the plan
-// picker, and (for now) a placeholder for the session itself.
+// Package ui is the terminal session: a scrolling transcript, an input box,
+// and a status line, driven by events from the agent.
 package ui
 
 import (
-	"errors"
+	"context"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/justin06lee/caveira/tui/internal/api"
+	"github.com/justin06lee/caveira/tui/internal/agent"
 	"github.com/justin06lee/caveira/tui/internal/config"
+	"github.com/justin06lee/caveira/tui/internal/llm"
+	"github.com/justin06lee/caveira/tui/internal/tools"
 )
 
-type state int
-
-const (
-	stateChecking state = iota // asking the backend who this token belongs to
-	stateWelcome               // no token: log in or sign up
-	stateWaiting               // device code issued, waiting on the browser
-	statePlans                 // signed in, no subscription: pick one
-	stateReady                 // signed in and paid
-	stateFatal                 // nothing useful left to do but read the error
-)
-
-type Model struct {
-	state  state
-	client *api.Client
-
-	width, height int
-	spinner       spinner.Model
-
-	me       *api.Me
-	device   *api.DeviceStart
-	deadline time.Time
-
-	plans       []api.Plan
-	billingMode string
-	cursor      int
-	notice      string
-
-	err      error
-	menu     int
-	quitting bool
+// Options configures a session screen.
+type Options struct {
+	Agent    *agent.Agent
+	Settings config.Settings
+	WorkDir  string
+	Version  string
+	// Initial, when set, is sent as the first message.
+	Initial string
+	// Resumed, when set, is the session that was picked up.
+	Resumed *agent.Session
+	// Fatal, when set, disables sending and explains why.
+	Fatal error
 }
 
-func New(token, email string) Model {
-	s := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(lipgloss.NewStyle().Foreground(brass)))
-	m := Model{
-		client:  api.New(config.BaseURL(), token),
-		spinner: s,
-		state:   stateWelcome,
+type Model struct {
+	agent   *agent.Agent
+	cfg     config.Settings
+	workDir string
+	version string
+
+	width, height int
+	vp            viewport.Model
+	input         textarea.Model
+	spin          spinner.Model
+	rend          renderer
+
+	items    []*item
+	dirty    bool
+	follow   bool
+	pendingR *item // in-progress reasoning block
+	pendingA *item // in-progress assistant block
+
+	running  bool
+	cancel   context.CancelFunc
+	events   chan agent.Event
+	approval *agent.ApprovalEvent
+	queued   string
+
+	totals  agent.Totals
+	context int
+	notice  string
+	fatal   error
+
+	history []string
+	histPos int
+	draft   string
+
+	quitArmed time.Time
+	initial   string
+}
+
+type eventMsg struct{ ev agent.Event }
+type eventsClosedMsg struct{}
+type modelsMsg struct {
+	models []llm.ModelInfo
+	err    error
+}
+type shellDoneMsg struct {
+	it     *item
+	result tools.Result
+}
+type clearNoticeMsg struct{}
+
+func New(o Options) *Model {
+	ta := textarea.New()
+	ta.Placeholder = "Ask caveira to build, fix, or explain…"
+	ta.ShowLineNumbers = false
+	ta.Prompt = ""
+	ta.CharLimit = 0
+	ta.DynamicHeight = true
+	ta.MinHeight = 1
+	ta.MaxHeight = 8
+	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter", "ctrl+j", "shift+enter"))
+	ta.SetVirtualCursor(false)
+	st := textarea.DefaultDarkStyles()
+	plain := lipgloss.NewStyle()
+	st.Focused.Base = plain
+	st.Focused.CursorLine = plain
+	st.Focused.Text = styleBody
+	st.Focused.Placeholder = styleDim
+	st.Focused.EndOfBuffer = plain
+	st.Blurred = st.Focused
+	st.Cursor.Color = brass
+	ta.SetStyles(st)
+	ta.Focus()
+
+	sp := spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(styleBrass))
+
+	vp := viewport.New()
+	vp.SoftWrap = false
+	vp.MouseWheelEnabled = true
+	vp.KeyMap = viewport.KeyMap{}
+
+	m := &Model{
+		agent:   o.Agent,
+		cfg:     o.Settings,
+		workDir: o.WorkDir,
+		version: o.Version,
+		input:   ta,
+		spin:    sp,
+		vp:      vp,
+		follow:  true,
+		fatal:   o.Fatal,
+		initial: o.Initial,
 	}
-	if token != "" {
-		m.state = stateChecking
-		m.me = &api.Me{Email: email}
+	if o.Agent != nil {
+		m.totals = o.Agent.Totals
+	}
+	if o.Resumed != nil {
+		m.replay(o.Resumed)
+	}
+	if o.Fatal != nil {
+		m.push(&item{kind: itemError, text: o.Fatal.Error()})
 	}
 	return m
 }
 
-func (m Model) Init() tea.Cmd {
-	if m.state == stateChecking {
-		return tea.Batch(m.spinner.Tick, fetchMe(m.client))
+// replay rebuilds the transcript from a stored session.
+func (m *Model) replay(s *agent.Session) {
+	byID := map[string]*item{}
+	for _, msg := range s.Messages {
+		switch msg.Role {
+		case llm.RoleUser:
+			if strings.HasPrefix(msg.Content, "This session's earlier conversation was compacted.") {
+				m.push(&item{kind: itemNotice, text: "── context compacted ──"})
+				continue
+			}
+			m.push(&item{kind: itemUser, text: msg.Content})
+		case llm.RoleAssistant:
+			if strings.HasPrefix(msg.Content, "Understood. I have the state from the handoff note") {
+				continue
+			}
+			if msg.Reasoning != "" {
+				m.push(&item{kind: itemReasoning, text: msg.Reasoning})
+			}
+			if strings.TrimSpace(msg.Content) != "" {
+				m.push(&item{kind: itemAssistant, text: msg.Content})
+			}
+			for _, tc := range msg.ToolCalls {
+				it := &item{kind: itemTool, toolID: tc.ID, toolName: tc.Function.Name}
+				if t, ok := m.agent.Tools.Get(tc.Function.Name); ok {
+					it.preview = t.Preview([]byte(tc.Function.Arguments))
+					it.toolKind = t.Kind()
+				}
+				byID[tc.ID] = it
+				m.push(it)
+			}
+		case llm.RoleTool:
+			if it, ok := byID[msg.ToolCallID]; ok {
+				it.result = &tools.Result{Output: msg.Content, Summary: "from previous session", IsError: strings.HasPrefix(msg.Content, "Error:")}
+			}
+		}
 	}
-	return m.spinner.Tick
+	m.push(&item{kind: itemNotice, text: fmt.Sprintf("── resumed session %s ──", s.ID)})
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Init() tea.Cmd {
+	cmds := []tea.Cmd{textarea.Blink}
+	if m.initial != "" && m.fatal == nil {
+		text := m.initial
+		m.initial = ""
+		cmds = append(cmds, m.submit(text))
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m *Model) push(it *item) {
+	m.items = append(m.items, it)
+	m.dirty = true
+}
+
+// ---- update ----
+
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.layout()
 		return m, nil
 
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
-	case spinner.TickMsg:
+	case tea.MouseWheelMsg:
 		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
+		m.vp, cmd = m.vp.Update(msg)
+		m.follow = m.vp.AtBottom()
 		return m, cmd
 
-	case meMsg:
-		return m.handleMe(msg)
+	case spinner.TickMsg:
+		if !m.running && !m.hasRunningTool() {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.spin, cmd = m.spin.Update(msg)
+		m.rend.spinner = m.spin.View()
+		m.dirty = true
+		return m, cmd
 
-	case deviceStartedMsg:
+	case eventMsg:
+		return m.handleEvent(msg.ev)
+
+	case eventsClosedMsg:
+		return m.turnEnded()
+
+	case modelsMsg:
 		if msg.err != nil {
-			m.err = msg.err
-			m.state = stateFatal
+			m.push(&item{kind: itemError, text: "could not list models: " + msg.err.Error()})
 			return m, nil
 		}
-		m.device = msg.device
-		m.deadline = time.Now().Add(time.Duration(msg.device.ExpiresIn) * time.Second)
-		m.state = stateWaiting
-		_ = openBrowser(m.loginURL())
-		return m, tick(time.Duration(max(msg.device.Interval, 1)) * time.Second)
-
-	case pollTickMsg:
-		if m.state != stateWaiting || m.device == nil {
-			return m, nil
-		}
-		return m, pollDevice(m.client, m.device.DeviceCode)
-
-	case devicePollMsg:
-		return m.handlePoll(msg)
-
-	case plansMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.state = stateFatal
-			return m, nil
-		}
-		m.plans = msg.plans.Plans
-		m.billingMode = msg.plans.Billing
-		m.state = statePlans
-		return m, nil
-
-	case checkoutMsg:
-		return m.handleCheckout(msg)
-	}
-
-	return m, nil
-}
-
-func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
-		m.quitting = true
-		return m, tea.Quit
-	case "q":
-		// Everywhere except the plan picker, where the user may still be
-		// deciding and a stray q should not throw the work away.
-		if m.state != statePlans {
-			m.quitting = true
-			return m, tea.Quit
-		}
-	}
-
-	switch m.state {
-	case stateWelcome:
-		switch msg.String() {
-		case "up", "k":
-			m.menu = max(m.menu-1, 0)
-		case "down", "j":
-			m.menu = min(m.menu+1, 1)
-		case "enter":
-			return m, startDevice(m.client)
-		}
-
-	case stateWaiting:
-		switch msg.String() {
-		case "o":
-			_ = openBrowser(m.loginURL())
-		case "esc":
-			m.state = stateWelcome
-			m.device = nil
-		}
-
-	case statePlans:
-		switch msg.String() {
-		case "left", "h":
-			m.cursor = max(m.cursor-1, 0)
-		case "right", "l":
-			m.cursor = min(m.cursor+1, len(m.plans)-1)
-		case "enter":
-			if len(m.plans) == 0 {
-				return m, nil
+		var sb strings.Builder
+		sb.WriteString("models available to this key:\n")
+		for _, mi := range msg.models {
+			mark := "  "
+			if mi.ID == m.agent.Model {
+				mark = "› "
 			}
-			m.notice = "Opening checkout…"
-			return m, checkout(m.client, m.plans[m.cursor].ID)
-		case "r":
-			m.notice = "Checking your subscription…"
-			return m, fetchMe(m.client)
-		case "esc":
-			m.quitting = true
+			line := mark + mi.ID
+			if mi.ContextLength > 0 {
+				line += fmt.Sprintf("  ·  %s context", formatTokens(mi.ContextLength))
+			}
+			if mi.Pricing != nil && mi.Pricing.Prompt != "" {
+				line += fmt.Sprintf("  ·  $%s in / $%s out per token", mi.Pricing.Prompt, mi.Pricing.Completion)
+			}
+			sb.WriteString(line + "\n")
+		}
+		sb.WriteString("switch with /model <id>")
+		m.push(&item{kind: itemNotice, text: sb.String()})
+		return m, nil
+
+	case shellDoneMsg:
+		msg.it.running = false
+		msg.it.result = &msg.result
+		msg.it.elapsed = time.Since(msg.it.started)
+		msg.it.invalidate()
+		m.dirty = true
+		if m.agent != nil {
+			m.agent.Note(fmt.Sprintf("I ran this command myself in the working directory:\n\n$ %s\n\n%s", msg.it.preview, msg.result.Output))
+		}
+		return m, nil
+
+	case clearNoticeMsg:
+		m.notice = ""
+		return m, nil
+	}
+
+	// Anything else (paste, blink, cursor) belongs to the textarea.
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	m.layout()
+	return m, cmd
+}
+
+func (m *Model) hasRunningTool() bool {
+	for i := len(m.items) - 1; i >= 0 && i >= len(m.items)-5; i-- {
+		if m.items[i].kind == itemTool && m.items[i].running {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	k := msg.String()
+
+	if m.approval != nil {
+		switch k {
+		case "y", "Y", "enter":
+			return m.decide(agent.Allow)
+		case "a", "A":
+			return m.decide(agent.AllowAlways)
+		case "n", "N", "esc", "ctrl+c":
+			return m.decide(agent.Deny)
+		}
+		return m, nil
+	}
+
+	switch k {
+	case "ctrl+c":
+		if m.running {
+			m.interrupt()
+			return m, nil
+		}
+		if m.input.Value() != "" {
+			m.input.Reset()
+			m.layout()
+			return m, nil
+		}
+		if time.Since(m.quitArmed) < 2*time.Second {
+			return m, tea.Quit
+		}
+		m.quitArmed = time.Now()
+		return m.flash("press ctrl+c again to quit")
+
+	case "ctrl+d":
+		if m.input.Value() == "" && !m.running {
 			return m, tea.Quit
 		}
 
-	case stateReady:
-		if msg.String() == "s" {
-			revoke := logout(m.client)
-			_ = config.Clear()
-			m.client = api.New(config.BaseURL(), "")
-			m.me = nil
-			m.state = stateWelcome
-			m.notice = "Signed out."
-			return m, revoke
+	case "esc":
+		if m.running {
+			m.interrupt()
+			return m, nil
+		}
+		if m.input.Value() != "" {
+			m.input.Reset()
+			m.layout()
+		}
+		return m, nil
+
+	case "ctrl+t":
+		m.rend.showReasoning = !m.rend.showReasoning
+		m.dirty = true
+		if m.rend.showReasoning {
+			return m.flash("showing reasoning")
+		}
+		return m.flash("hiding reasoning")
+
+	case "ctrl+o":
+		m.rend.expandTools = !m.rend.expandTools
+		m.dirty = true
+		if m.rend.expandTools {
+			return m.flash("tool output expanded")
+		}
+		return m.flash("tool output collapsed")
+
+	case "pgup":
+		m.vp.PageUp()
+		m.follow = false
+		return m, nil
+	case "pgdown":
+		m.vp.PageDown()
+		m.follow = m.vp.AtBottom()
+		return m, nil
+	case "ctrl+home":
+		m.vp.GotoTop()
+		m.follow = false
+		return m, nil
+	case "ctrl+end":
+		m.vp.GotoBottom()
+		m.follow = true
+		return m, nil
+
+	case "up":
+		if m.input.LineCount() <= 1 && len(m.history) > 0 && (m.input.Value() == "" || m.histPos < len(m.history)) {
+			if m.histPos == len(m.history) {
+				m.draft = m.input.Value()
+			}
+			if m.histPos > 0 {
+				m.histPos--
+			}
+			m.input.SetValue(m.history[m.histPos])
+			m.input.MoveToEnd()
+			m.layout()
+			return m, nil
+		}
+	case "down":
+		if m.histPos < len(m.history) && m.input.LineCount() <= 1 {
+			m.histPos++
+			if m.histPos == len(m.history) {
+				m.input.SetValue(m.draft)
+			} else {
+				m.input.SetValue(m.history[m.histPos])
+			}
+			m.input.MoveToEnd()
+			m.layout()
+			return m, nil
 		}
 
-	case stateFatal:
-		if msg.String() == "enter" {
-			m.err = nil
-			m.state = stateWelcome
+	case "enter":
+		text := m.input.Value()
+		if strings.HasSuffix(text, "\\") {
+			// A trailing backslash asks for a newline, like a shell.
+			m.input.SetValue(strings.TrimSuffix(text, "\\") + "\n")
+			m.input.MoveToEnd()
+			m.layout()
+			return m, nil
 		}
+		text = strings.TrimSpace(text)
+		if text == "" {
+			return m, nil
+		}
+		m.input.Reset()
+		m.layout()
+		m.history = append(m.history, text)
+		m.histPos = len(m.history)
+		m.draft = ""
+		return m, m.submit(text)
 	}
 
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	m.layout()
+	return m, cmd
+}
+
+func (m *Model) flash(s string) (tea.Model, tea.Cmd) {
+	m.notice = s
+	return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg { return clearNoticeMsg{} })
+}
+
+func (m *Model) decide(d agent.Decision) (tea.Model, tea.Cmd) {
+	if m.approval == nil {
+		return m, nil
+	}
+	m.approval.Reply <- d
+	m.approval = nil
 	return m, nil
 }
 
-func (m Model) handleMe(msg meMsg) (tea.Model, tea.Cmd) {
-	if msg.err != nil {
-		var apiErr *api.Error
-		// A rejected token is a stale token: forget it and start over rather
-		// than stranding the user on an error they cannot act on.
-		if errors.As(msg.err, &apiErr) && apiErr.Status == 401 {
-			_ = config.Clear()
-			m.client = api.New(config.BaseURL(), "")
-			m.me = nil
-			m.state = stateWelcome
-			m.notice = "Your session expired. Sign in again."
-			return m, nil
-		}
-		m.err = msg.err
-		m.state = stateFatal
-		return m, nil
+func (m *Model) interrupt() {
+	if m.cancel != nil {
+		m.cancel()
 	}
+	if m.approval != nil {
+		// The agent is waiting on us; a cancelled context releases it.
+		m.approval = nil
+	}
+	m.notice = "interrupting…"
+}
 
-	m.me = msg.me
+// submit handles slash commands and shell escapes locally, and sends
+// everything else to the agent.
+func (m *Model) submit(text string) tea.Cmd {
+	if strings.HasPrefix(text, "/") {
+		return m.slash(text)
+	}
+	if strings.HasPrefix(text, "!") && len(text) > 1 {
+		return m.shell(strings.TrimSpace(text[1:]))
+	}
+	if m.fatal != nil {
+		m.push(&item{kind: itemError, text: m.fatal.Error()})
+		return nil
+	}
+	if m.running {
+		m.queued = text
+		m.notice = "queued; sends when the current turn finishes"
+		return nil
+	}
+	return m.startTurn(text)
+}
+
+func (m *Model) startTurn(text string) tea.Cmd {
+	m.push(&item{kind: itemUser, text: text})
+	m.follow = true
+	m.running = true
 	m.notice = ""
-	if msg.me.HasAccess {
-		m.state = stateReady
-		return m, nil
+	m.pendingA, m.pendingR = nil, nil
+
+	if m.agent.Session == nil {
+		m.agent.NewSession()
 	}
-	m.state = stateChecking
-	return m, fetchPlans(m.client)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+	ch := make(chan agent.Event, 256)
+	m.events = ch
+	go func() {
+		defer close(ch)
+		m.agent.Run(ctx, text, func(ev agent.Event) {
+			select {
+			case ch <- ev:
+			case <-ctx.Done():
+				// Still deliver, but never block forever on a UI that gave up.
+				select {
+				case ch <- ev:
+				case <-time.After(time.Second):
+				}
+			}
+		})
+	}()
+	return tea.Batch(waitEvent(ch), m.spin.Tick)
 }
 
-func (m Model) handlePoll(msg devicePollMsg) (tea.Model, tea.Cmd) {
-	if msg.err != nil {
-		m.err = msg.err
-		m.state = stateFatal
-		return m, nil
-	}
-
-	switch msg.poll.Status {
-	case "approved":
-		if err := config.Save(config.Auth{Token: msg.poll.Token, Email: emailOf(msg.poll.User)}); err != nil {
-			m.err = fmt.Errorf("signed in, but could not write %s: %w", config.Path(), err)
-			m.state = stateFatal
-			return m, nil
+func waitEvent(ch <-chan agent.Event) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := <-ch
+		if !ok {
+			return eventsClosedMsg{}
 		}
-		m.client = api.New(config.BaseURL(), msg.poll.Token)
-		m.me = msg.poll.User
-		m.device = nil
-		if msg.poll.HasAccess {
-			m.state = stateReady
-			return m, nil
-		}
-		m.state = stateChecking
-		return m, fetchPlans(m.client)
-
-	case "expired":
-		m.state = stateWelcome
-		m.device = nil
-		m.notice = "That code expired before it was approved. Try again."
-		return m, nil
-
-	default:
-		return m, tick(2 * time.Second)
+		return eventMsg{ev: ev}
 	}
 }
 
-func (m Model) handleCheckout(msg checkoutMsg) (tea.Model, tea.Cmd) {
-	if msg.err != nil {
-		m.notice = ""
-		m.err = msg.err
-		m.state = stateFatal
-		return m, nil
-	}
+func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
+	next := waitEvent(m.events)
+	switch ev := ev.(type) {
+	case agent.ReasoningEvent:
+		if m.pendingR == nil {
+			m.pendingR = &item{kind: itemReasoning}
+			m.push(m.pendingR)
+		}
+		m.pendingR.text += ev.Delta
+		m.pendingR.invalidate()
+		m.dirty = true
 
-	if msg.checkout.Mode == "dev" {
-		m.notice = "Dev billing: plan activated without payment."
-		return m, fetchMe(m.client)
-	}
+	case agent.TextEvent:
+		if m.pendingA == nil {
+			m.pendingA = &item{kind: itemAssistant}
+			m.push(m.pendingA)
+		}
+		m.pendingA.text += ev.Delta
+		m.pendingA.invalidate()
+		m.dirty = true
 
-	if err := openBrowser(msg.checkout.URL); err != nil {
-		m.notice = "Open this to pay: " + msg.checkout.URL
-		return m, nil
+	case agent.AssistantDoneEvent:
+		if m.pendingA != nil {
+			m.pendingA.text = ev.Message.Content
+			m.pendingA.invalidate()
+		}
+		m.pendingA, m.pendingR = nil, nil
+		m.dirty = true
+
+	case agent.ToolStartEvent:
+		m.push(&item{
+			kind: itemTool, toolID: ev.ID, toolName: ev.Name, preview: ev.Preview,
+			toolKind: ev.Kind, running: true, started: time.Now(),
+		})
+		m.rend.spinner = m.spin.View()
+
+	case agent.ToolEndEvent:
+		for i := len(m.items) - 1; i >= 0; i-- {
+			it := m.items[i]
+			if it.kind == itemTool && it.toolID == ev.ID {
+				it.running = false
+				res := ev.Result
+				it.result = &res
+				it.elapsed = ev.Duration
+				it.invalidate()
+				break
+			}
+		}
+		m.dirty = true
+
+	case agent.ApprovalEvent:
+		e := ev
+		m.approval = &e
+		m.layout()
+
+	case agent.UsageEvent:
+		m.totals = ev.Totals
+		m.context = ev.ContextTokens
+
+	case agent.CompactEvent:
+		m.push(&item{kind: itemNotice, text: fmt.Sprintf("── context compacted: %d messages, %s tokens → handoff note ──", ev.BeforeMessages, formatTokens(ev.BeforeTokens))})
+
+	case agent.ErrorEvent:
+		m.push(&item{kind: itemError, text: ev.Err.Error()})
+
+	case agent.DoneEvent:
+		if ev.Interrupted {
+			m.push(&item{kind: itemNotice, text: "── interrupted ──"})
+		}
 	}
-	// Stripe redirects the browser, not the terminal, so the CLI finds out by
-	// asking again once the user is likely to be done.
-	m.notice = "Finish checkout in your browser, then press r to refresh."
+	return m, next
+}
+
+func (m *Model) turnEnded() (tea.Model, tea.Cmd) {
+	m.running = false
+	m.cancel = nil
+	m.approval = nil
+	m.notice = ""
+	for _, it := range m.items {
+		if it.kind == itemTool && it.running {
+			it.running = false
+			it.result = &tools.Result{Summary: "cancelled", IsError: true}
+			it.invalidate()
+		}
+	}
+	m.pendingA, m.pendingR = nil, nil
+	m.dirty = true
+	if m.agent != nil {
+		m.totals = m.agent.Totals
+	}
+	m.layout()
+	if m.queued != "" {
+		text := m.queued
+		m.queued = ""
+		return m, m.startTurn(text)
+	}
 	return m, nil
 }
 
-// loginURL sends people to signup or login first, then on to the approval
-// page, so a brand-new user never hits a login wall they have no account for.
-func (m Model) loginURL() string {
-	if m.device == nil {
-		return config.BaseURL()
-	}
-	next := "/cli?code=" + url.QueryEscape(m.device.UserCode)
-	page := "/login"
-	if m.menu == 1 {
-		page = "/signup"
-	}
-	return fmt.Sprintf("%s%s?next=%s", strings.TrimRight(config.BaseURL(), "/"), page, url.QueryEscape(next))
-}
-
-func emailOf(me *api.Me) string {
-	if me == nil {
-		return ""
-	}
-	return me.Email
+// shell runs a `!command` typed by the user, shown like a tool call and
+// recorded in the conversation so the model knows what happened.
+func (m *Model) shell(command string) tea.Cmd {
+	it := &item{kind: itemTool, toolName: "bash", preview: command, toolKind: tools.KindExecute, running: true, started: time.Now()}
+	m.push(it)
+	m.follow = true
+	reg := m.agent.Tools
+	return tea.Batch(m.spin.Tick, func() tea.Msg {
+		args := fmt.Sprintf(`{"command": %q}`, command)
+		return shellDoneMsg{it: it, result: reg.Run(context.Background(), "bash", []byte(args))}
+	})
 }

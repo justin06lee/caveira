@@ -1,17 +1,15 @@
 BINARY  := caveira
 BINDIR  ?= $(HOME)/.local/bin
-# The backend the installed CLI talks to. Override for a release build:
-# `make API_URL=https://your.deployment`.
-API_URL ?= http://localhost:3000
-LDFLAGS := -s -w -X github.com/justin06lee/caveira/tui/internal/config.defaultBaseURL=$(API_URL)
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build install update web-deps db tui web editor
+.PHONY: all build install update tui editor test
 
-# The golden path: web dependencies, database migrations, both builds, and
-# `caveira` installed on PATH. Safe to run again at any time.
-all: build db install
+# The golden path: build the terminal client and the cell editor, install
+# `caveira` on PATH. Safe to run again at any time.
+all: build install
 
-build: tui web editor
+build: tui editor
 
 install: tui
 	mkdir -p $(BINDIR)
@@ -26,17 +24,9 @@ update:
 tui:
 	cd tui && go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) .
 
-web: web-deps
-	cd web-client && bun run build
-
-web-deps:
-	cd web-client && bun install
+test:
+	cd tui && go vet ./... && go test ./...
 
 # The cell editor: typecheck and bundle. Run it with `bun run dev` in cell-editor.
 editor:
 	cd cell-editor && bun install && bun run build
-
-# Applies drizzle/ to the local SQLite file, or to Turso when
-# TURSO_DATABASE_URL is set in the environment or web-client/.env.
-db: web-deps
-	cd web-client && bun run db:migrate
