@@ -1,5 +1,6 @@
-// Package ui is the terminal session: a scrolling transcript, an input box,
-// and a status line, driven by events from the agent.
+// Package ui is the terminal session: a splash while things load, a hero
+// with the skull and a centred prompt, then a scrolling transcript with the
+// input at the bottom, all driven by events from the agent.
 package ui
 
 import (
@@ -21,7 +22,7 @@ import (
 	"github.com/justin06lee/caveira/tui/internal/tools"
 )
 
-// Options configures a session screen.
+// Options is everything the session needs once startup work is done.
 type Options struct {
 	Agent    *agent.Agent
 	Settings config.Settings
@@ -35,7 +36,22 @@ type Options struct {
 	Fatal error
 }
 
+type phase int
+
+const (
+	phaseSplash  phase = iota // skull sweeping in while boot runs
+	phaseHero                 // empty session: skull, centred prompt
+	phaseSlide                // first prompt sent: box sliding down
+	phaseSession              // transcript and bottom prompt
+)
+
 type Model struct {
+	phase   phase
+	boot    func() (Options, error)
+	booted  bool
+	bootErr error
+	splash  splash
+
 	agent   *agent.Agent
 	cfg     config.Settings
 	workDir string
@@ -70,10 +86,20 @@ type Model struct {
 
 	quitArmed time.Time
 	initial   string
+
+	slideT     float64
+	slideText  string
+	skullCache []string
+	skullKey   [2]int
+	buttons    []button
 }
 
 type eventMsg struct{ ev agent.Event }
 type eventsClosedMsg struct{}
+type bootMsg struct {
+	opts Options
+	err  error
+}
 type modelsMsg struct {
 	models []llm.ModelInfo
 	err    error
@@ -84,7 +110,19 @@ type shellDoneMsg struct {
 }
 type clearNoticeMsg struct{}
 
-func New(o Options) *Model {
+// Run shows the splash immediately and calls boot on another goroutine;
+// the session starts when both are done. Errors from boot end the program.
+func Run(version string, boot func() (Options, error)) error {
+	m := New(version, boot)
+	if _, err := tea.NewProgram(m).Run(); err != nil {
+		return err
+	}
+	return m.bootErr
+}
+
+// New builds the screen. boot may be nil when the caller applies Options
+// itself with Apply.
+func New(version string, boot func() (Options, error)) *Model {
 	ta := textarea.New()
 	ta.Placeholder = "Ask caveira to build, fix, or explain…"
 	ta.ShowLineNumbers = false
@@ -115,27 +153,37 @@ func New(o Options) *Model {
 	vp.KeyMap = viewport.KeyMap{}
 
 	m := &Model{
-		agent:   o.Agent,
-		cfg:     o.Settings,
-		workDir: o.WorkDir,
-		version: o.Version,
+		phase:   phaseSplash,
+		boot:    boot,
+		version: version,
 		input:   ta,
 		spin:    sp,
 		vp:      vp,
 		follow:  true,
-		fatal:   o.Fatal,
-		initial: o.Initial,
 	}
+	if boot == nil {
+		m.booted = true
+	}
+	return m
+}
+
+// Apply installs what boot produced.
+func (m *Model) Apply(o Options) {
+	m.agent = o.Agent
+	m.cfg = o.Settings
+	m.workDir = o.WorkDir
+	if o.Version != "" {
+		m.version = o.Version
+	}
+	m.fatal = o.Fatal
+	m.initial = o.Initial
 	if o.Agent != nil {
 		m.totals = o.Agent.Totals
 	}
 	if o.Resumed != nil {
 		m.replay(o.Resumed)
 	}
-	if o.Fatal != nil {
-		m.push(&item{kind: itemError, text: o.Fatal.Error()})
-	}
-	return m
+	m.booted = true
 }
 
 // replay rebuilds the transcript from a stored session.
@@ -178,11 +226,13 @@ func (m *Model) replay(s *agent.Session) {
 }
 
 func (m *Model) Init() tea.Cmd {
-	cmds := []tea.Cmd{textarea.Blink}
-	if m.initial != "" && m.fatal == nil {
-		text := m.initial
-		m.initial = ""
-		cmds = append(cmds, m.submit(text))
+	cmds := []tea.Cmd{textarea.Blink, splashTicker()}
+	if m.boot != nil {
+		boot := m.boot
+		cmds = append(cmds, func() tea.Msg {
+			o, err := boot()
+			return bootMsg{opts: o, err: err}
+		})
 	}
 	return tea.Batch(cmds...)
 }
@@ -201,10 +251,49 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout()
 		return m, nil
 
+	case bootMsg:
+		if msg.err != nil {
+			m.bootErr = msg.err
+			m.booted = true
+		} else {
+			m.Apply(msg.opts)
+		}
+		if m.phase == phaseSplash && m.splash.done {
+			return m.leaveSplash()
+		}
+		return m, nil
+	}
+
+	switch m.phase {
+	case phaseSplash:
+		switch msg.(type) {
+		case splashTickMsg, tea.KeyPressMsg:
+			return m.updateSplash(msg)
+		}
+	case phaseSlide:
+		switch msg.(type) {
+		case slideTickMsg, tea.KeyPressMsg:
+			return m.updateSlide(msg)
+		}
+	}
+
+	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
+	case tea.MouseClickMsg:
+		mm := msg.Mouse()
+		for _, b := range m.buttons {
+			if mm.X >= b.x0 && mm.X < b.x1 && mm.Y >= b.y0 && mm.Y < b.y1 {
+				return m.flash(b.label + ": not built yet")
+			}
+		}
+		return m, nil
+
 	case tea.MouseWheelMsg:
+		if m.phase != phaseSession {
+			return m, nil
+		}
 		var cmd tea.Cmd
 		m.vp, cmd = m.vp.Update(msg)
 		m.follow = m.vp.AtBottom()
@@ -443,8 +532,12 @@ func (m *Model) interrupt() {
 }
 
 // submit handles slash commands and shell escapes locally, and sends
-// everything else to the agent.
+// everything else to the agent. From the hero, the first submission plays
+// the slide and comes back here once the box has landed.
 func (m *Model) submit(text string) tea.Cmd {
+	if m.phase == phaseHero {
+		return m.beginSlide(text)
+	}
 	if strings.HasPrefix(text, "/") {
 		return m.slash(text)
 	}

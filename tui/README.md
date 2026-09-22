@@ -13,6 +13,8 @@ caveira -p "explain main.go"     # one-shot: run the task, print the reply, exit
 caveira -c                       # continue the latest session for this directory
 ```
 
+On launch the skull sweeps in row by row, CRT style, while settings, git state, and the previous session load on another goroutine; any key skips the sweep. Then the empty session shows the wordmark and two placeholder buttons up top, the skull in the middle, and the prompt centred under it. The first prompt slides the box to the bottom, the skull fades, and the transcript takes its place.
+
 In a session, `enter` sends and `alt+enter` (or `ctrl+j`, or a trailing `\`) adds a line. `esc` interrupts the model mid-turn. `ctrl+t` shows the model's reasoning, `ctrl+o` expands tool output, `pgup`/`pgdn` and the mouse wheel scroll, `up`/`down` recall earlier prompts. `!<command>` runs a shell command yourself, with the output also going to the model. `/help` lists the slash commands: `/model`, `/models`, `/effort`, `/compact`, `/cost`, `/clear`, `/session`, `/quit`.
 
 Sessions are saved as JSON under `~/.caveira/sessions/` after every turn, so `caveira -c` picks up where you left off and `caveira --sessions` lists what is there. When a conversation approaches the model's context window the agent summarizes it into a handoff note and continues from that.
@@ -61,6 +63,7 @@ From the repo root, `make` builds and installs `caveira` into `~/.local/bin` (`B
 - `internal/tools` — the tool set and its registry.
 - `internal/prompt` — the system prompt: stance, working method, tool guidance, environment, project instructions.
 - `internal/agent` — the loop: stream a reply, run the tools it asks for, feed results back; approvals, compaction, sessions.
-- `internal/ui` — the Bubble Tea session: transcript, input, status line, approval box, slash commands.
+- `internal/ui` — the Bubble Tea screens: splash, hero, and the session with its transcript, input, status line, approval box, and slash commands.
+- `internal/art` — the skull PNG and the banner's pixel lettering rendered as half-block cells; `go run ./internal/art/preview` prints them.
 - `internal/config` — settings resolution and what is known about each model.
 - `designs/` — TUI screens drawn in the cell editor.
