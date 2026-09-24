@@ -29,7 +29,7 @@ caveira talks to [abliteration.ai](https://abliteration.ai) out of the box, thro
 caveira --base-url http://localhost:11434/v1 --model llama3.2:latest
 ```
 
-It opens on the skull, drawn into the terminal row by row while everything loads, with the prompt centred under it; the first message slides the prompt to the bottom and the conversation takes over. Type what you want. `esc` interrupts, `/help` lists the commands, `caveira -c` continues the last session for the directory, and `caveira -p "…"` runs a task without the interface and prints the result. The full reference, including configuration, is in [tui/README.md](tui/README.md).
+It opens on the pixel skull, dissolving in while everything loads, with the prompt centred under it; the first message slides the prompt to the bottom and the conversation takes over. Type what you want. `esc` interrupts, `/help` lists the commands, `caveira -c` continues the last session for the directory, and `caveira -p "…"` runs a task without the interface and prints the result. The full reference, including configuration, is in [tui/README.md](tui/README.md).
 
 ## How it works
 

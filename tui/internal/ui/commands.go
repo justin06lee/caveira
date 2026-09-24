@@ -7,37 +7,125 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/justin06lee/caveira/tui/internal/agent"
 	"github.com/justin06lee/caveira/tui/internal/config"
 )
 
-const helpText = `commands
-  /model [id]      show or switch the model (abliterated-model, abliterated-model-large-v2, …)
-  /models          list the models this key can use
-  /effort [level]  reasoning effort: none minimal low medium high xhigh max
-  /compact         summarize the conversation to free context
-  /cost            tokens and cost for this session
-  /clear           start a new session
-  /session         where this session is saved
-  /help            this
-  /quit            leave
-  !<command>       run a shell command yourself; the output goes to the model too
+// command is one slash command, as the palette and /help list it.
+type command struct {
+	name, args, desc string
+	aliases          []string
+}
 
-keys
-  enter            send            alt+enter, ctrl+j   newline (or end a line with \)
-  esc              interrupt       ctrl+c              interrupt, clear, or quit
-  ctrl+t           show thinking   ctrl+o              expand tool output
-  pgup / pgdn      scroll          up / down           recall earlier prompts`
+var commands = []command{
+	{name: "/model", args: "[id]", desc: "show or switch the model", aliases: []string{"/m"}},
+	{name: "/models", desc: "list the models this key can use"},
+	{name: "/effort", args: "[level]", desc: "reasoning effort, none to max", aliases: []string{"/e"}},
+	{name: "/compact", desc: "summarize the conversation to free context"},
+	{name: "/cost", desc: "tokens and spend for this session", aliases: []string{"/usage"}},
+	{name: "/clear", desc: "start a new session", aliases: []string{"/new"}},
+	{name: "/session", desc: "where this session is saved"},
+	{name: "/help", desc: "commands and keys", aliases: []string{"/?"}},
+	{name: "/quit", desc: "leave caveira", aliases: []string{"/exit", "/q"}},
+}
+
+var keyHelp = [][2]string{
+	{"enter", "send"},
+	{"alt+enter", "newline (also ctrl+j, or end a line with \\)"},
+	{"esc", "interrupt the model"},
+	{"ctrl+c", "interrupt, clear the input, or quit"},
+	{"ctrl+t", "show or hide thinking"},
+	{"ctrl+o", "expand or collapse tool output"},
+	{"pgup pgdn", "scroll (or the mouse wheel)"},
+	{"ctrl+end", "jump back to the bottom"},
+	{"↑ ↓", "earlier prompts"},
+	{"!cmd", "run a shell command yourself; the model sees the output"},
+}
+
+// ---- palette ----
+
+// paletteMatches is what the palette shows for the current input: every
+// command whose name starts with what has been typed, or nil when the
+// input is not a bare command.
+func (m *Model) paletteMatches() []command {
+	v := m.input.Value()
+	if !strings.HasPrefix(v, "/") || strings.ContainsAny(v, " \n") || m.approval != nil {
+		return nil
+	}
+	var out []command
+	for _, c := range commands {
+		if strings.HasPrefix(c.name, v) {
+			out = append(out, c)
+			continue
+		}
+		for _, a := range c.aliases {
+			if a == v {
+				out = append(out, c)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func (m *Model) paletteOpen() bool { return len(m.paletteMatches()) > 0 }
+
+// renderPalette lists matching commands under the input, the selected one
+// marked.
+func (m *Model) renderPalette(width int) string {
+	matches := m.paletteMatches()
+	if len(matches) == 0 {
+		return ""
+	}
+	sel := m.palSel % len(matches)
+	nameW := 0
+	for _, c := range matches {
+		nameW = max(nameW, lipgloss.Width(c.name+" "+c.args))
+	}
+	// Short terminals see a window of the list that follows the selection.
+	rows := min(len(matches), max(3, m.height-14), 9)
+	first := min(max(sel-rows/2, 0), len(matches)-rows)
+	var out []string
+	for i := first; i < first+rows; i++ {
+		c := matches[i]
+		name := c.name
+		if c.args != "" {
+			name += " " + c.args
+		}
+		name = fmt.Sprintf("%-*s", nameW, name)
+		desc := oneLine(c.desc, max(width-nameW-8, 8))
+		if i == sel {
+			out = append(out, "  "+th.Accent.Render("›")+" "+th.Title.Render(name)+"   "+th.Text.Render(desc))
+		} else {
+			out = append(out, "    "+th.Muted.Render(name)+"   "+th.Faint.Render(desc))
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// ---- running commands ----
 
 func (m *Model) slash(text string) tea.Cmd {
 	fields := strings.Fields(text)
 	cmd := strings.ToLower(fields[0])
 	args := fields[1:]
+	m.push(&item{kind: itemCommand, text: text})
 
 	switch cmd {
 	case "/help", "/?":
-		m.push(&item{kind: itemNotice, text: helpText})
+		rows := [][2]string{}
+		for _, c := range commands {
+			name := c.name
+			if c.args != "" {
+				name += " " + c.args
+			}
+			rows = append(rows, [2]string{name, c.desc})
+		}
+		rows = append(rows, [2]string{"#Keys", ""})
+		rows = append(rows, keyHelp...)
+		m.push(&item{kind: itemPanel, title: "Commands", rows: rows})
 
 	case "/quit", "/exit", "/q":
 		return tea.Quit
@@ -52,11 +140,15 @@ func (m *Model) slash(text string) tea.Cmd {
 		m.totals = m.agent.Totals
 		m.context = 0
 		m.dirty = true
-		m.push(&item{kind: itemNotice, text: "new session"})
+		m.pushHeader()
 
 	case "/model", "/m":
 		if len(args) == 0 {
-			m.push(&item{kind: itemNotice, text: fmt.Sprintf("model: %s  ·  context window %s  ·  endpoint %s", m.agent.Model, formatTokens(m.agent.ContextWindow), m.cfg.BaseURL)})
+			m.push(&item{kind: itemPanel, title: "Model", rows: [][2]string{
+				{"model", m.agent.Model},
+				{"context", formatTokens(m.agent.ContextWindow) + " tokens"},
+				{"endpoint", m.cfg.BaseURL},
+			}})
 			return nil
 		}
 		if m.running {
@@ -65,7 +157,7 @@ func (m *Model) slash(text string) tea.Cmd {
 		}
 		m.agent.SetModel(args[0], m.cfg.ContextWindow)
 		m.cfg.Model = args[0]
-		m.push(&item{kind: itemNotice, text: fmt.Sprintf("model → %s  ·  context window %s", args[0], formatTokens(m.agent.ContextWindow))})
+		m.push(&item{kind: itemNotice, text: fmt.Sprintf("switched to %s · %s context", args[0], formatTokens(m.agent.ContextWindow))})
 
 	case "/models":
 		client := m.agent.Client
@@ -82,7 +174,7 @@ func (m *Model) slash(text string) tea.Cmd {
 			if cur == "" {
 				cur = "model default"
 			}
-			m.push(&item{kind: itemNotice, text: "reasoning effort: " + cur + "  ·  levels: " + strings.Join(config.Efforts, " ")})
+			m.push(&item{kind: itemNotice, text: "reasoning effort: " + cur + "\nlevels: " + strings.Join(config.Efforts, " ")})
 			return nil
 		}
 		level := strings.ToLower(args[0])
@@ -110,40 +202,50 @@ func (m *Model) slash(text string) tea.Cmd {
 		return m.runCompact()
 
 	case "/cost", "/usage":
-		m.push(&item{kind: itemNotice, text: m.costText()})
+		m.push(m.costPanel())
 
 	case "/session":
 		if m.agent.Session == nil {
 			m.push(&item{kind: itemNotice, text: "no session saved yet; one is created on the first message.\nresume the latest session for this directory with: caveira -c"})
 		} else {
-			m.push(&item{kind: itemNotice, text: fmt.Sprintf("session %s\n%s\nresume with: caveira --resume %s", m.agent.Session.ID, m.agent.Session.Path(), m.agent.Session.ID)})
+			m.push(&item{kind: itemPanel, title: "Session", rows: [][2]string{
+				{"id", m.agent.Session.ID},
+				{"file", shortPath(m.agent.Session.Path())},
+				{"resume", "caveira --resume " + m.agent.Session.ID},
+			}})
 		}
 
 	default:
-		m.push(&item{kind: itemError, text: "unknown command " + cmd + "  ·  /help lists them"})
+		m.push(&item{kind: itemError, text: "unknown command " + cmd + " · /help lists them"})
 	}
 	return nil
 }
 
-func (m *Model) costText() string {
+func (m *Model) costPanel() *item {
 	t := m.totals
 	spec := config.Spec(m.agent.Model)
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "requests %d  ·  input %s (%s cached)  ·  output %s  ·  %s",
-		t.Requests, formatTokens(t.InputTokens), formatTokens(t.CachedTokens), formatTokens(t.OutputTokens), formatCost(t.CostUSD))
+	cost := formatCost(t.CostUSD)
 	if spec.InputPerM == 0 {
-		sb.WriteString("\n(no price known for this model; cost not tracked)")
+		cost = "not tracked (no price known for this model)"
+	}
+	rows := [][2]string{
+		{"requests", fmt.Sprintf("%d", t.Requests)},
+		{"input", fmt.Sprintf("%s tokens (%s cached)", formatTokens(t.InputTokens), formatTokens(t.CachedTokens))},
+		{"output", formatTokens(t.OutputTokens) + " tokens"},
+		{"spend", cost},
 	}
 	if m.context > 0 && m.agent.ContextWindow > 0 {
-		fmt.Fprintf(&sb, "\ncontext %s of %s (%.0f%%)", formatTokens(m.context), formatTokens(m.agent.ContextWindow), 100*float64(m.context)/float64(m.agent.ContextWindow))
+		rows = append(rows, [2]string{"context", fmt.Sprintf("%s of %s (%.0f%%)", formatTokens(m.context), formatTokens(m.agent.ContextWindow), 100*float64(m.context)/float64(m.agent.ContextWindow))})
 	}
-	return sb.String()
+	return &item{kind: itemPanel, title: "Usage", rows: rows}
 }
 
 // runCompact runs compaction as its own turn so the UI treats it like work.
 func (m *Model) runCompact() tea.Cmd {
 	m.running = true
-	m.notice = "compacting…"
+	m.compacting = true
+	m.turnStart = time.Now()
+	m.streamed = 0
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 	ch := make(chan agent.Event, 16)
@@ -157,5 +259,5 @@ func (m *Model) runCompact() tea.Cmd {
 		}
 		emit(agent.UsageEvent{Totals: ag.Totals, ContextTokens: ag.LastPromptTokens})
 	}()
-	return tea.Batch(waitEvent(ch), m.spin.Tick)
+	return tea.Batch(waitEvent(ch), m.startTicking())
 }

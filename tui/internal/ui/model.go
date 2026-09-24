@@ -1,20 +1,21 @@
-// Package ui is the terminal session: a splash while things load, a hero
-// with the skull and a centred prompt, then a scrolling transcript with the
+// Package ui is the terminal session: the skull and the prompt while things
+// load and until the first message, then a scrolling transcript with the
 // input at the bottom, all driven by events from the agent.
 package ui
 
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 
 	"github.com/justin06lee/caveira/tui/internal/agent"
 	"github.com/justin06lee/caveira/tui/internal/config"
@@ -27,7 +28,9 @@ type Options struct {
 	Agent    *agent.Agent
 	Settings config.Settings
 	WorkDir  string
-	Version  string
+	// Branch is the git branch checked out in WorkDir, if any.
+	Branch  string
+	Version string
 	// Initial, when set, is sent as the first message.
 	Initial string
 	// Resumed, when set, is the session that was picked up.
@@ -39,7 +42,7 @@ type Options struct {
 type phase int
 
 const (
-	phaseSplash  phase = iota // skull sweeping in while boot runs
+	phaseSplash  phase = iota // the intro plays while boot runs
 	phaseHero                 // empty session: skull, centred prompt
 	phaseSlide                // first prompt sent: box sliding down
 	phaseSession              // transcript and bottom prompt
@@ -55,13 +58,18 @@ type Model struct {
 	agent   *agent.Agent
 	cfg     config.Settings
 	workDir string
+	branch  string
 	version string
 
 	width, height int
 	vp            viewport.Model
 	input         textarea.Model
-	spin          spinner.Model
 	rend          renderer
+
+	// what the terminal told us about itself
+	dark    bool
+	bg      color.Color
+	profile colorprofile.Profile
 
 	items    []*item
 	dirty    bool
@@ -69,11 +77,21 @@ type Model struct {
 	pendingR *item // in-progress reasoning block
 	pendingA *item // in-progress assistant block
 
-	running  bool
-	cancel   context.CancelFunc
-	events   chan agent.Event
-	approval *agent.ApprovalEvent
-	queued   string
+	running    bool
+	compacting bool
+	cancel     context.CancelFunc
+	events     chan agent.Event
+	approval   *agent.ApprovalEvent
+	apSel      int
+	queued     string
+	turnStart  time.Time
+	turnCost   float64 // spend before this turn, to report what it cost
+	turnTools  int
+	turnFailed bool
+	streamed   int // characters streamed this turn, for the token estimate
+
+	frame   int
+	ticking bool
 
 	totals  agent.Totals
 	context int
@@ -83,15 +101,13 @@ type Model struct {
 	history []string
 	histPos int
 	draft   string
+	palSel  int
 
 	quitArmed time.Time
 	initial   string
 
-	slideT     float64
-	slideText  string
-	skullCache []string
-	skullKey   [2]int
-	buttons    []button
+	slideT    float64
+	slideText string
 }
 
 type eventMsg struct{ ev agent.Event }
@@ -109,8 +125,9 @@ type shellDoneMsg struct {
 	result tools.Result
 }
 type clearNoticeMsg struct{}
+type tickMsg struct{}
 
-// Run shows the splash immediately and calls boot on another goroutine;
+// Run shows the intro immediately and calls boot on another goroutine;
 // the session starts when both are done. Errors from boot end the program.
 func Run(version string, boot func() (Options, error)) error {
 	m := New(version, boot)
@@ -133,19 +150,7 @@ func New(version string, boot func() (Options, error)) *Model {
 	ta.MaxHeight = 8
 	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter", "ctrl+j", "shift+enter"))
 	ta.SetVirtualCursor(false)
-	st := textarea.DefaultDarkStyles()
-	plain := lipgloss.NewStyle()
-	st.Focused.Base = plain
-	st.Focused.CursorLine = plain
-	st.Focused.Text = styleBody
-	st.Focused.Placeholder = styleDim
-	st.Focused.EndOfBuffer = plain
-	st.Blurred = st.Focused
-	st.Cursor.Color = brass
-	ta.SetStyles(st)
 	ta.Focus()
-
-	sp := spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(styleBrass))
 
 	vp := viewport.New()
 	vp.SoftWrap = false
@@ -157,14 +162,38 @@ func New(version string, boot func() (Options, error)) *Model {
 		boot:    boot,
 		version: version,
 		input:   ta,
-		spin:    sp,
 		vp:      vp,
 		follow:  true,
+		dark:    true,
+		profile: colorprofile.TrueColor,
 	}
+	m.applyTheme()
 	if boot == nil {
 		m.booted = true
 	}
 	return m
+}
+
+// applyTheme rebuilds the palette from what the terminal has reported and
+// re-renders everything drawn with the old one.
+func (m *Model) applyTheme() {
+	th = newTheme(m.dark, m.profile, m.bg)
+	st := textarea.DefaultDarkStyles()
+	plain := lipgloss.NewStyle()
+	st.Focused.Base = plain
+	st.Focused.CursorLine = plain
+	st.Focused.Text = th.Text
+	st.Focused.Placeholder = th.Faint
+	st.Focused.EndOfBuffer = plain
+	st.Blurred = st.Focused
+	st.Cursor.Color = th.accent
+	m.input.SetStyles(st)
+	m.rend.md = nil // rebuilt at the current width by layout
+	for _, it := range m.items {
+		it.invalidate()
+	}
+	m.dirty = true
+	m.layout()
 }
 
 // Apply installs what boot produced.
@@ -172,6 +201,7 @@ func (m *Model) Apply(o Options) {
 	m.agent = o.Agent
 	m.cfg = o.Settings
 	m.workDir = o.WorkDir
+	m.branch = o.Branch
 	if o.Version != "" {
 		m.version = o.Version
 	}
@@ -181,6 +211,7 @@ func (m *Model) Apply(o Options) {
 		m.totals = o.Agent.Totals
 	}
 	if o.Resumed != nil {
+		m.pushHeader()
 		m.replay(o.Resumed)
 	}
 	m.booted = true
@@ -193,7 +224,10 @@ func (m *Model) replay(s *agent.Session) {
 		switch msg.Role {
 		case llm.RoleUser:
 			if strings.HasPrefix(msg.Content, "This session's earlier conversation was compacted.") {
-				m.push(&item{kind: itemNotice, text: "── context compacted ──"})
+				m.push(&item{kind: itemDivider, text: "context compacted"})
+				continue
+			}
+			if strings.HasPrefix(msg.Content, "I ran this command myself") {
 				continue
 			}
 			m.push(&item{kind: itemUser, text: msg.Content})
@@ -218,15 +252,15 @@ func (m *Model) replay(s *agent.Session) {
 			}
 		case llm.RoleTool:
 			if it, ok := byID[msg.ToolCallID]; ok {
-				it.result = &tools.Result{Output: msg.Content, Summary: "from previous session", IsError: strings.HasPrefix(msg.Content, "Error:")}
+				it.result = &tools.Result{Output: msg.Content, Summary: "from the previous session", IsError: strings.HasPrefix(msg.Content, "Error:")}
 			}
 		}
 	}
-	m.push(&item{kind: itemNotice, text: fmt.Sprintf("── resumed session %s ──", s.ID)})
+	m.push(&item{kind: itemDivider, text: "resumed " + s.ID})
 }
 
 func (m *Model) Init() tea.Cmd {
-	cmds := []tea.Cmd{textarea.Blink, splashTicker()}
+	cmds := []tea.Cmd{splashTicker(), tea.RequestBackgroundColor}
 	if m.boot != nil {
 		boot := m.boot
 		cmds = append(cmds, func() tea.Msg {
@@ -251,6 +285,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout()
 		return m, nil
 
+	case tea.BackgroundColorMsg:
+		m.dark = msg.IsDark()
+		m.bg = msg.Color
+		m.applyTheme()
+		return m, nil
+
+	case tea.ColorProfileMsg:
+		m.profile = msg.Profile
+		m.applyTheme()
+		return m, nil
+
 	case bootMsg:
 		if msg.err != nil {
 			m.bootErr = msg.err
@@ -258,7 +303,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.Apply(msg.opts)
 		}
-		if m.phase == phaseSplash && m.splash.done {
+		if m.phase == phaseSplash && m.splash.frame >= bootFrames {
 			return m.leaveSplash()
 		}
 		return m, nil
@@ -281,15 +326,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
-	case tea.MouseClickMsg:
-		mm := msg.Mouse()
-		for _, b := range m.buttons {
-			if mm.X >= b.x0 && mm.X < b.x1 && mm.Y >= b.y0 && mm.Y < b.y1 {
-				return m.flash(b.label + ": not built yet")
-			}
-		}
-		return m, nil
-
 	case tea.MouseWheelMsg:
 		if m.phase != phaseSession {
 			return m, nil
@@ -299,15 +335,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.follow = m.vp.AtBottom()
 		return m, cmd
 
-	case spinner.TickMsg:
+	case tickMsg:
 		if !m.running && !m.hasRunningTool() {
+			m.ticking = false
 			return m, nil
 		}
-		var cmd tea.Cmd
-		m.spin, cmd = m.spin.Update(msg)
-		m.rend.spinner = m.spin.View()
+		m.frame++
+		m.rend.frame = m.frame
 		m.dirty = true
-		return m, cmd
+		return m, tick()
 
 	case eventMsg:
 		return m.handleEvent(msg.ev)
@@ -320,24 +356,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.push(&item{kind: itemError, text: "could not list models: " + msg.err.Error()})
 			return m, nil
 		}
-		var sb strings.Builder
-		sb.WriteString("models available to this key:\n")
+		var rows [][2]string
 		for _, mi := range msg.models {
-			mark := "  "
+			name := mi.ID
 			if mi.ID == m.agent.Model {
-				mark = "› "
+				name += " ←"
 			}
-			line := mark + mi.ID
+			var info []string
 			if mi.ContextLength > 0 {
-				line += fmt.Sprintf("  ·  %s context", formatTokens(mi.ContextLength))
+				info = append(info, formatTokens(mi.ContextLength)+" context")
 			}
 			if mi.Pricing != nil && mi.Pricing.Prompt != "" {
-				line += fmt.Sprintf("  ·  $%s in / $%s out per token", mi.Pricing.Prompt, mi.Pricing.Completion)
+				info = append(info, fmt.Sprintf("$%s in, $%s out per token", mi.Pricing.Prompt, mi.Pricing.Completion))
 			}
-			sb.WriteString(line + "\n")
+			rows = append(rows, [2]string{name, strings.Join(info, " · ")})
 		}
-		sb.WriteString("switch with /model <id>")
-		m.push(&item{kind: itemNotice, text: sb.String()})
+		rows = append(rows, [2]string{"", ""}, [2]string{"/model <id>", "to switch"})
+		m.push(&item{kind: itemPanel, title: "Models", rows: rows})
 		return m, nil
 
 	case shellDoneMsg:
@@ -363,6 +398,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func tick() tea.Cmd {
+	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return tickMsg{} })
+}
+
+// startTicking runs the animation clock (spinner, shimmer, timers) until
+// nothing is running.
+func (m *Model) startTicking() tea.Cmd {
+	if m.ticking {
+		return nil
+	}
+	m.ticking = true
+	return tick()
+}
+
 func (m *Model) hasRunningTool() bool {
 	for i := len(m.items) - 1; i >= 0 && i >= len(m.items)-5; i-- {
 		if m.items[i].kind == itemTool && m.items[i].running {
@@ -377,14 +426,53 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	if m.approval != nil {
 		switch k {
-		case "y", "Y", "enter":
+		case "up", "k":
+			m.apSel = (m.apSel + len(approvalChoices) - 1) % len(approvalChoices)
+		case "down", "j", "tab":
+			m.apSel = (m.apSel + 1) % len(approvalChoices)
+		case "enter":
+			return m.decide([]agent.Decision{agent.Allow, agent.AllowAlways, agent.Deny}[m.apSel])
+		case "1", "y", "Y":
 			return m.decide(agent.Allow)
-		case "a", "A":
+		case "2", "a", "A":
 			return m.decide(agent.AllowAlways)
-		case "n", "N", "esc", "ctrl+c":
+		case "3", "n", "N", "esc", "ctrl+c":
 			return m.decide(agent.Deny)
 		}
 		return m, nil
+	}
+
+	if matches := m.paletteMatches(); len(matches) > 0 {
+		sel := matches[m.palSel%len(matches)]
+		switch k {
+		case "up":
+			m.palSel = (m.palSel + len(matches) - 1) % len(matches)
+			return m, nil
+		case "down":
+			m.palSel = (m.palSel + 1) % len(matches)
+			return m, nil
+		case "tab":
+			v := sel.name
+			if sel.args != "" {
+				v += " "
+			}
+			m.input.SetValue(v)
+			m.input.MoveToEnd()
+			m.palSel = 0
+			m.layout()
+			return m, nil
+		case "enter":
+			if sel.args != "" && m.input.Value() != sel.name && !isAlias(sel, m.input.Value()) {
+				// Commands that take arguments complete first, so the
+				// argument can be typed.
+				m.input.SetValue(sel.name + " ")
+				m.input.MoveToEnd()
+				m.palSel = 0
+				m.layout()
+				return m, nil
+			}
+			m.input.SetValue(sel.name)
+		}
 	}
 
 	switch k {
@@ -424,9 +512,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.rend.showReasoning = !m.rend.showReasoning
 		m.dirty = true
 		if m.rend.showReasoning {
-			return m.flash("showing reasoning")
+			return m.flash("showing thinking")
 		}
-		return m.flash("hiding reasoning")
+		return m.flash("hiding thinking")
 
 	case "ctrl+o":
 		m.rend.expandTools = !m.rend.expandTools
@@ -493,6 +581,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.input.Reset()
+		m.palSel = 0
 		m.layout()
 		m.history = append(m.history, text)
 		m.histPos = len(m.history)
@@ -502,8 +591,18 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
+	m.palSel = 0
 	m.layout()
 	return m, cmd
+}
+
+func isAlias(c command, v string) bool {
+	for _, a := range c.aliases {
+		if a == v {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) flash(s string) (tea.Model, tea.Cmd) {
@@ -517,6 +616,8 @@ func (m *Model) decide(d agent.Decision) (tea.Model, tea.Cmd) {
 	}
 	m.approval.Reply <- d
 	m.approval = nil
+	m.apSel = 0
+	m.layout()
 	return m, nil
 }
 
@@ -527,13 +628,14 @@ func (m *Model) interrupt() {
 	if m.approval != nil {
 		// The agent is waiting on us; a cancelled context releases it.
 		m.approval = nil
+		m.layout()
 	}
 	m.notice = "interrupting…"
 }
 
 // submit handles slash commands and shell escapes locally, and sends
-// everything else to the agent. From the hero, the first submission plays
-// the slide and comes back here once the box has landed.
+// everything else to the agent. From the home screen, the first submission
+// plays the slide and comes back here once the box has landed.
 func (m *Model) submit(text string) tea.Cmd {
 	if m.phase == phaseHero {
 		return m.beginSlide(text)
@@ -550,7 +652,6 @@ func (m *Model) submit(text string) tea.Cmd {
 	}
 	if m.running {
 		m.queued = text
-		m.notice = "queued; sends when the current turn finishes"
 		return nil
 	}
 	return m.startTurn(text)
@@ -562,6 +663,11 @@ func (m *Model) startTurn(text string) tea.Cmd {
 	m.running = true
 	m.notice = ""
 	m.pendingA, m.pendingR = nil, nil
+	m.turnStart = time.Now()
+	m.turnCost = m.totals.CostUSD
+	m.turnTools = 0
+	m.turnFailed = false
+	m.streamed = 0
 
 	if m.agent.Session == nil {
 		m.agent.NewSession()
@@ -585,7 +691,7 @@ func (m *Model) startTurn(text string) tea.Cmd {
 			}
 		})
 	}()
-	return tea.Batch(waitEvent(ch), m.spin.Tick)
+	return tea.Batch(waitEvent(ch), m.startTicking())
 }
 
 func waitEvent(ch <-chan agent.Event) tea.Cmd {
@@ -598,28 +704,42 @@ func waitEvent(ch <-chan agent.Event) tea.Cmd {
 	}
 }
 
+// endThinking closes the reasoning block when the model moves on, so it
+// can say how long it thought.
+func (m *Model) endThinking() {
+	if r := m.pendingR; r != nil && r.running {
+		r.running = false
+		r.elapsed = time.Since(r.started)
+		r.invalidate()
+	}
+}
+
 func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 	next := waitEvent(m.events)
 	switch ev := ev.(type) {
 	case agent.ReasoningEvent:
 		if m.pendingR == nil {
-			m.pendingR = &item{kind: itemReasoning}
+			m.pendingR = &item{kind: itemReasoning, running: true, started: time.Now()}
 			m.push(m.pendingR)
 		}
 		m.pendingR.text += ev.Delta
+		m.streamed += len(ev.Delta)
 		m.pendingR.invalidate()
 		m.dirty = true
 
 	case agent.TextEvent:
+		m.endThinking()
 		if m.pendingA == nil {
 			m.pendingA = &item{kind: itemAssistant}
 			m.push(m.pendingA)
 		}
 		m.pendingA.text += ev.Delta
+		m.streamed += len(ev.Delta)
 		m.pendingA.invalidate()
 		m.dirty = true
 
 	case agent.AssistantDoneEvent:
+		m.endThinking()
 		if m.pendingA != nil {
 			m.pendingA.text = ev.Message.Content
 			m.pendingA.invalidate()
@@ -628,11 +748,12 @@ func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 		m.dirty = true
 
 	case agent.ToolStartEvent:
+		m.endThinking()
+		m.turnTools++
 		m.push(&item{
 			kind: itemTool, toolID: ev.ID, toolName: ev.Name, preview: ev.Preview,
 			toolKind: ev.Kind, running: true, started: time.Now(),
 		})
-		m.rend.spinner = m.spin.View()
 
 	case agent.ToolEndEvent:
 		for i := len(m.items) - 1; i >= 0; i-- {
@@ -651,6 +772,7 @@ func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 	case agent.ApprovalEvent:
 		e := ev
 		m.approval = &e
+		m.apSel = 0
 		m.layout()
 
 	case agent.UsageEvent:
@@ -658,24 +780,46 @@ func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 		m.context = ev.ContextTokens
 
 	case agent.CompactEvent:
-		m.push(&item{kind: itemNotice, text: fmt.Sprintf("── context compacted: %d messages, %s tokens → handoff note ──", ev.BeforeMessages, formatTokens(ev.BeforeTokens))})
+		m.push(&item{kind: itemDivider, text: fmt.Sprintf("context compacted · %d messages, %s tokens → a handoff note", ev.BeforeMessages, formatTokens(ev.BeforeTokens))})
 
 	case agent.ErrorEvent:
+		m.turnFailed = true
 		m.push(&item{kind: itemError, text: ev.Err.Error()})
 
 	case agent.DoneEvent:
 		if ev.Interrupted {
-			m.push(&item{kind: itemNotice, text: "── interrupted ──"})
+			m.push(&item{kind: itemDivider, text: "interrupted · tell caveira what to do instead", warn: true})
+		} else if !m.compacting && !m.turnFailed {
+			m.push(&item{kind: itemDivider, quiet: true, text: m.turnSummary()})
 		}
 	}
 	return m, next
 }
 
+// turnSummary is the line that closes a turn: how long it took, how many
+// tools it ran, and what it cost.
+func (m *Model) turnSummary() string {
+	parts := []string{"worked for " + formatDuration(max(time.Since(m.turnStart).Truncate(time.Second), time.Second))}
+	switch m.turnTools {
+	case 0:
+	case 1:
+		parts = append(parts, "1 tool call")
+	default:
+		parts = append(parts, fmt.Sprintf("%d tool calls", m.turnTools))
+	}
+	if d := m.totals.CostUSD - m.turnCost; d > 0 {
+		parts = append(parts, formatCost(d))
+	}
+	return strings.Join(parts, " · ")
+}
+
 func (m *Model) turnEnded() (tea.Model, tea.Cmd) {
 	m.running = false
+	m.compacting = false
 	m.cancel = nil
 	m.approval = nil
 	m.notice = ""
+	m.endThinking()
 	for _, it := range m.items {
 		if it.kind == itemTool && it.running {
 			it.running = false
@@ -700,11 +844,11 @@ func (m *Model) turnEnded() (tea.Model, tea.Cmd) {
 // shell runs a `!command` typed by the user, shown like a tool call and
 // recorded in the conversation so the model knows what happened.
 func (m *Model) shell(command string) tea.Cmd {
-	it := &item{kind: itemTool, toolName: "bash", preview: command, toolKind: tools.KindExecute, running: true, started: time.Now()}
+	it := &item{kind: itemTool, toolName: "bash", preview: command, toolKind: tools.KindExecute, running: true, started: time.Now(), user: true}
 	m.push(it)
 	m.follow = true
 	reg := m.agent.Tools
-	return tea.Batch(m.spin.Tick, func() tea.Msg {
+	return tea.Batch(m.startTicking(), func() tea.Msg {
 		args := fmt.Sprintf(`{"command": %q}`, command)
 		return shellDoneMsg{it: it, result: reg.Run(context.Background(), "bash", []byte(args))}
 	})
