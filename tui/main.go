@@ -55,6 +55,7 @@ func run() error {
 		showHelp   bool
 		showPrompt bool
 		listSess   bool
+		dev        bool
 	)
 	fs.BoolVar(&printMode, "p", false, "")
 	fs.BoolVar(&printMode, "print", false, "")
@@ -74,6 +75,7 @@ func run() error {
 	fs.BoolVar(&showHelp, "help", false, "")
 	fs.BoolVar(&showPrompt, "show-system-prompt", false, "")
 	fs.BoolVar(&listSess, "sessions", false, "")
+	fs.BoolVar(&dev, "dev", false, "")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "caveira:", err)
 		fmt.Fprint(os.Stderr, usage)
@@ -128,18 +130,23 @@ func run() error {
 	// and the session to continue. The TUI runs it behind its intro.
 	load := func() (ui.Options, error) {
 		cfg, cfgErr := config.Load(workDir)
-		if model != "" {
-			cfg.Model = model
+		var devErr error
+		if dev {
+			devErr = applyDev(&cfg, model, baseURL)
+		} else {
+			if model != "" {
+				cfg.Model = model
+			}
+			if baseURL != "" {
+				cfg.BaseURL = strings.TrimRight(baseURL, "/")
+			}
+			if apiKey != "" {
+				cfg.APIKey = apiKey
+				cfg.KeySource = "flag"
+			}
 		}
 		if effort != "" {
 			cfg.ReasoningEffort = effort
-		}
-		if baseURL != "" {
-			cfg.BaseURL = strings.TrimRight(baseURL, "/")
-		}
-		if apiKey != "" {
-			cfg.APIKey = apiKey
-			cfg.KeySource = "flag"
 		}
 		if confirm {
 			cfg.Confirm = true
@@ -156,7 +163,10 @@ func run() error {
 		}
 		if cfg.APIKey == "" && !isLocal(cfg.BaseURL) {
 			fatal = errors.New("no API key. Put ABLITERATION_API_KEY in your environment or in a .env.local in the project, " +
-				"or add \"api_key\" to " + config.Path())
+				"or add \"api_key\" to " + config.Path() + ". To try caveira on a local model instead, run it with --dev")
+		}
+		if devErr != nil {
+			fatal = devErr
 		}
 
 		client := llm.New(cfg.BaseURL, cfg.APIKey)
@@ -189,6 +199,7 @@ func run() error {
 			Settings: cfg,
 			WorkDir:  workDir,
 			Branch:   gitBranch(workDir),
+			Dev:      dev,
 			Version:  version,
 			Initial:  initial,
 			Resumed:  resumed,
@@ -218,13 +229,6 @@ func run() error {
 	}
 
 	return ui.Run(version, load)
-}
-
-func firstNonEmpty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 // runPrint is the non-interactive path: the reply streams to stdout, tool
@@ -310,7 +314,7 @@ func isLocal(baseURL string) bool {
 const usage = `caveira — a coding agent for abliterated models
 
 usage
-  caveira [flags] [prompt]
+  caveira [flags] [prompt]      (or cav, the same program)
 
   With no prompt, opens an interactive session in the current directory.
   With a prompt, opens the session and sends it as the first message.
@@ -322,6 +326,9 @@ flags
       --base-url <url>   OpenAI-compatible endpoint (default https://api.abliteration.ai/v1)
       --api-key <key>    API key (prefer the environment or a .env.local)
   -C, --cwd <dir>        work in this directory instead of the current one
+      --dev              use a model on this machine instead of the API: Ollama at
+                         localhost:11434, or CAVEIRA_DEV_BASE_URL; the model is -m,
+                         CAVEIRA_DEV_MODEL, or a small installed one (llama3.2:1b first)
       --confirm          ask before running commands or changing files
   -c, --continue         continue the latest session for this directory
       --resume <id>      continue a specific session

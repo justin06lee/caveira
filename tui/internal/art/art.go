@@ -1,8 +1,8 @@
-// Package art renders caveira's pictures as terminal cells: the pixel skull
-// mascot and the banner's pixel lettering, both as half-block characters so
-// each cell holds two pixels stacked vertically. In colour, every cell
-// carries a true-colour foreground and background; in mono, the half-blocks
-// alone draw the shape in the terminal's own foreground colour.
+// Package art renders caveira's pixel skull mascot as terminal cells:
+// half-block characters, so each cell holds two pixels stacked vertically.
+// In colour, every cell carries a true-colour foreground and background; in
+// mono, the half-blocks alone draw the shape in the terminal's own
+// foreground colour.
 package art
 
 import (
@@ -116,26 +116,3 @@ func hash(x, y int) float64 {
 	h ^= h >> 16
 	return float64(h&0xffff) / 0xffff
 }
-
-// Wordmark draws the banner's "caveira" lettering at an integer scale in
-// the given colour, or in the terminal's foreground when o.Mono is set.
-// Scale 1 is 4 rows tall.
-func Wordmark(scale int, r, g, b uint8, o Options) []string {
-	scale = max(scale, 1)
-	w := len(wordmark[0]) * scale
-	h := len(wordmark) * scale
-	bm := &Bitmap{W: w, H: h, Pix: make([]Pixel, w*h)}
-	p := rgb(r, g, b)
-	for y := 0; y < h; y++ {
-		src := wordmark[y/scale]
-		for x := 0; x < w; x++ {
-			if src[x/scale] != ' ' {
-				bm.Pix[y*w+x] = p
-			}
-		}
-	}
-	return Render(bm, o)
-}
-
-// WordmarkWidth is the width in cells at a scale.
-func WordmarkWidth(scale int) int { return len(wordmark[0]) * max(scale, 1) }

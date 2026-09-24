@@ -18,7 +18,7 @@ The terminal client is the first of three planned clients. A desktop app and a w
 ## Quick start
 
 ```sh
-make                                   # builds and installs `caveira` into ~/.local/bin
+make                                   # builds and installs `caveira` (and `cav`) into ~/.local/bin
 echo 'ABLITERATION_API_KEY=ak_…' > .env.local   # or export it, or put it in ~/.caveira/config.json
 cd your/project && caveira
 ```
@@ -29,7 +29,7 @@ caveira talks to [abliteration.ai](https://abliteration.ai) out of the box, thro
 caveira --base-url http://localhost:11434/v1 --model llama3.2:latest
 ```
 
-It opens on the pixel skull, dissolving in while everything loads, with the prompt centred under it; the first message slides the prompt to the bottom and the conversation takes over. Type what you want. `esc` interrupts, `/help` lists the commands, `caveira -c` continues the last session for the directory, and `caveira -p "…"` runs a task without the interface and prints the result. The full reference, including configuration, is in [tui/README.md](tui/README.md).
+Run `caveira`, or `cav` for short. It opens on the pixel skull, dissolving in while everything loads, with the prompt centred under it; the first message slides the prompt to the bottom and the conversation takes over. Type what you want. `esc` interrupts, `/help` lists the commands, `caveira -c` continues the last session for the directory, `caveira -p "…"` runs a task without the interface and prints the result, and `caveira --dev` runs against a model on your machine (Ollama) instead of the API, for working on caveira itself. The full reference, including configuration, is in [tui/README.md](tui/README.md).
 
 ## How it works
 
@@ -45,4 +45,4 @@ Conversations are saved after every turn under `~/.caveira/sessions/`, and when 
 - `cell-editor/` is a web editor for designing TUI screens as terminal cell art: lipgloss boxes, text, lines and paint, saved to `tui/designs/` as JSON, ANSI and plain text with a lipgloss Go export. Run it with `cd cell-editor && bun run dev`. See [cell-editor/README.md](cell-editor/README.md).
 - `assets/` holds the banner and the app icon: a softly rounded, pure-black skull eye socket on an off-white (`#F8F7F2`) squircle.
 
-`make` builds both the client and the editor and installs `caveira`; `make update` swaps in a fresh build; `make test` runs the Go tests. Set `BINDIR` to install somewhere other than `~/.local/bin`.
+`make` builds both the client and the editor and installs `caveira` with a `cav` link beside it; `make update` swaps in a fresh build; `make test` runs the Go tests. Set `BINDIR` to install somewhere other than `~/.local/bin`.

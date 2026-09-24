@@ -28,7 +28,4 @@ func main() {
 		}
 		fmt.Println()
 	}
-	for _, l := range art.Wordmark(1, 0xD9, 0xD2, 0xC3, art.Options{}) {
-		fmt.Println(l)
-	}
 }

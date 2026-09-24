@@ -25,9 +25,13 @@ const (
 	footerRows = 1
 )
 
-// inputFrame is the box around the input: border, one column of padding,
-// and the two-cell prompt mark.
-const inputChrome = 2 + 2 + 2
+// inputChrome is how much narrower the text is than the box around it:
+// a border and a column of padding on each side, and the two-cell prompt
+// mark. inputLeft is the part of that on the left, where the text starts.
+const (
+	inputChrome = 2 + 2 + 2
+	inputLeft   = 1 + 1 + 2
+)
 
 // layout recomputes the sizes of the moving parts. Called on resize, on
 // every input change (the box grows with its content), and when an approval
@@ -119,7 +123,7 @@ func (m *Model) View() tea.View {
 	v.Content = indent(m.vp.View()+"\n"+strings.Join(bottom, "\n"), margin)
 	if m.approval == nil && m.input.Focused() {
 		if cur := m.input.Cursor(); cur != nil {
-			cur.Position.X += sideMargin + inputChrome
+			cur.Position.X += sideMargin + inputLeft
 			cur.Position.Y += boxY + 1
 			v.Cursor = cur
 		}
@@ -308,6 +312,9 @@ func (m *Model) footerInfo() string {
 	}
 	sep := th.Faint.Render(" · ")
 	parts := []string{th.Muted.Render(m.agent.Model)}
+	if m.dev {
+		parts[0] = devBadge() + " " + parts[0]
+	}
 	if m.agent.Effort != "" {
 		parts = append(parts, th.Faint.Render(m.agent.Effort))
 	}
@@ -321,6 +328,12 @@ func (m *Model) footerInfo() string {
 		parts = append(parts, th.Faint.Render(formatCost(m.totals.CostUSD)))
 	}
 	return strings.Join(parts, sep) + " "
+}
+
+// devBadge marks a session running on a local model, so it is never
+// mistaken for the real thing.
+func devBadge() string {
+	return lipgloss.NewStyle().Foreground(th.warn).Bold(true).Render("DEV")
 }
 
 // contextMeter is a small bar of how full the context window is.

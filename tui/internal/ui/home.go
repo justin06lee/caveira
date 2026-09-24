@@ -7,15 +7,14 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/justin06lee/caveira/tui/internal/art"
 )
 
-// The home screen is the empty session: the skull, the wordmark, and the
+// The home screen is the empty session: the skull, the name, and the
 // prompt centred under them. It is also the boot screen: while settings,
 // git state, and the last session load on another goroutine, the skull
-// dissolves in pixel by pixel and the wordmark wipes in beside the empty
+// dissolves in pixel by pixel and the name types itself in above the empty
 // spot where the box will be, so the cut to a usable screen moves nothing.
 // The first prompt slides the box to the bottom as the skull dissolves out,
 // and the transcript takes over.
@@ -43,11 +42,8 @@ func splashTicker() tea.Cmd {
 type homeFrame struct {
 	scale     int // mascot scale; 0 leaves it out
 	mascotTop int
-	mascotX   int  // column, inside the side margin
-	lockup    bool // small skull beside the wordmark instead of above it
-	wordTop   int  // the pixel wordmark, four rows
-	wordX     int
-	wordmark  bool // false: a one-line text title instead
+	mascotX   int // column, inside the side margin
+	titleY    int
 	tagY      int
 	boxY      int
 	boxW      int
@@ -56,64 +52,39 @@ type homeFrame struct {
 	tipsY     int
 }
 
-// homeLayout stacks a big skull over the wordmark when there is height for
-// it, sets a small one beside the wordmark when there is not, and falls
-// back to a plain title on very small terminals.
+// homeTitle is the name as the home screen and the session card set it:
+// capitals, spaced out, in bone.
+const homeTitle = "C A V E I R A"
+
+// homeLayout stacks the skull over the title, as large as the height
+// allows, and leaves the skull out on very small terminals.
 func (m *Model) homeLayout() homeFrame {
 	inner := m.inner()
 	var f homeFrame
-	wordW := art.WordmarkWidth(1)
-	f.wordmark = inner >= wordW+4
-	titleRows := 1
-	if f.wordmark {
-		titleRows = 4
-	}
 	boxRows := m.input.Height() + 2
-	// title, gap, tagline, two gaps, box, info, gap, tips
-	fixed := titleRows + 1 + 1 + 2 + boxRows + 1 + 1 + 1
-	for _, s := range []struct{ scale, minH int }{{3, 46}, {2, 30}} {
+	// title, tagline, two gaps, box, info, gap, tips
+	fixed := 1 + 1 + 2 + boxRows + 1 + 1 + 1
+	for _, s := range []struct{ scale, minH int }{{3, 40}, {2, 28}, {1, 20}} {
 		if m.height >= s.minH && inner >= art.MascotWidth(s.scale)+4 {
 			f.scale = s.scale
 			break
 		}
 	}
-	lockupW := art.MascotWidth(1) + 4 + wordW
-	if f.scale == 0 && f.wordmark && inner >= lockupW+4 && m.height >= fixed+2+2 {
-		f.scale, f.lockup = 1, true
-	}
-
 	total := fixed
-	switch {
-	case f.lockup:
-		total += art.MascotHeight(1) - titleRows
-	case f.scale > 0:
+	if f.scale > 0 {
 		total += art.MascotHeight(f.scale) + 1
 	}
 	// Sit a little above the middle, where the eye expects the centre.
 	y := max(int(float64(m.height-total)*0.42), 0)
 	center := func(w int) int { return (inner - w) / 2 }
-	switch {
-	case f.lockup:
-		f.mascotTop = y
-		f.mascotX = center(lockupW)
-		f.wordTop = y + (art.MascotHeight(1)-titleRows)/2
-		f.wordX = f.mascotX + art.MascotWidth(1) + 4
-		y += art.MascotHeight(1) + 1
-	case f.scale > 0:
+	if f.scale > 0 {
 		f.mascotTop = y
 		f.mascotX = center(art.MascotWidth(f.scale))
 		y += art.MascotHeight(f.scale) + 1
-		fallthrough
-	default:
-		f.wordTop = y
-		f.wordX = center(wordW)
-		if !f.wordmark {
-			f.wordX = center(7)
-		}
-		y += titleRows + 1
 	}
-	f.tagY = y
-	y += 1 + 2
+	f.titleY = y
+	f.tagY = y + 1
+	y += 2 + 2
 	f.boxY = y
 	f.boxW = min(inner, homeBoxMax)
 	f.boxX = center(f.boxW)
@@ -254,25 +225,11 @@ func (m *Model) renderHome(t float64) (string, *tea.Cursor) {
 		}
 	}
 
-	// The wordmark wipes in from the left, and out the same way.
-	if reveal := easeOut(span(12, 38)) * (1 - math.Min(e*1.8, 1)); reveal > 0 {
-		if f.wordmark {
-			w := art.WordmarkWidth(1)
-			cols := int(math.Round(reveal * float64(w)))
-			word := art.Wordmark(1, 0xDA, 0xDC, 0xCB, art.Options{Mono: th.mascot != art.MascotColor})
-			for i, l := range word {
-				// The lockup shares rows with the skull: draw after it.
-				y := f.wordTop + i
-				if f.lockup && y >= 0 && y < len(lines) {
-					lines[y] += strings.Repeat(" ", max(f.wordX-lipgloss.Width(lines[y]), 0)) + ansi.Truncate(l, cols, "")
-					continue
-				}
-				put(y, f.wordX, ansi.Truncate(l, cols, ""))
-			}
-		} else {
-			title := th.Bone.Bold(true).Render("caveira")
-			put(f.wordTop, f.wordX, ansi.Truncate(title, int(reveal*7+0.5), ""))
-		}
+	// The name types itself in under the skull, and backs out the same way.
+	if reveal := easeOut(span(10, 34)) * (1 - math.Min(e*1.8, 1)); reveal > 0 {
+		n := len([]rune(homeTitle))
+		shown := string([]rune(homeTitle)[:int(math.Round(reveal*float64(n)))])
+		put(f.titleY, center(n), th.Bone.Bold(true).Render(shown))
 	}
 
 	if t == 0 && frame >= 30 {
@@ -302,7 +259,7 @@ func (m *Model) renderHome(t float64) (string, *tea.Cursor) {
 			m.renderHomeInfo(lines, f)
 			if m.input.Focused() {
 				if c := m.input.Cursor(); c != nil {
-					c.Position.X += sideMargin + boxX + inputChrome
+					c.Position.X += sideMargin + boxX + inputLeft
 					c.Position.Y += boxY + 1
 					cur = c
 				}
@@ -329,6 +286,9 @@ func (m *Model) renderHomeInfo(lines []string, f homeFrame) {
 	inner := m.inner()
 	if m.agent != nil {
 		left := th.Muted.Render(m.agent.Model)
+		if m.dev {
+			left = devBadge() + " " + left
+		}
 		if m.agent.Effort != "" {
 			left += th.Faint.Render(" · " + m.agent.Effort)
 		}
@@ -374,7 +334,7 @@ func (m *Model) pushHeader() {
 	if len(m.items) > 0 && m.items[0].kind == itemHeader {
 		return
 	}
-	h := &headerInfo{version: m.version, dir: m.workDir, branch: m.branch, confirm: m.cfg.Confirm}
+	h := &headerInfo{version: m.version, dir: m.workDir, branch: m.branch, confirm: m.cfg.Confirm, dev: m.dev}
 	if m.agent != nil {
 		h.model, h.effort = m.agent.Model, m.agent.Effort
 	}
