@@ -29,7 +29,9 @@ type Options struct {
 	Settings config.Settings
 	WorkDir  string
 	// Branch is the git branch checked out in WorkDir, if any.
-	Branch  string
+	Branch string
+	// Dev marks a session on a local model (caveira --dev).
+	Dev     bool
 	Version string
 	// Initial, when set, is sent as the first message.
 	Initial string
@@ -60,6 +62,7 @@ type Model struct {
 	workDir string
 	branch  string
 	version string
+	dev     bool
 
 	width, height int
 	vp            viewport.Model
@@ -202,6 +205,7 @@ func (m *Model) Apply(o Options) {
 	m.cfg = o.Settings
 	m.workDir = o.WorkDir
 	m.branch = o.Branch
+	m.dev = o.Dev
 	if o.Version != "" {
 		m.version = o.Version
 	}

@@ -319,3 +319,87 @@ func TestFramesFitEverySize(t *testing.T) {
 		}
 	}
 }
+
+// The terminal cursor sits where the next character goes: on the first
+// cell of the placeholder when the box is empty, after the text once
+// something is typed. Both the home screen and the session draw the box.
+func TestCursorSitsInTheText(t *testing.T) {
+	col := func(frame string, row int, s string) int {
+		line := []rune(plain(strings.Split(frame, "\n")[row]))
+		for i := range line {
+			if strings.HasPrefix(string(line[i:]), s) {
+				return i
+			}
+		}
+		return -1
+	}
+	m := testModel(t, 100, 40)
+	frame, cur := m.renderHome(0)
+	if want := col(frame, cur.Position.Y, "Ask caveira"); cur.Position.X != want {
+		t.Fatalf("home: cursor at column %d, placeholder starts at %d", cur.Position.X, want)
+	}
+	m.input.SetValue("hello")
+	frame, cur = m.renderHome(0)
+	if want := col(frame, cur.Position.Y, "hello") + 5; cur.Position.X != want {
+		t.Fatalf("home: cursor at column %d after typing, want %d", cur.Position.X, want)
+	}
+
+	s := session(t, 100, 40)
+	v := s.View()
+	if want := col(v.Content, v.Cursor.Position.Y, "Ask caveira"); v.Cursor.Position.X != want {
+		t.Fatalf("session: cursor at column %d, placeholder starts at %d", v.Cursor.Position.X, want)
+	}
+}
+
+// Your messages are bubbles against the right edge: quarter-cell corners
+// on half-row edges, never wider than the line, and a plain rounded outline
+// where the terminal cannot shade.
+func TestUserMessageIsABubbleOnTheRight(t *testing.T) {
+	long := strings.Repeat("make the retry logic back off exponentially ", 6)
+	for _, text := range []string{"hi", long, "two\nlines"} {
+		out := bubble(text, 90, th.bubble, th.text, th.muted)
+		lines := strings.Split(plain(out), "\n")
+		if !strings.Contains(lines[0], "▗") || !strings.Contains(lines[len(lines)-1], "▝") {
+			t.Fatalf("%q: no rounded edges:\n%s", text, plain(out))
+		}
+		for _, l := range lines {
+			if w := len([]rune(l)); w > 90 {
+				t.Fatalf("%q: bubble row %d wide in 90", text, w)
+			}
+		}
+		// Right-aligned: the body ends two cells of padding plus the tail
+		// column from the edge, and short messages start far to the right.
+		if text == "hi" && strings.Index(lines[1], "hi") < 80 {
+			t.Fatalf("short bubble not against the right edge: %q", lines[1])
+		}
+		if text == long && len([]rune(strings.TrimLeft(lines[1], " "))) > 90*3/4 {
+			t.Fatal("long bubble wider than three quarters of the line")
+		}
+	}
+	plainBox := bubble("hi", 90, nil, th.text, th.muted)
+	if !strings.Contains(plainBox, "╭") {
+		t.Fatal("no outline fallback without a fill colour")
+	}
+}
+
+// A --dev session says so everywhere the model is named, so a local model
+// is never mistaken for the API.
+func TestDevSessionIsBadged(t *testing.T) {
+	m := testModel(t, 110, 40)
+	m.dev = true
+	home, _ := m.renderHome(0)
+	if !strings.Contains(plain(home), "DEV abliterated-model") {
+		t.Fatal("home info row missing the DEV badge")
+	}
+	s := session(t, 110, 60)
+	s.dev = true
+	s.items = s.items[1:] // drop the card built without dev
+	s.pushHeader()
+	s.layout()
+	frame := s.View().Content
+	dump(t, "session-dev", frame)
+	p := plain(frame)
+	if !strings.Contains(p, "DEV local model") || !strings.Contains(p, "DEV abliterated-model") {
+		t.Fatal("session card or footer missing the DEV badge")
+	}
+}

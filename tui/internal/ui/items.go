@@ -67,7 +67,7 @@ func (it *item) invalidate() { it.cacheWidth = 0 }
 
 type headerInfo struct {
 	version, model, effort, dir, branch string
-	confirm                             bool
+	confirm, dev                        bool
 }
 
 // renderer draws items. It carries the state that changes how an item looks
@@ -168,13 +168,16 @@ func indent(s, pad string) string {
 // beside what this session is running with.
 func (r *renderer) renderHeader(it *item) string {
 	h := it.header
-	title := th.Bone.Bold(true).Render("caveira")
+	title := th.Bone.Bold(true).Render(homeTitle)
 	if h.version != "" && h.version != "dev" {
 		title += th.Faint.Render("  " + h.version)
 	}
 	model := th.Text.Render(h.model)
 	if h.effort != "" {
 		model += th.Muted.Render(" · " + h.effort + " effort")
+	}
+	if h.dev {
+		model += th.Muted.Render(" · ") + devBadge() + th.Muted.Render(" local model")
 	}
 	dir := th.Text.Render(shortPath(h.dir))
 	if h.branch != "" {
@@ -230,30 +233,11 @@ func (r *renderer) renderHeader(it *item) string {
 
 // ---- user ----
 
-// renderUser draws your message as a shaded block with an ember edge, so
-// turns are easy to find when scrolling back.
+// renderUser draws your message as a chat bubble on the right, so your
+// side of the conversation is easy to find when scrolling back.
 func (r *renderer) renderUser(it *item) string {
 	text := strings.ReplaceAll(strings.TrimRight(it.text, "\n"), "\t", "    ")
-	wrapped := lipgloss.Wrap(text, max(r.width-4, 10), "")
-	bar := lipgloss.NewStyle().Foreground(th.accent)
-	fill := lipgloss.NewStyle().Foreground(th.text)
-	if th.surface != nil {
-		bar = bar.Background(th.surface)
-		fill = fill.Background(th.surface)
-	}
-	fill = fill.Width(r.width - 1)
-	line := func(s string) string { return bar.Render("▌") + fill.Render("  "+s) }
-	var out []string
-	if th.surface != nil {
-		out = append(out, line(""))
-	}
-	for _, l := range strings.Split(wrapped, "\n") {
-		out = append(out, line(l))
-	}
-	if th.surface != nil {
-		out = append(out, line(""))
-	}
-	return strings.Join(out, "\n")
+	return bubble(text, r.width, th.bubble, th.text, th.muted)
 }
 
 // ---- assistant ----
