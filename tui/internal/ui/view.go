@@ -2,55 +2,53 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-
-	"github.com/justin06lee/caveira/tui/internal/art"
 )
+
+// The session screen, top to bottom: the transcript, a gap, the status line
+// (what the model is doing), the input box or an approval card, and the
+// footer (keys on the left, model and spend on the right). The command
+// palette takes the footer's place while you type a slash command.
 
 const (
-	headerLines = 5 // four rows of wordmark, one blank
-	statusLines = 1
-	sideMargin  = 1
+	sideMargin = 1
+	gapLines   = 1
+	statusRows = 1
+	footerRows = 1
 )
 
-// button is a clickable region in the header. They are placeholders for
-// now: clicking one says so.
-type button struct {
-	label          string
-	x0, x1, y0, y1 int
-}
+// inputFrame is the box around the input: border, one column of padding,
+// and the two-cell prompt mark.
+const inputChrome = 2 + 2 + 2
 
 // layout recomputes the sizes of the moving parts. Called on resize, on
 // every input change (the box grows with its content), and when an approval
-// box replaces the input.
+// card replaces the input.
 func (m *Model) layout() {
 	if m.width == 0 || m.height == 0 {
 		return
 	}
-	inner := m.width - 2*sideMargin
-	if inner < 20 {
-		inner = 20
+	inner := m.inner()
+	switch m.phase {
+	case phaseHero, phaseSplash:
+		m.input.SetWidth(m.homeLayout().boxW - inputChrome)
+	case phaseSession:
+		m.input.SetWidth(inner - inputChrome)
 	}
-	if m.phase == phaseHero {
-		m.input.SetWidth(m.heroLayout().boxW - styleInputBox.GetHorizontalFrameSize())
-	} else if m.phase == phaseSession {
-		m.input.SetWidth(inner - styleInputBox.GetHorizontalFrameSize())
-	}
-	bottom := m.bottomHeight()
-	vh := m.height - headerLines - statusLines - bottom
-	if vh < 3 {
-		vh = 3
-	}
+	vh := max(m.height-m.bottomHeight(), 1)
 	m.vp.SetWidth(inner)
 	m.vp.SetHeight(vh)
-	if m.rend.width != inner {
+	if m.rend.width != inner || m.rend.md == nil {
 		m.rend.width = inner
-		m.rend.md = newMarkdown(inner - 4)
+		m.rend.md = newMarkdown(inner - 2)
 		for _, it := range m.items {
 			it.invalidate()
 		}
@@ -58,11 +56,22 @@ func (m *Model) layout() {
 	}
 }
 
+func (m *Model) inner() int { return max(m.width-2*sideMargin, 20) }
+
+// bottomHeight is everything under the transcript.
 func (m *Model) bottomHeight() int {
+	h := gapLines + statusRows
 	if m.approval != nil {
-		return lipgloss.Height(m.renderApproval())
+		h += lipgloss.Height(m.renderApproval())
+	} else {
+		h += m.input.Height() + 2
 	}
-	return m.input.Height() + styleInputBox.GetVerticalFrameSize()
+	if p := m.renderPalette(m.inner()); p != "" {
+		h += lipgloss.Height(p)
+	} else {
+		h += footerRows
+	}
+	return h
 }
 
 func (m *Model) View() tea.View {
@@ -70,50 +79,48 @@ func (m *Model) View() tea.View {
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	v.WindowTitle = "caveira"
+	if m.workDir != "" {
+		v.WindowTitle = "caveira · " + filepath.Base(m.workDir)
+	}
 	if m.width == 0 {
 		return v
 	}
 
 	switch m.phase {
-	case phaseSplash:
-		v.Content = m.renderSplash()
-		return v
-	case phaseHero:
-		content, cur := m.renderHero(0)
+	case phaseSplash, phaseHero:
+		content, cur := m.renderHome(0)
 		v.Content = content
 		v.Cursor = cur
 		return v
 	case phaseSlide:
-		content, _ := m.renderHero(m.slideT)
+		content, _ := m.renderHome(m.slideT)
 		v.Content = content
 		return v
 	}
 
 	m.refreshTranscript()
-	header := m.renderHeader()
-	transcript := m.vp.View()
-	status := m.renderStatus()
-	var bottom string
+	inner := m.inner()
+	var bottom []string
+	bottom = append(bottom, strings.Repeat("\n", gapLines-1))
+	bottom = append(bottom, m.renderStatus(inner))
+	boxY := m.vp.Height() + gapLines + statusRows
 	if m.approval != nil {
-		bottom = m.renderApproval()
+		bottom = append(bottom, m.renderApproval())
 	} else {
-		bottom = m.renderInputBox(m.width - 2*sideMargin)
+		bottom = append(bottom, m.renderInputBox(inner))
+	}
+	if p := m.renderPalette(inner); p != "" {
+		bottom = append(bottom, p)
+	} else {
+		bottom = append(bottom, m.renderFooter(inner))
 	}
 
 	margin := strings.Repeat(" ", sideMargin)
-	indent := func(s string) string {
-		return margin + strings.ReplaceAll(s, "\n", "\n"+margin)
-	}
-	v.Content = lipgloss.JoinVertical(lipgloss.Left,
-		indent(header),
-		indent(transcript),
-		indent(status),
-		indent(bottom),
-	)
+	v.Content = indent(m.vp.View()+"\n"+strings.Join(bottom, "\n"), margin)
 	if m.approval == nil && m.input.Focused() {
 		if cur := m.input.Cursor(); cur != nil {
-			cur.Position.X += sideMargin + 2 + 1 // margin, border+padding, prompt mark
-			cur.Position.Y += headerLines + m.vp.Height() + statusLines + 1
+			cur.Position.X += sideMargin + inputChrome
+			cur.Position.Y += boxY + 1
 			v.Cursor = cur
 		}
 	}
@@ -140,182 +147,269 @@ func (m *Model) refreshTranscript() {
 	}
 }
 
-// renderHeader is the wordmark on the left, the model and directory on the
-// top right, and the two placeholder buttons under them. Always headerLines
-// rows, the last one blank.
-func (m *Model) renderHeader() string {
-	inner := m.width - 2*sideMargin
-	rows := make([]string, headerLines)
-	m.buttons = m.buttons[:0]
+// ---- status ----
 
-	// Left: the pixel wordmark, or plain text when there is no room.
-	var left []string
-	leftW := art.WordmarkWidth(1)
-	if inner >= leftW+24 {
-		left = art.Wordmark(1, 0xD9, 0xD2, 0xC3, art.Options{})
-	} else {
-		left = []string{"", styleTitle.Render("caveira"), "", ""}
-		leftW = 7
+// activity is what the model is doing right now, in a few words.
+func (m *Model) activity() string {
+	if m.compacting {
+		return "Compacting the conversation"
 	}
-
-	// Right: info line, then the buttons.
-	info := ""
-	if m.agent != nil {
-		info = m.agent.Model
-		if m.agent.Effort != "" {
-			info += "  ·  effort " + m.agent.Effort
-		}
-		if m.cfg.Confirm {
-			info += "  ·  confirm"
-		}
-		if m.workDir != "" {
-			info += "  ·  " + shortPath(m.workDir)
-		}
-	}
-	info = styleDim.Render(info)
-	if lipgloss.Width(info) > inner-leftW-2 {
-		info = styleDim.Render(shortPath(m.workDir))
-	}
-
-	btnOptions := styleButton.Render("options")
-	btnTree := styleButton.Render("▤")
-	btnW := lipgloss.Width(btnOptions) + 1 + lipgloss.Width(btnTree)
-	showButtons := inner >= leftW+btnW+4
-
-	optLines := strings.Split(btnOptions, "\n")
-	treeLines := strings.Split(btnTree, "\n")
-
-	for i := 0; i < headerLines-1; i++ {
-		l := ""
-		if i < len(left) {
-			l = left[i]
-		}
-		lw := leftW
-		if i >= len(left) || left[i] == "" {
-			lw = 0
-			if i < len(left) {
-				lw = lipgloss.Width(left[i])
-			}
-		}
-		right := ""
+	for i := len(m.items) - 1; i >= 0; i-- {
+		it := m.items[i]
 		switch {
-		case i == 0:
-			right = info
-		case showButtons && i-1 < len(optLines):
-			right = optLines[i-1] + " " + treeLines[i-1]
+		case it.kind == itemTool && it.running:
+			return toolActivity(it)
+		case it.kind == itemAssistant && it == m.pendingA:
+			return "Writing"
+		case it.kind == itemReasoning && it.running:
+			return "Thinking"
+		case it.kind == itemUser:
+			return "Thinking"
 		}
-		gap := inner - lw - lipgloss.Width(right)
-		if gap < 1 {
-			right = ""
-			gap = inner - lw
-		}
-		rows[i] = l + strings.Repeat(" ", max(gap, 0)) + right
 	}
-	if showButtons {
-		x1 := sideMargin + inner
-		treeW := lipgloss.Width(treeLines[0])
-		optW := lipgloss.Width(optLines[0])
-		m.buttons = append(m.buttons,
-			button{label: "file tree", x0: x1 - treeW, x1: x1, y0: 1, y1: 4},
-			button{label: "options", x0: x1 - treeW - 1 - optW, x1: x1 - treeW - 1, y0: 1, y1: 4},
-		)
-	}
-	return strings.Join(rows, "\n")
+	return "Thinking"
 }
 
-func (m *Model) renderStatus() string {
-	inner := m.width - 2*sideMargin
-	var left string
+func toolActivity(it *item) string {
+	arg := it.preview
+	switch it.toolName {
+	case "read_file":
+		return "Reading " + filepath.Base(arg)
+	case "edit_file":
+		return "Editing " + filepath.Base(arg)
+	case "write_file":
+		return "Writing " + filepath.Base(arg)
+	case "bash":
+		f := strings.Fields(arg)
+		switch {
+		case len(f) > 1 && !strings.HasPrefix(f[1], "-") && len(f[1]) <= 12 && !strings.ContainsAny(f[1], "/.&|;"):
+			return "Running " + f[0] + " " + f[1]
+		case len(f) > 0:
+			return "Running " + f[0]
+		}
+		return "Running a command"
+	case "grep":
+		return "Searching"
+	case "glob":
+		return "Finding files"
+	case "list_dir":
+		return "Looking around"
+	}
+	return "Working"
+}
+
+func (m *Model) renderStatus(width int) string {
 	switch {
 	case m.approval != nil:
-		left = styleBrass.Render("waiting for your decision")
+		return th.Warn.Render("◆ ") + th.Text.Render("Waiting for your go-ahead")
 	case m.running:
-		what := "thinking"
-		for i := len(m.items) - 1; i >= 0; i-- {
-			it := m.items[i]
-			if it.kind == itemTool && it.running {
-				what = it.toolName
-				break
-			}
-			if it.kind == itemAssistant && it.text != "" {
-				what = "writing"
-				break
-			}
+		line := th.Accent.Render(m.rend.spinner()) + " " + shimmer(m.activity()+"…", m.frame)
+		var meta []string
+		meta = append(meta, formatDuration(max(time.Since(m.turnStart).Truncate(time.Second), time.Second)))
+		if m.streamed > 0 {
+			meta = append(meta, "↓ "+formatTokens(m.streamed/4)+" tokens")
 		}
-		left = styleBrass.Render(m.spin.View()) + " " + styleDim.Render(what+"…") + styleSlate.Render("  esc to interrupt")
 		if m.queued != "" {
-			left += styleSlate.Render("  ·  1 message queued")
+			meta = append(meta, "1 message queued")
 		}
+		line += th.Faint.Render("  " + strings.Join(meta, " · "))
+		if m.notice != "" {
+			line += th.Faint.Render(" · ") + th.Warn.Render(m.notice)
+		}
+		return oneLineANSI(line, width)
 	case m.notice != "":
-		left = styleBrass.Render(m.notice)
-	default:
-		left = styleSlate.Render("enter send · alt+enter newline · / commands · ! shell · ctrl+c quit")
+		return th.Muted.Render(m.notice)
+	case !m.follow:
+		return th.Faint.Render("↓ more below · ") + th.Muted.Render("ctrl+end") + th.Faint.Render(" to jump back")
 	}
-	if m.notice != "" && m.running {
-		left = styleBrass.Render(m.notice)
-	}
-
-	var right string
-	if m.totals.Requests > 0 {
-		right = fmt.Sprintf("%s in · %s out · %s", formatTokens(m.totals.InputTokens), formatTokens(m.totals.OutputTokens), formatCost(m.totals.CostUSD))
-		if m.context > 0 && m.agent.ContextWindow > 0 {
-			pct := 100 * float64(m.context) / float64(m.agent.ContextWindow)
-			ctx := fmt.Sprintf("ctx %.0f%%", pct)
-			if pct >= 70 {
-				ctx = styleBrass.Render(ctx)
-			}
-			right = ctx + " · " + right
-		}
-		right = styleDim.Render(right)
-	}
-	gap := inner - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 1 {
-		right = ""
-		gap = 0
-	}
-	return left + strings.Repeat(" ", gap) + right
+	return ""
 }
+
+// shimmer draws text with a soft highlight sweeping across it.
+func shimmer(text string, frame int) string {
+	rs := []rune(text)
+	pos := float64(frame%(len(rs)+12)) - 6
+	var sb strings.Builder
+	for i, r := range rs {
+		d := math.Abs(float64(i) - pos)
+		k := math.Max(0, 1-d/4)
+		c := mix(th.muted, th.text, 0.35+0.65*k)
+		sb.WriteString(lipgloss.NewStyle().Foreground(c).Render(string(r)))
+	}
+	return sb.String()
+}
+
+// oneLineANSI cuts a styled line to a width.
+func oneLineANSI(s string, width int) string {
+	if lipgloss.Width(s) <= width {
+		return s
+	}
+	return lipgloss.NewStyle().MaxWidth(width).Render(s)
+}
+
+// ---- input ----
 
 // renderInputBox draws the prompt box at a given outer width.
 func (m *Model) renderInputBox(width int) string {
-	box := styleInputBox
-	if m.running {
-		box = styleInputBoxBusy
+	border := mix(th.line, th.muted, 0.35)
+	mark := th.Accent.Render("›")
+	switch {
+	case m.fatal != nil:
+		border = th.err
+	case m.running:
+		border = th.line
+		mark = th.Faint.Render("›")
 	}
-	mark := styleUserMark.Render("❯")
-	if m.running {
-		mark = styleSlate.Render("❯")
-	}
-	lines := m.input.Height()
-	marks := mark
-	for i := 1; i < lines; i++ {
-		marks += "\n" + " "
-	}
-	body := lipgloss.JoinHorizontal(lipgloss.Top, marks+" ", m.input.View())
-	return box.Width(width).Render(body)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(border).
+		Padding(0, 1).
+		Width(width)
+	marks := mark + strings.Repeat("\n", m.input.Height()-1)
+	return box.Render(lipgloss.JoinHorizontal(lipgloss.Top, marks+" ", m.input.View()))
 }
 
+// renderFooter is the row under the input: the keys that matter right now
+// on the left, the model and what the session has used on the right.
+func (m *Model) renderFooter(width int) string {
+	key := func(k, what string) string { return th.Muted.Render(k) + " " + th.Faint.Render(what) }
+	sep := th.Faint.Render("  ·  ")
+	var hints []string
+	switch {
+	case m.approval != nil:
+		hints = []string{key("↑↓", "choose"), key("enter", "confirm"), key("esc", "deny")}
+	case m.running:
+		hints = []string{key("esc", "interrupt"), key("enter", "queue a message")}
+	case m.input.Value() != "":
+		hints = []string{key("enter", "send"), key("alt+enter", "newline")}
+	default:
+		hints = []string{key("/", "commands"), key("!", "shell"), key("ctrl+t", "thinking"), key("ctrl+o", "output")}
+	}
+	left := "  " + strings.Join(hints, sep)
+
+	right := m.footerInfo()
+	if lipgloss.Width(left)+lipgloss.Width(right)+2 > width {
+		// Narrow: keep the info, drop hints from the end.
+		for len(hints) > 1 && lipgloss.Width("  "+strings.Join(hints, sep))+lipgloss.Width(right)+2 > width {
+			hints = hints[:len(hints)-1]
+		}
+		left = "  " + strings.Join(hints, sep)
+		if lipgloss.Width(left)+lipgloss.Width(right)+2 > width {
+			right = ""
+		}
+	}
+	gap := max(width-lipgloss.Width(left)-lipgloss.Width(right), 1)
+	return left + strings.Repeat(" ", gap) + right
+}
+
+func (m *Model) footerInfo() string {
+	if m.agent == nil {
+		return ""
+	}
+	sep := th.Faint.Render(" · ")
+	parts := []string{th.Muted.Render(m.agent.Model)}
+	if m.agent.Effort != "" {
+		parts = append(parts, th.Faint.Render(m.agent.Effort))
+	}
+	if m.cfg.Confirm {
+		parts = append(parts, th.Warn.Render("confirm"))
+	}
+	if m.context > 0 && m.agent.ContextWindow > 0 {
+		parts = append(parts, contextMeter(float64(m.context)/float64(m.agent.ContextWindow)))
+	}
+	if m.totals.Requests > 0 {
+		parts = append(parts, th.Faint.Render(formatCost(m.totals.CostUSD)))
+	}
+	return strings.Join(parts, sep) + " "
+}
+
+// contextMeter is a small bar of how full the context window is.
+func contextMeter(frac float64) string {
+	const cells = 8
+	frac = math.Min(math.Max(frac, 0), 1)
+	filled := int(math.Round(frac * cells))
+	if frac > 0 && filled == 0 {
+		filled = 1
+	}
+	st := th.Muted
+	switch {
+	case frac >= 0.9:
+		st = th.Err
+	case frac >= 0.7:
+		st = th.Warn
+	}
+	return st.Render(strings.Repeat("▰", filled)) + th.Line.Render(strings.Repeat("▱", cells-filled)) +
+		" " + st.Render(fmt.Sprintf("%.0f%%", frac*100))
+}
+
+// ---- approval ----
+
+var approvalChoices = []string{"Yes", "Yes, and don't ask again for %s this session", "No, and tell caveira what to do instead"}
+
+// renderApproval is the card that replaces the input while the agent waits
+// for a yes or no on a command or a file change.
 func (m *Model) renderApproval() string {
 	a := m.approval
 	if a == nil {
 		return ""
 	}
-	verb := "wants to run"
+	width := m.inner()
+	label := toolLabel(a.Name)
+	what := "wants to run a command"
 	if a.Kind.String() == "write" {
-		verb = "wants to change"
+		what = "wants to change a file"
 	}
-	head := styleEmber.Render("⚠ ") + styleToolName.Render(a.Name) + styleBody.Render(" "+verb+":")
-	preview := a.Preview
+	head := th.Title.Render(label) + th.Text.Render(" "+what)
+
+	preview := strings.TrimSpace(a.Preview)
 	if preview == "" {
 		preview = "(see the transcript above)"
 	}
-	inner := m.width - 2*sideMargin - styleApprovalBox.GetHorizontalFrameSize()
-	body := lipgloss.Wrap(styleBrass.Render(preview), inner-2, "")
-	body = "  " + strings.ReplaceAll(body, "\n", "\n  ")
-	keys := styleKey.Render("[y]") + styleDim.Render(" run once   ") +
-		styleKey.Render("[a]") + styleDim.Render(" always allow "+a.Name+"   ") +
-		styleKey.Render("[n]") + styleDim.Render(" deny")
-	return styleApprovalBox.Width(m.width - 2*sideMargin).Render(head + "\n" + body + "\n" + keys)
+	if a.Name == "bash" {
+		preview = "$ " + preview
+	}
+	room := width - 8
+	pv := lipgloss.Wrap(preview, room, "")
+	pvLines := strings.Split(pv, "\n")
+	if len(pvLines) > 8 {
+		pvLines = append(pvLines[:7], "…")
+	}
+	for i, l := range pvLines {
+		pvLines[i] = "  " + th.Code.Render(l)
+	}
+
+	var choices []string
+	for i, c := range approvalChoices {
+		if strings.Contains(c, "%s") {
+			c = fmt.Sprintf(c, label)
+		}
+		num := fmt.Sprintf("%d. ", i+1)
+		if i == m.apSel {
+			choices = append(choices, th.Accent.Render("› ")+th.Title.Render(num+c))
+		} else {
+			choices = append(choices, "  "+th.Muted.Render(num+c))
+		}
+	}
+	body := head + "\n\n" + strings.Join(pvLines, "\n") + "\n\n" + strings.Join(choices, "\n")
+	return titledBox("Permission", body, width, th.warn)
+}
+
+// titledBox is a rounded box with a title set into its top edge.
+func titledBox(title, body string, width int, border color.Color) string {
+	b := lipgloss.RoundedBorder()
+	st := lipgloss.NewStyle().Foreground(border)
+	inner := width - 2
+	lines := strings.Split(body, "\n")
+	t := " " + title + " "
+	top := st.Render(b.TopLeft+b.Top) + lipgloss.NewStyle().Foreground(border).Bold(true).Render(t) +
+		st.Render(strings.Repeat(b.Top, max(inner-1-lipgloss.Width(t), 0))+b.TopRight)
+	out := []string{top}
+	pad := lipgloss.NewStyle().Width(inner - 2)
+	for _, l := range lines {
+		out = append(out, st.Render(b.Left)+" "+pad.Render(l)+" "+st.Render(b.Right))
+	}
+	out = append(out, st.Render(b.BottomLeft+strings.Repeat(b.Bottom, inner)+b.BottomRight))
+	return strings.Join(out, "\n")
 }
 
 func shortPath(p string) string {

@@ -1,35 +1,34 @@
 // Command preview prints the art to stdout, for eyeballing the renderer
-// outside the TUI: go run ./internal/art/preview -px 64
+// outside the TUI: go run ./internal/art/preview -scale 2
 package main
 
 import (
 	"flag"
 	"fmt"
-	"strings"
 
 	"github.com/justin06lee/caveira/tui/internal/art"
 )
 
 func main() {
-	px := flag.Int("px", 64, "skull size in pixels (cells wide; half as many rows)")
-	scan := flag.Bool("scanlines", true, "darken lower half-pixels")
-	grain := flag.Bool("grain", true, "per-cell brightness wobble")
+	scale := flag.Int("scale", 2, "mascot scale: 1 is 11 cells wide and 6 rows tall")
 	flag.Parse()
 
-	for _, l := range art.Render(art.Skull(*px), art.Options{Scanlines: *scan, Grain: *grain}) {
-		fmt.Println(l)
+	styles := []struct {
+		name  string
+		style art.MascotStyle
+	}{
+		{"colour", art.MascotColor},
+		{"mono, dark background", art.MascotMonoDark},
+		{"mono, light background", art.MascotMonoLight},
 	}
-	fmt.Println()
+	for _, s := range styles {
+		fmt.Println(s.name)
+		for _, l := range art.Mascot(*scale, art.MascotOptions{Style: s.style}) {
+			fmt.Println("  " + l)
+		}
+		fmt.Println()
+	}
 	for _, l := range art.Wordmark(1, 0xD9, 0xD2, 0xC3, art.Options{}) {
 		fmt.Println(l)
 	}
-	fmt.Println()
-	for _, l := range art.Wordmark(2, 0xD9, 0xD2, 0xC3, art.Options{}) {
-		fmt.Println(l)
-	}
-	fmt.Println()
-	for _, l := range art.PixelSkull(1) {
-		fmt.Println(l)
-	}
-	fmt.Println(strings.Repeat("─", 20))
 }

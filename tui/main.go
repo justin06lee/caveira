@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -124,7 +125,7 @@ func run() error {
 	}
 
 	// load does the startup work: settings, system prompt, client, agent,
-	// and the session to continue. The TUI runs it behind the splash.
+	// and the session to continue. The TUI runs it behind its intro.
 	load := func() (ui.Options, error) {
 		cfg, cfgErr := config.Load(workDir)
 		if model != "" {
@@ -187,6 +188,7 @@ func run() error {
 			Agent:    ag,
 			Settings: cfg,
 			WorkDir:  workDir,
+			Branch:   gitBranch(workDir),
 			Version:  version,
 			Initial:  initial,
 			Resumed:  resumed,
@@ -282,6 +284,18 @@ func runPrint(ag *agent.Agent, input string) error {
 	t := ag.Totals
 	fmt.Fprintf(os.Stderr, "── %d requests · %d in · %d out · $%.4f ──\n", t.Requests, t.InputTokens, t.OutputTokens, t.CostUSD)
 	return failed
+}
+
+// gitBranch is the branch checked out in dir, or "" outside a repository.
+func gitBranch(dir string) string {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func isLocal(baseURL string) bool {
