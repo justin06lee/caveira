@@ -20,8 +20,7 @@ type command struct {
 }
 
 var commands = []command{
-	{name: "/model", args: "[id]", desc: "show or switch the model", aliases: []string{"/m"}},
-	{name: "/models", desc: "list the models this key can use"},
+	{name: "/model", args: "[id]", desc: "choose the model and reasoning effort", aliases: []string{"/m", "/models"}},
 	{name: "/effort", args: "[level]", desc: "reasoning effort, none to max", aliases: []string{"/e"}},
 	{name: "/compact", desc: "summarize the conversation to free context"},
 	{name: "/cost", desc: "tokens and spend for this session", aliases: []string{"/usage"}},
@@ -33,7 +32,7 @@ var commands = []command{
 
 var keyHelp = [][2]string{
 	{"enter", "send"},
-	{"alt+enter", "newline (also ctrl+j, or end a line with \\)"},
+	{"shift+enter", "newline (also alt+enter or ctrl+j, or end a line with \\)"},
 	{"esc", "interrupt the model"},
 	{"ctrl+c", "interrupt, clear the input, or quit"},
 	{"ctrl+t", "show or hide thinking"},
@@ -142,40 +141,25 @@ func (m *Model) slash(text string) tea.Cmd {
 		m.dirty = true
 		m.pushHeader()
 
-	case "/model", "/m":
-		if len(args) == 0 {
-			m.push(&item{kind: itemPanel, title: "Model", rows: [][2]string{
-				{"model", m.agent.Model},
-				{"context", formatTokens(m.agent.ContextWindow) + " tokens"},
-				{"endpoint", m.cfg.BaseURL},
-			}})
-			return nil
-		}
+	case "/model", "/m", "/models":
 		if m.running {
 			m.push(&item{kind: itemError, text: "cannot switch models mid-turn"})
 			return nil
+		}
+		if len(args) == 0 {
+			return m.openPicker()
 		}
 		m.agent.SetModel(args[0], m.cfg.ContextWindow)
 		m.cfg.Model = args[0]
 		m.push(&item{kind: itemNotice, text: fmt.Sprintf("switched to %s · %s context", args[0], formatTokens(m.agent.ContextWindow))})
 
-	case "/models":
-		client := m.agent.Client
-		return func() tea.Msg {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-			models, err := client.Models(ctx)
-			return modelsMsg{models: models, err: err}
-		}
-
 	case "/effort", "/e":
-		if len(args) == 0 {
-			cur := m.agent.Effort
-			if cur == "" {
-				cur = "model default"
-			}
-			m.push(&item{kind: itemNotice, text: "reasoning effort: " + cur + "\nlevels: " + strings.Join(config.Efforts, " ")})
+		if m.running {
+			m.push(&item{kind: itemError, text: "cannot change the effort mid-turn"})
 			return nil
+		}
+		if len(args) == 0 {
+			return m.openPicker()
 		}
 		level := strings.ToLower(args[0])
 		if level == "default" || level == "auto" {

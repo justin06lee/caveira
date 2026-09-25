@@ -68,6 +68,7 @@ func (it *item) invalidate() { it.cacheWidth = 0 }
 type headerInfo struct {
 	version, model, effort, dir, branch string
 	confirm, dev                        bool
+	context                             int // the model's window, in tokens
 }
 
 // renderer draws items. It carries the state that changes how an item looks
@@ -172,10 +173,7 @@ func (r *renderer) renderHeader(it *item) string {
 	if h.version != "" && h.version != "dev" {
 		title += th.Faint.Render("  " + h.version)
 	}
-	model := th.Text.Render(h.model)
-	if h.effort != "" {
-		model += th.Muted.Render(" · " + h.effort + " effort")
-	}
+	model := th.Text.Render(h.model) + th.Muted.Render(" · "+effortName(h.effort)+" effort")
 	if h.dev {
 		model += th.Muted.Render(" · ") + devBadge() + th.Muted.Render(" local model")
 	}
@@ -184,7 +182,12 @@ func (r *renderer) renderHeader(it *item) string {
 		dir += th.Muted.Render("  on ") + th.Text.Render(h.branch)
 	}
 	tip := th.Faint.Render("/help for commands · ! runs a shell command")
-	if h.confirm {
+	switch {
+	case h.dev && h.context > 0 && h.context < 16_384:
+		// Ollama's default window barely fits the system prompt; past it
+		// the model silently loses the start of the conversation.
+		tip = th.Warn.Render(formatTokens(h.context)+" context") + th.Faint.Render(" · OLLAMA_CONTEXT_LENGTH=32768 gives it room")
+	case h.confirm:
 		tip = th.Faint.Render("asks before commands and edits · /help for more")
 	}
 	label := func(s string) string { return th.Faint.Render(fmt.Sprintf("%-7s", s)) }

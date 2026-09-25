@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,6 +22,8 @@ import (
 
 func testModel(t *testing.T, w, h int) *Model {
 	t.Helper()
+	// Turns save sessions under ~/.caveira; keep them out of the real one.
+	t.Setenv("HOME", t.TempDir())
 	m := New("v0.4.0", nil)
 	ag := agent.New(llm.New("http://localhost:1", ""), config.Settings{Model: "abliterated-model", ReasoningEffort: "high"}, "/tmp/project", "sys")
 	m.Apply(Options{Agent: ag, Settings: config.Settings{Model: "abliterated-model"}, WorkDir: "/tmp/project", Branch: "master"})
@@ -220,19 +224,19 @@ func TestSessionFrame(t *testing.T) {
 
 func TestPaletteCompletesCommands(t *testing.T) {
 	m := session(t, 110, 40)
-	m.input.SetValue("/mo")
-	if got := len(m.paletteMatches()); got != 2 {
-		t.Fatalf("want /model and /models, got %d matches", got)
+	m.input.SetValue("/c")
+	if got := len(m.paletteMatches()); got != 3 {
+		t.Fatalf("want /compact, /cost, and /clear, got %d matches", got)
 	}
 	m.layout()
 	frame := m.View().Content
 	dump(t, "palette", frame)
-	if !strings.Contains(plain(frame), "list the models") {
+	if !strings.Contains(plain(frame), "summarize the conversation") {
 		t.Fatal("palette not drawn")
 	}
 	m.handleKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	m.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
-	if v := m.input.Value(); v != "/models" {
+	if v := m.input.Value(); v != "/cost" {
 		t.Fatalf("tab completed to %q", v)
 	}
 }
@@ -313,6 +317,20 @@ func TestFramesFitEverySize(t *testing.T) {
 		s.approval = &agent.ApprovalEvent{Name: "edit_file", Preview: "internal/very/long/path/to/some/file_that_is_long.go", Kind: tools.KindWrite, Reply: make(chan agent.Decision, 1)}
 		s.layout()
 		check("approval", s.View().Content)
+		s.approval = nil
+		s.picker = &modelPicker{choices: []ModelChoice{
+			{ID: "abliterated-model", Context: 262_144, Note: "$1 in · $3 out per M"},
+			{ID: "abliterated-model-large-v2", Context: 1_000_000, Note: "$3 in · $5 out per M"},
+			{ID: "some-local-model-with-a-long-name:latest", Unusable: "cannot call tools"},
+		}, effort: 5}
+		s.layout()
+		check("picker", s.View().Content)
+		s.picker = nil
+		s.running = true
+		s.queued = []string{"a queued message that is long enough to wrap on the narrower terminals in this test", "and another"}
+		s.dirty = true
+		s.layout()
+		check("queued", s.View().Content)
 		if w == 80 {
 			dump(t, "home-80", home)
 			dump(t, "session-80", s.View().Content)
@@ -393,7 +411,8 @@ func TestDevSessionIsBadged(t *testing.T) {
 	}
 	s := session(t, 110, 60)
 	s.dev = true
-	s.items = s.items[1:] // drop the card built without dev
+	s.agent.ContextWindow = 4096 // Ollama's default
+	s.items = s.items[1:]        // drop the card built without dev
 	s.pushHeader()
 	s.layout()
 	frame := s.View().Content
@@ -401,5 +420,225 @@ func TestDevSessionIsBadged(t *testing.T) {
 	p := plain(frame)
 	if !strings.Contains(p, "DEV local model") || !strings.Contains(p, "DEV abliterated-model") {
 		t.Fatal("session card or footer missing the DEV badge")
+	}
+	if !strings.Contains(p, "4.1k context · OLLAMA_CONTEXT_LENGTH=32768") {
+		t.Fatal("session card does not warn about Ollama's small window")
+	}
+}
+
+// shift+enter adds lines past the box's height (the text scrolls inside
+// it), and wherever the cursor goes the character under it is the one the
+// textarea says it is on: the mark column stays two cells wide on every row.
+func TestInputBoxTakesManyLinesAndKeepsTheCursorOnTheText(t *testing.T) {
+	m := session(t, 100, 40)
+	typeText := func(s string) {
+		for _, r := range s {
+			m.handleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+		}
+	}
+	for i := range 12 {
+		if i > 0 {
+			m.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
+		}
+		typeText(fmt.Sprintf("line%02d", i))
+	}
+	if n := m.input.LineCount(); n != 12 {
+		t.Fatalf("typed 12 lines, the input holds %d", n)
+	}
+	if h := m.input.Height(); h != 8 {
+		t.Fatalf("box grew to %d rows, want it capped at 8 with the rest scrolling", h)
+	}
+	under := func() string {
+		v := m.View()
+		if v.Cursor == nil {
+			t.Fatal("no cursor")
+		}
+		row := []rune(plain(strings.Split(v.Content, "\n")[v.Cursor.Position.Y]))
+		if v.Cursor.Position.X >= len(row) {
+			return ""
+		}
+		return string(row[v.Cursor.Position.X-6 : v.Cursor.Position.X])
+	}
+	if got := under(); got != "line11" {
+		t.Fatalf("after typing, the six cells before the cursor are %q, want line11", got)
+	}
+	for range 5 {
+		m.handleKey(tea.KeyPressMsg{Code: tea.KeyUp})
+	}
+	if got := under(); got != "line06" {
+		t.Fatalf("five lines up, the six cells before the cursor are %q, want line06", got)
+	}
+	for range 3 {
+		m.handleKey(tea.KeyPressMsg{Code: tea.KeyLeft})
+	}
+	v := m.View()
+	row := []rune(plain(strings.Split(v.Content, "\n")[v.Cursor.Position.Y]))
+	if got := string(row[v.Cursor.Position.X-3 : v.Cursor.Position.X+3]); got != "line06" {
+		t.Fatalf("three left, the cursor splits %q, want it between lin and e06", got)
+	}
+	dump(t, "input-multiline", v.Content)
+}
+
+// A message sent while the model works waits under the transcript as a
+// dashed bubble, lines its text up with the sent bubble it will become,
+// can be taken back with ↑, and goes out with the others when the turn ends.
+func TestQueuedMessagesWaitAsDashedBubbles(t *testing.T) {
+	m := session(t, 100, 40)
+	m.running = true
+	m.turnStart = time.Now()
+	m.submit("also rename greet to hello")
+	m.submit("and run the tests")
+	if len(m.queued) != 2 {
+		t.Fatalf("queued %d messages, want 2", len(m.queued))
+	}
+	frame := m.View().Content
+	dump(t, "queued", frame)
+	p := plain(frame)
+	for _, want := range []string{"┆ also rename greet to hello ┆", "┆ and run the tests ┆", "queued · sends when this turn ends", "2 messages queued", "↑ edit queued"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("queued frame missing %q", want)
+		}
+	}
+	column := func(s string) int { return len([]rune(s[:strings.Index(s, "and run")])) }
+	sent := strings.Split(plain(bubble("and run the tests", 98, th.bubble, th.text, th.muted)), "\n")[1]
+	draft := strings.Split(plain(draftBubble("and run the tests", 98, th.muted, th.faint)), "\n")[1]
+	if column(sent) != column(draft) {
+		t.Errorf("draft text at column %d, sent bubble puts it at %d", column(draft), column(sent))
+	}
+
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyUp})
+	if v := m.input.Value(); v != "and run the tests" || len(m.queued) != 1 {
+		t.Fatalf("↑ should take the newest back: input %q, %d still queued", v, len(m.queued))
+	}
+	m.input.Reset()
+
+	// The turn ends; what is queued becomes a turn of its own.
+	m.agent.Client = llm.New("http://127.0.0.1:1", "")
+	m.turnEnded()
+	if len(m.queued) != 0 {
+		t.Fatal("queue not emptied when the turn ended")
+	}
+	last := m.items[len(m.items)-1]
+	if last.kind != itemUser || last.text != "also rename greet to hello" {
+		t.Fatalf("queued message not sent as a bubble: %+v", last)
+	}
+	m.cancel()
+}
+
+// /model opens a card in the input's place with what the endpoint lists;
+// arrows pick a model and an effort, enter switches to both, and a model
+// that cannot call tools cannot be picked.
+func TestModelPickerSwitchesModelAndEffort(t *testing.T) {
+	m := session(t, 110, 40)
+	m.listModels = func(context.Context) ([]ModelChoice, error) { return nil, nil }
+	m.slash("/model")
+	if m.picker == nil {
+		t.Fatal("/model did not open the picker")
+	}
+	m.Update(pickerModelsMsg{choices: []ModelChoice{
+		{ID: "abliterated-model", Context: 262_144, Note: "$1 in · $3 out per M"},
+		{ID: "abliterated-model-large-v2", Context: 1_000_000, Note: "$3 in · $5 out per M"},
+		{ID: "tiny-chat", Unusable: "cannot call tools", NoEffort: true},
+	}})
+	frame := m.View().Content
+	dump(t, "model-picker", frame)
+	p := plain(frame)
+	for _, want := range []string{"Model", "abliterated-model-large-v2", "1.0M context", "cannot call tools", "effort", "high", "←→ effort"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("picker frame missing %q", want)
+		}
+	}
+	if m.View().Cursor != nil {
+		t.Error("the input cursor shows through the picker")
+	}
+
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.picker == nil || m.agent.Model != "abliterated-model" {
+		t.Fatal("a model that cannot call tools was picked")
+	}
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyUp})
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.picker != nil {
+		t.Fatal("enter did not close the picker")
+	}
+	if m.agent.Model != "abliterated-model-large-v2" || m.agent.ContextWindow != 1_000_000 || m.agent.Effort != "xhigh" {
+		t.Fatalf("switched to %s, %d context, %q effort", m.agent.Model, m.agent.ContextWindow, m.agent.Effort)
+	}
+	if !strings.Contains(plain(m.View().Content), "xhigh effort") {
+		t.Error("footer does not show the new effort")
+	}
+
+	m.slash("/effort")
+	if m.picker == nil {
+		t.Fatal("/effort with no level should open the picker")
+	}
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.picker != nil || m.agent.Effort != "xhigh" {
+		t.Fatal("esc should close the picker and change nothing")
+	}
+}
+
+// The footer always says the effort and, once there is usage, the tokens
+// used; on a narrow terminal the spend and meter give way before them.
+func TestFooterShowsEffortAndTokens(t *testing.T) {
+	m := session(t, 140, 40)
+	p := plain(m.View().Content)
+	for _, want := range []string{"high effort", "21k tokens", "$0.024"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("wide footer missing %q", want)
+		}
+	}
+	m = session(t, 70, 24)
+	lines := strings.Split(plain(m.View().Content), "\n")
+	footer := lines[len(lines)-1]
+	for _, want := range []string{"abliterated-model", "high effort", "21k tokens"} {
+		if !strings.Contains(footer, want) {
+			t.Errorf("narrow footer %q missing %q", footer, want)
+		}
+	}
+	m.agent.Effort = ""
+	if !strings.Contains(plain(m.View().Content), "default effort") {
+		t.Error("no effort set should read as the model's default")
+	}
+}
+
+// The name and the tagline under it have a blank row between them.
+func TestHomeTitleHasRoomAboveTheTagline(t *testing.T) {
+	m := testModel(t, 110, 40)
+	frame, _ := m.renderHome(0)
+	lines := strings.Split(plain(frame), "\n")
+	title, tag := -1, -1
+	for i, l := range lines {
+		if strings.Contains(l, "C A V E I R A") {
+			title = i
+		}
+		if strings.Contains(l, "coding agent for abliterated models") {
+			tag = i
+		}
+	}
+	if title < 0 || tag != title+2 || strings.TrimSpace(lines[title+1]) != "" {
+		t.Fatalf("title on row %d, tagline on row %d; want one blank row between", title, tag)
+	}
+}
+
+// Typing while the intro plays (or boot is still running) is not lost: the
+// text is in the box when it appears.
+func TestTypingDuringTheIntroIsKept(t *testing.T) {
+	m := testModel(t, 110, 40)
+	m.phase = phaseSplash
+	m.booted = false
+	for _, r := range "tighten" {
+		m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	if m.phase != phaseSplash {
+		t.Fatal("left the splash before boot finished")
+	}
+	m.booted = true
+	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	if m.phase != phaseHero || m.input.Value() != "tighten " {
+		t.Fatalf("phase %v, input %q; want the hero with the typed text", m.phase, m.input.Value())
 	}
 }

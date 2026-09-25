@@ -10,9 +10,9 @@ import (
 )
 
 // theme is every colour the session draws with. The palette comes from the
-// mascot: bone on black, with one ember accent for the things that are
-// caveira's own (the prompt mark, the spinner) and plain signal colours for
-// success, warnings, and errors. It is rebuilt when the terminal reports its
+// mascot: bone on black, with the skull's own face colour as the accent for
+// the things that are caveira's (the prompt mark, the cursor, the spinner)
+// and plain signal colours for success, warnings, and errors. It is rebuilt when the terminal reports its
 // background, so light terminals get a light palette, and when it reports
 // its colour profile, so terminals without 256 colours drop the shaded
 // panels and get the one-colour mascot.
@@ -50,8 +50,8 @@ func newTheme(dark bool, profile colorprofile.Profile, bg color.Color) *theme {
 		t.faint = hex("#65675F")
 		t.line = hex("#3A3C37")
 		t.bone = hex("#C9CCB9")
-		t.accent = hex("#E5583E")
-		t.accentShadow = hex("#8A3A2B")
+		t.accent = hex("#C0C4B2")
+		t.accentShadow = hex("#6E7064")
 		t.code = hex("#D9B574")
 		t.ok = hex("#93B874")
 		t.warn = hex("#DDAA52")
@@ -72,8 +72,8 @@ func newTheme(dark bool, profile colorprofile.Profile, bg color.Color) *theme {
 		t.faint = hex("#9D9F96")
 		t.line = hex("#D2D3CB")
 		t.bone = hex("#4F5243")
-		t.accent = hex("#C9452C")
-		t.accentShadow = hex("#E6B1A5")
+		t.accent = hex("#5C604E")
+		t.accentShadow = hex("#B9BCAC")
 		t.code = hex("#8A5A12")
 		t.ok = hex("#4A7D2C")
 		t.warn = hex("#99680F")

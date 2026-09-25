@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -234,6 +235,22 @@ var knownModels = map[string]ModelSpec{
 	"abliterated-model":          {ContextWindow: 262_144, InputPerM: 1, CachedPerM: 0.10, OutputPerM: 3},
 	"abliterated-model-large":    {ContextWindow: 1_000_000, InputPerM: 3, CachedPerM: 0.30, OutputPerM: 5},
 	"abliterated-model-large-v2": {ContextWindow: 1_000_000, InputPerM: 3, CachedPerM: 0.30, OutputPerM: 5},
+}
+
+// Known reports whether caveira has a spec for model.
+func Known(model string) bool {
+	_, ok := knownModels[model]
+	return ok
+}
+
+// KnownModels lists the models caveira has specs for, sorted.
+func KnownModels() []string {
+	out := make([]string, 0, len(knownModels))
+	for id := range knownModels {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Spec returns what is known about model, falling back to a conservative
