@@ -757,7 +757,7 @@ func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 	case agent.TextEvent:
 		m.endThinking()
 		if m.pendingA == nil {
-			m.pendingA = &item{kind: itemAssistant}
+			m.pendingA = &item{kind: itemAssistant, running: true}
 			m.push(m.pendingA)
 		}
 		m.pendingA.text += ev.Delta
@@ -769,6 +769,7 @@ func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 		m.endThinking()
 		if m.pendingA != nil {
 			m.pendingA.text = ev.Message.Content
+			m.pendingA.running = false
 			m.pendingA.invalidate()
 		}
 		m.pendingA, m.pendingR = nil, nil
@@ -858,6 +859,10 @@ func (m *Model) turnEnded() (tea.Model, tea.Cmd) {
 			it.result = &tools.Result{Summary: "cancelled", IsError: true}
 			it.invalidate()
 		}
+	}
+	if m.pendingA != nil {
+		m.pendingA.running = false
+		m.pendingA.invalidate()
 	}
 	m.pendingA, m.pendingR = nil, nil
 	m.dirty = true

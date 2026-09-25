@@ -166,6 +166,14 @@ func (a *Agent) Run(ctx context.Context, input string, emit func(Event)) {
 		emit(UsageEvent{Turn: comp.Usage, Totals: a.Totals, ContextTokens: a.LastPromptTokens})
 
 		msg := comp.Message
+		if len(msg.ToolCalls) == 0 {
+			// A reply that is only tool calls written as text runs as
+			// those calls; the text itself is dropped, which also takes it
+			// off the screen when AssistantDone replaces what streamed.
+			if calls := textToolCalls(msg.Content, a.hasTool); calls != nil {
+				msg.ToolCalls, msg.Content = calls, ""
+			}
+		}
 		if msg.Content == "" && len(msg.ToolCalls) == 0 {
 			if comp.FinishReason == "length" {
 				emit(ErrorEvent{Err: errors.New("the model hit its output limit before saying anything")})
@@ -253,6 +261,11 @@ func (a *Agent) runTool(ctx context.Context, call llm.ToolCall, emit func(Event)
 	result := a.Tools.Run(ctx, name, args)
 	emit(ToolEndEvent{ID: call.ID, Name: name, Result: result, Duration: time.Since(start)})
 	return reply(result)
+}
+
+func (a *Agent) hasTool(name string) bool {
+	_, ok := a.Tools.Get(name)
+	return ok
 }
 
 func (a *Agent) account(u llm.Usage) {
