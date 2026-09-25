@@ -247,7 +247,10 @@ func (r *renderer) renderUser(it *item) string {
 
 func (r *renderer) renderAssistant(it *item) string {
 	text := strings.TrimSpace(it.text)
-	if text == "" {
+	if text == "" || it.running && looksLikeCall(text) {
+		// A reply that opens like a tool call written as text waits until
+		// it is done: the agent usually turns it into a real call, and
+		// then there is no text to show.
 		return ""
 	}
 	var body string
@@ -257,6 +260,15 @@ func (r *renderer) renderAssistant(it *item) string {
 		body = r.md.render(text)
 	}
 	return th.Bone.Render("●") + " " + strings.ReplaceAll(body, "\n", "\n  ")
+}
+
+func looksLikeCall(text string) bool {
+	for _, p := range []string{"{", "[{", "<tool_call>", "<|python_tag|>", "```json\n{"} {
+		if strings.HasPrefix(text, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---- reasoning ----

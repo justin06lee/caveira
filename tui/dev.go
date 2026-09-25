@@ -28,17 +28,20 @@ const (
 	devTimeout = 10 * time.Second
 )
 
-// devModels are tried in order when no model is named: small models whose
-// Ollama templates take tools, then anything the server has.
+// devModels are tried in order when no model is named, then anything the
+// server has. Qwen's templates list the tools and let the model decide
+// whether to call one; Llama 3's tell it to answer every message with a
+// call, so llama3.2 runs a tool on "hello" and comes last.
 var devModels = []string{
-	"llama3.2:1b",
-	"llama3.2:latest",
-	"llama3.2",
-	"qwen3:1.7b",
 	"qwen3:4b",
+	"qwen3:1.7b",
 	"qwen2.5:3b",
+	"qwen2.5:7b",
 	"llama3.1:8b",
 	"llama3.1:latest",
+	"llama3.2:latest",
+	"llama3.2",
+	"llama3.2:1b",
 }
 
 // applyDev points the settings at the local server and picks the model.
@@ -89,7 +92,7 @@ func applyDev(cfg *config.Settings, modelFlag, baseFlag string) error {
 		return nil
 	}
 	cfg.Model = devModels[0]
-	return errors.New("dev mode: the local server has no models. Pull a small one with `ollama pull llama3.2:1b`")
+	return errors.New("dev mode: the local server has no models. Pull a small one with `ollama pull qwen3:4b`")
 }
 
 // devModelList lists what the local server has for the /model picker. On

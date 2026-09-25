@@ -333,7 +333,7 @@ flags
   -C, --cwd <dir>        work in this directory instead of the current one
       --dev              use a model on this machine instead of the API: Ollama at
                          localhost:11434, or CAVEIRA_DEV_BASE_URL; the model is -m,
-                         CAVEIRA_DEV_MODEL, or a small installed one (llama3.2:1b first)
+                         CAVEIRA_DEV_MODEL, or a small installed one (qwen3:4b first)
       --confirm          ask before running commands or changing files
   -c, --continue         continue the latest session for this directory
       --resume <id>      continue a specific session

@@ -676,3 +676,22 @@ func TestStatusLineSpeaksRebel(t *testing.T) {
 	}
 	dump(t, "status-rebel", m.View().Content)
 }
+
+// A streaming reply that opens like a tool call written as text is held
+// back: the agent turns it into a real call and the text never shows.
+func TestCallShapedReplyIsHeldBackWhileStreaming(t *testing.T) {
+	m := session(t, 100, 40)
+	m.events = make(chan agent.Event)
+	m.handleEvent(agent.TextEvent{Delta: `{"name":"read_file","parameters={"path":"/Users/me/cav`})
+	if p := plain(m.View().Content); strings.Contains(p, `"read_file"`) {
+		t.Fatal("call-shaped text shown while it streams")
+	}
+	m.handleEvent(agent.AssistantDoneEvent{Message: llm.Message{Role: llm.RoleAssistant}})
+	if p := plain(m.View().Content); strings.Contains(p, `"read_file"`) {
+		t.Fatal("call text shown after the agent turned it into a call")
+	}
+	m.handleEvent(agent.TextEvent{Delta: "Hello! What should we build?"})
+	if p := plain(m.View().Content); !strings.Contains(p, "Hello! What should we build?") {
+		t.Fatal("ordinary text held back")
+	}
+}
