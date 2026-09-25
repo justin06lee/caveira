@@ -62,8 +62,8 @@ func (m *Model) homeLayout() homeFrame {
 	inner := m.inner()
 	var f homeFrame
 	boxRows := m.input.Height() + 2
-	// title, tagline, two gaps, box, info, gap, tips
-	fixed := 1 + 1 + 2 + boxRows + 1 + 1 + 1
+	// title, gap, tagline, two gaps, box, info, gap, tips
+	fixed := 1 + 1 + 1 + 2 + boxRows + 1 + 1 + 1
 	for _, s := range []struct{ scale, minH int }{{3, 40}, {2, 28}, {1, 20}} {
 		if m.height >= s.minH && inner >= art.MascotWidth(s.scale)+4 {
 			f.scale = s.scale
@@ -83,8 +83,8 @@ func (m *Model) homeLayout() homeFrame {
 		y += art.MascotHeight(f.scale) + 1
 	}
 	f.titleY = y
-	f.tagY = y + 1
-	y += 2 + 2
+	f.tagY = y + 2
+	y += 3 + 2
 	f.boxY = y
 	f.boxW = min(inner, homeBoxMax)
 	f.boxX = center(f.boxW)
@@ -113,6 +113,11 @@ func (m *Model) updateSplash(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		// Any other key skips the intro; the cut still waits for boot.
+		// Typed text is kept for the box, so starting to type before the
+		// intro ends loses nothing.
+		if msg.Text != "" {
+			m.input, _ = m.input.Update(msg)
+		}
 		m.splash.frame = max(m.splash.frame, bootFrames)
 		if m.booted {
 			return m.leaveSplash()
@@ -289,9 +294,7 @@ func (m *Model) renderHomeInfo(lines []string, f homeFrame) {
 		if m.dev {
 			left = devBadge() + " " + left
 		}
-		if m.agent.Effort != "" {
-			left += th.Faint.Render(" · " + m.agent.Effort)
-		}
+		left += th.Faint.Render(" · " + effortName(m.agent.Effort) + " effort")
 		if m.cfg.Confirm {
 			left += th.Faint.Render(" · ") + th.Warn.Render("confirm")
 		}
@@ -336,7 +339,7 @@ func (m *Model) pushHeader() {
 	}
 	h := &headerInfo{version: m.version, dir: m.workDir, branch: m.branch, confirm: m.cfg.Confirm, dev: m.dev}
 	if m.agent != nil {
-		h.model, h.effort = m.agent.Model, m.agent.Effort
+		h.model, h.effort, h.context = m.agent.Model, m.agent.Effort, m.agent.ContextWindow
 	}
 	m.items = append([]*item{{kind: itemHeader, header: h}}, m.items...)
 	m.dirty = true

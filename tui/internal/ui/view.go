@@ -11,12 +11,15 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/justin06lee/caveira/tui/internal/config"
 )
 
 // The session screen, top to bottom: the transcript, a gap, the status line
-// (what the model is doing), the input box or an approval card, and the
-// footer (keys on the left, model and spend on the right). The command
-// palette takes the footer's place while you type a slash command.
+// (what the model is doing), the input box (or an approval card, or the
+// model picker), and the footer (keys on the left; model, effort, and what
+// the session has used on the right). The command palette takes the
+// footer's place while you type a slash command.
 
 const (
 	sideMargin = 1
@@ -65,9 +68,12 @@ func (m *Model) inner() int { return max(m.width-2*sideMargin, 20) }
 // bottomHeight is everything under the transcript.
 func (m *Model) bottomHeight() int {
 	h := gapLines + statusRows
-	if m.approval != nil {
+	switch {
+	case m.approval != nil:
 		h += lipgloss.Height(m.renderApproval())
-	} else {
+	case m.picker != nil:
+		h += lipgloss.Height(m.renderPicker())
+	default:
 		h += m.input.Height() + 2
 	}
 	if p := m.renderPalette(m.inner()); p != "" {
@@ -108,9 +114,12 @@ func (m *Model) View() tea.View {
 	bottom = append(bottom, strings.Repeat("\n", gapLines-1))
 	bottom = append(bottom, m.renderStatus(inner))
 	boxY := m.vp.Height() + gapLines + statusRows
-	if m.approval != nil {
+	switch {
+	case m.approval != nil:
 		bottom = append(bottom, m.renderApproval())
-	} else {
+	case m.picker != nil:
+		bottom = append(bottom, m.renderPicker())
+	default:
 		bottom = append(bottom, m.renderInputBox(inner))
 	}
 	if p := m.renderPalette(inner); p != "" {
@@ -121,7 +130,7 @@ func (m *Model) View() tea.View {
 
 	margin := strings.Repeat(" ", sideMargin)
 	v.Content = indent(m.vp.View()+"\n"+strings.Join(bottom, "\n"), margin)
-	if m.approval == nil && m.input.Focused() {
+	if m.approval == nil && m.picker == nil && m.input.Focused() {
 		if cur := m.input.Cursor(); cur != nil {
 			cur.Position.X += sideMargin + inputLeft
 			cur.Position.Y += boxY + 1
@@ -137,7 +146,7 @@ func (m *Model) refreshTranscript() {
 		return
 	}
 	m.dirty = false
-	parts := make([]string, 0, len(m.items))
+	parts := make([]string, 0, len(m.items)+len(m.queued)+1)
 	for _, it := range m.items {
 		s := m.rend.render(it)
 		if s == "" {
@@ -145,10 +154,29 @@ func (m *Model) refreshTranscript() {
 		}
 		parts = append(parts, s)
 	}
+	parts = append(parts, m.renderQueued()...)
 	m.vp.SetContent(strings.Join(parts, "\n\n"))
 	if m.follow {
 		m.vp.GotoBottom()
 	}
+}
+
+// renderQueued draws the messages waiting for the turn to end, under
+// everything else, as dashed bubbles with a note on when they go.
+func (m *Model) renderQueued() []string {
+	if len(m.queued) == 0 {
+		return nil
+	}
+	width := m.inner()
+	var out []string
+	for _, q := range m.queued {
+		text := strings.ReplaceAll(strings.TrimRight(q, "\n"), "\t", "    ")
+		out = append(out, draftBubble(text, width, th.muted, th.faint))
+	}
+	note := th.Faint.Render("queued · sends when this turn ends · ") + th.Muted.Render("↑") + th.Faint.Render(" to edit")
+	last := len(out) - 1
+	out[last] += "\n" + lipgloss.PlaceHorizontal(width-1, lipgloss.Right, note)
+	return out
 }
 
 // ---- status ----
@@ -213,8 +241,12 @@ func (m *Model) renderStatus(width int) string {
 		if m.streamed > 0 {
 			meta = append(meta, "↓ "+formatTokens(m.streamed/4)+" tokens")
 		}
-		if m.queued != "" {
+		switch n := len(m.queued); n {
+		case 0:
+		case 1:
 			meta = append(meta, "1 message queued")
+		default:
+			meta = append(meta, fmt.Sprintf("%d messages queued", n))
 		}
 		line += th.Faint.Render("  " + strings.Join(meta, " · "))
 		if m.notice != "" {
@@ -269,8 +301,14 @@ func (m *Model) renderInputBox(width int) string {
 		BorderForeground(border).
 		Padding(0, 1).
 		Width(width)
-	marks := mark + strings.Repeat("\n", m.input.Height()-1)
-	return box.Render(lipgloss.JoinHorizontal(lipgloss.Top, marks+" ", m.input.View()))
+	// The mark column is inputLeft's two cells on every row, so the text
+	// sits where the cursor is placed however many lines the box shows.
+	marks := make([]string, m.input.Height())
+	marks[0] = mark + " "
+	for i := 1; i < len(marks); i++ {
+		marks[i] = "  "
+	}
+	return box.Render(lipgloss.JoinHorizontal(lipgloss.Top, strings.Join(marks, "\n"), m.input.View()))
 }
 
 // renderFooter is the row under the input: the keys that matter right now
@@ -282,52 +320,101 @@ func (m *Model) renderFooter(width int) string {
 	switch {
 	case m.approval != nil:
 		hints = []string{key("↑↓", "choose"), key("enter", "confirm"), key("esc", "deny")}
+	case m.picker != nil:
+		hints = []string{key("↑↓", "model"), key("←→", "effort"), key("enter", "switch"), key("esc", "cancel")}
 	case m.running:
 		hints = []string{key("esc", "interrupt"), key("enter", "queue a message")}
+		if len(m.queued) > 0 && m.input.Value() == "" {
+			hints = []string{key("esc", "interrupt"), key("↑", "edit queued"), key("enter", "queue another")}
+		}
 	case m.input.Value() != "":
-		hints = []string{key("enter", "send"), key("alt+enter", "newline")}
+		hints = []string{key("enter", "send"), key("shift+enter", "newline")}
 	default:
 		hints = []string{key("/", "commands"), key("!", "shell"), key("ctrl+t", "thinking"), key("ctrl+o", "output")}
 	}
+	// Two hints stay if the info fits beside them without losing more than
+	// the spend and the meter; otherwise one does, and the info gives up
+	// what it must. Hints past those drop from the end.
+	const gutter = 4 // the least space between the hints and the info
+	room := func(n int) int {
+		return width - lipgloss.Width("  "+strings.Join(hints[:min(n, len(hints))], sep)) - gutter
+	}
+	right, ok := m.footerInfo(room(2), keepMeter+1)
+	if !ok {
+		right, _ = m.footerInfo(room(1), keepAll)
+	}
+	for len(hints) > 1 && lipgloss.Width("  "+strings.Join(hints, sep))+lipgloss.Width(right)+gutter > width {
+		hints = hints[:len(hints)-1]
+	}
 	left := "  " + strings.Join(hints, sep)
-
-	right := m.footerInfo()
-	if lipgloss.Width(left)+lipgloss.Width(right)+2 > width {
-		// Narrow: keep the info, drop hints from the end.
-		for len(hints) > 1 && lipgloss.Width("  "+strings.Join(hints, sep))+lipgloss.Width(right)+2 > width {
-			hints = hints[:len(hints)-1]
-		}
-		left = "  " + strings.Join(hints, sep)
-		if lipgloss.Width(left)+lipgloss.Width(right)+2 > width {
-			right = ""
-		}
+	if lipgloss.Width(left)+lipgloss.Width(right)+gutter > width {
+		right = ""
 	}
 	gap := max(width-lipgloss.Width(left)-lipgloss.Width(right), 1)
 	return left + strings.Repeat(" ", gap) + right
 }
 
-func (m *Model) footerInfo() string {
+// How much the footer info wants to keep each part: lower gives way first.
+const (
+	keepSpend = iota
+	keepMeter
+	keepTokens
+	keepConfirm
+	keepEffort
+	keepModel
+	keepAll
+)
+
+// footerInfo is the right of the footer in at most room cells: the model,
+// the effort, the tokens used, how full the context is, and the spend. To
+// fit, it drops parts that matter less than below, least first; ok is
+// false when that is not enough.
+func (m *Model) footerInfo(room, below int) (info string, ok bool) {
 	if m.agent == nil {
-		return ""
+		return "", true
 	}
-	sep := th.Faint.Render(" · ")
-	parts := []string{th.Muted.Render(m.agent.Model)}
+	type part struct {
+		s    string
+		keep int // lower goes first
+	}
+	model := th.Muted.Render(m.agent.Model)
 	if m.dev {
-		parts[0] = devBadge() + " " + parts[0]
+		model = devBadge() + " " + model
 	}
-	if m.agent.Effort != "" {
-		parts = append(parts, th.Faint.Render(m.agent.Effort))
-	}
+	parts := []part{{model, keepModel}, {th.Faint.Render(effortName(m.agent.Effort) + " effort"), keepEffort}}
 	if m.cfg.Confirm {
-		parts = append(parts, th.Warn.Render("confirm"))
+		parts = append(parts, part{th.Warn.Render("confirm"), keepConfirm})
 	}
 	if m.context > 0 && m.agent.ContextWindow > 0 {
-		parts = append(parts, contextMeter(float64(m.context)/float64(m.agent.ContextWindow)))
+		parts = append(parts, part{contextMeter(float64(m.context) / float64(m.agent.ContextWindow)), keepMeter})
 	}
-	if m.totals.Requests > 0 {
-		parts = append(parts, th.Faint.Render(formatCost(m.totals.CostUSD)))
+	if n := m.totals.InputTokens + m.totals.OutputTokens; n > 0 {
+		parts = append(parts, part{th.Faint.Render(formatTokens(n) + " tokens"), keepTokens})
 	}
-	return strings.Join(parts, sep) + " "
+	if m.totals.Requests > 0 && config.Spec(m.agent.Model).InputPerM > 0 {
+		// Local and unknown models have no price; $0.00 would be a guess.
+		parts = append(parts, part{th.Faint.Render(formatCost(m.totals.CostUSD)), keepSpend})
+	}
+	join := func() string {
+		ss := make([]string, len(parts))
+		for i, p := range parts {
+			ss[i] = p.s
+		}
+		return strings.Join(ss, th.Faint.Render(" · ")) + " "
+	}
+	for len(parts) > 1 && lipgloss.Width(join()) > room {
+		low := 0
+		for i, p := range parts {
+			if p.keep < parts[low].keep {
+				low = i
+			}
+		}
+		if parts[low].keep >= below {
+			return join(), false
+		}
+		parts = append(parts[:low], parts[low+1:]...)
+	}
+	return join(), lipgloss.Width(join()) <= room
 }
 
 // devBadge marks a session running on a local model, so it is never

@@ -171,6 +171,10 @@ func run() error {
 
 		client := llm.New(cfg.BaseURL, cfg.APIKey)
 		ag := agent.New(client, cfg, workDir, system)
+		var listModels func(context.Context) ([]ui.ModelChoice, error)
+		if dev {
+			listModels = devModelList(cfg.BaseURL)
+		}
 
 		var resumed *agent.Session
 		switch {
@@ -195,15 +199,16 @@ func run() error {
 			client.Headers["x-abliteration-session-id"] = ag.NewSession().ID
 		}
 		return ui.Options{
-			Agent:    ag,
-			Settings: cfg,
-			WorkDir:  workDir,
-			Branch:   gitBranch(workDir),
-			Dev:      dev,
-			Version:  version,
-			Initial:  initial,
-			Resumed:  resumed,
-			Fatal:    fatal,
+			Agent:      ag,
+			Settings:   cfg,
+			WorkDir:    workDir,
+			Branch:     gitBranch(workDir),
+			Dev:        dev,
+			ListModels: listModels,
+			Version:    version,
+			Initial:    initial,
+			Resumed:    resumed,
+			Fatal:      fatal,
 		}, nil
 	}
 

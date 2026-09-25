@@ -31,8 +31,10 @@ type Options struct {
 	// Branch is the git branch checked out in WorkDir, if any.
 	Branch string
 	// Dev marks a session on a local model (caveira --dev).
-	Dev     bool
-	Version string
+	Dev bool
+	// ListModels fills the /model picker. Nil asks the agent's endpoint.
+	ListModels func(context.Context) ([]ModelChoice, error)
+	Version    string
 	// Initial, when set, is sent as the first message.
 	Initial string
 	// Resumed, when set, is the session that was picked up.
@@ -86,9 +88,14 @@ type Model struct {
 	events     chan agent.Event
 	approval   *agent.ApprovalEvent
 	apSel      int
-	queued     string
+	picker     *modelPicker
+	listModels func(context.Context) ([]ModelChoice, error)
+	// queued is what you sent while the model was busy, oldest first; it
+	// goes out together when the turn ends.
+	queued     []string
 	turnStart  time.Time
 	turnCost   float64 // spend before this turn, to report what it cost
+	turnTokens int     // tokens used before this turn
 	turnTools  int
 	turnFailed bool
 	streamed   int // characters streamed this turn, for the token estimate
@@ -119,10 +126,6 @@ type bootMsg struct {
 	opts Options
 	err  error
 }
-type modelsMsg struct {
-	models []llm.ModelInfo
-	err    error
-}
 type shellDoneMsg struct {
 	it     *item
 	result tools.Result
@@ -150,7 +153,11 @@ func New(version string, boot func() (Options, error)) *Model {
 	ta.CharLimit = 0
 	ta.DynamicHeight = true
 	ta.MinHeight = 1
+	// MaxHeight is how tall the box grows; past that the text scrolls
+	// inside it. Without MaxContentHeight the textarea would refuse new
+	// lines at MaxHeight instead.
 	ta.MaxHeight = 8
+	ta.MaxContentHeight = 10_000
 	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter", "ctrl+j", "shift+enter"))
 	ta.SetVirtualCursor(false)
 	ta.Focus()
@@ -206,6 +213,7 @@ func (m *Model) Apply(o Options) {
 	m.workDir = o.WorkDir
 	m.branch = o.Branch
 	m.dev = o.Dev
+	m.listModels = o.ListModels
 	if o.Version != "" {
 		m.version = o.Version
 	}
@@ -340,7 +348,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case tickMsg:
-		if !m.running && !m.hasRunningTool() {
+		if !m.running && !m.hasRunningTool() && (m.picker == nil || !m.picker.loading) {
 			m.ticking = false
 			return m, nil
 		}
@@ -355,28 +363,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventsClosedMsg:
 		return m.turnEnded()
 
-	case modelsMsg:
-		if msg.err != nil {
-			m.push(&item{kind: itemError, text: "could not list models: " + msg.err.Error()})
+	case pickerModelsMsg:
+		if m.picker == nil {
 			return m, nil
 		}
-		var rows [][2]string
-		for _, mi := range msg.models {
-			name := mi.ID
-			if mi.ID == m.agent.Model {
-				name += " ←"
-			}
-			var info []string
-			if mi.ContextLength > 0 {
-				info = append(info, formatTokens(mi.ContextLength)+" context")
-			}
-			if mi.Pricing != nil && mi.Pricing.Prompt != "" {
-				info = append(info, fmt.Sprintf("$%s in, $%s out per token", mi.Pricing.Prompt, mi.Pricing.Completion))
-			}
-			rows = append(rows, [2]string{name, strings.Join(info, " · ")})
+		m.picker.loading = false
+		m.picker.err = msg.err
+		if len(msg.choices) > 0 {
+			m.picker.setChoices(msg.choices, m.agent.Model)
 		}
-		rows = append(rows, [2]string{"", ""}, [2]string{"/model <id>", "to switch"})
-		m.push(&item{kind: itemPanel, title: "Models", rows: rows})
+		m.layout()
 		return m, nil
 
 	case shellDoneMsg:
@@ -444,6 +440,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m.decide(agent.Deny)
 		}
 		return m, nil
+	}
+
+	if m.picker != nil {
+		return m.pickerKey(k)
 	}
 
 	if matches := m.paletteMatches(); len(matches) > 0 {
@@ -546,6 +546,15 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "up":
+		if n := len(m.queued); n > 0 && m.input.Value() == "" {
+			// Take the newest queued message back to change it.
+			m.input.SetValue(m.queued[n-1])
+			m.input.MoveToEnd()
+			m.queued = m.queued[:n-1]
+			m.dirty = true
+			m.layout()
+			return m, nil
+		}
 		if m.input.LineCount() <= 1 && len(m.history) > 0 && (m.input.Value() == "" || m.histPos < len(m.history)) {
 			if m.histPos == len(m.history) {
 				m.draft = m.input.Value()
@@ -655,20 +664,28 @@ func (m *Model) submit(text string) tea.Cmd {
 		return nil
 	}
 	if m.running {
-		m.queued = text
+		m.queued = append(m.queued, text)
+		m.follow = true
+		m.dirty = true
 		return nil
 	}
 	return m.startTurn(text)
 }
 
-func (m *Model) startTurn(text string) tea.Cmd {
-	m.push(&item{kind: itemUser, text: text})
+// startTurn sends one or more messages as a single turn: each gets its own
+// bubble and its own place in the history, and the model answers them
+// together.
+func (m *Model) startTurn(texts ...string) tea.Cmd {
+	for _, t := range texts {
+		m.push(&item{kind: itemUser, text: t})
+	}
 	m.follow = true
 	m.running = true
 	m.notice = ""
 	m.pendingA, m.pendingR = nil, nil
 	m.turnStart = time.Now()
 	m.turnCost = m.totals.CostUSD
+	m.turnTokens = m.totals.InputTokens + m.totals.OutputTokens
 	m.turnTools = 0
 	m.turnFailed = false
 	m.streamed = 0
@@ -676,6 +693,10 @@ func (m *Model) startTurn(text string) tea.Cmd {
 	if m.agent.Session == nil {
 		m.agent.NewSession()
 	}
+	for _, t := range texts[:len(texts)-1] {
+		m.agent.Note(t)
+	}
+	text := texts[len(texts)-1]
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
@@ -801,7 +822,7 @@ func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 }
 
 // turnSummary is the line that closes a turn: how long it took, how many
-// tools it ran, and what it cost.
+// tools it ran, the tokens it used, and what it cost.
 func (m *Model) turnSummary() string {
 	parts := []string{"worked for " + formatDuration(max(time.Since(m.turnStart).Truncate(time.Second), time.Second))}
 	switch m.turnTools {
@@ -810,6 +831,9 @@ func (m *Model) turnSummary() string {
 		parts = append(parts, "1 tool call")
 	default:
 		parts = append(parts, fmt.Sprintf("%d tool calls", m.turnTools))
+	}
+	if d := m.totals.InputTokens + m.totals.OutputTokens - m.turnTokens; d > 0 {
+		parts = append(parts, formatTokens(d)+" tokens")
 	}
 	if d := m.totals.CostUSD - m.turnCost; d > 0 {
 		parts = append(parts, formatCost(d))
@@ -837,10 +861,10 @@ func (m *Model) turnEnded() (tea.Model, tea.Cmd) {
 		m.totals = m.agent.Totals
 	}
 	m.layout()
-	if m.queued != "" {
-		text := m.queued
-		m.queued = ""
-		return m, m.startTurn(text)
+	if len(m.queued) > 0 {
+		texts := m.queued
+		m.queued = nil
+		return m, m.startTurn(texts...)
 	}
 	return m, nil
 }

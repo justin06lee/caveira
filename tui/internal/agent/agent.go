@@ -297,7 +297,7 @@ const compactInstruction = `Write a handoff note for a fresh instance of yoursel
 4. What remains to be done, and anything decided about how to do it.
 5. Details worth keeping exactly: paths, identifiers, error messages, version numbers, and the user's own words where they matter.
 
-Be specific and dense. Plain text with short sections; no preamble.`
+Only include what appears in the conversation above. Never list a file, command, or outcome that is not there; if nothing has been done yet, say so in one line. Be specific and dense. Plain text with short sections; no preamble.`
 
 // Compact replaces the history with a summary of it.
 func (a *Agent) Compact(ctx context.Context, emit func(Event)) error {
