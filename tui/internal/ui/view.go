@@ -181,25 +181,22 @@ func (m *Model) renderQueued() []string {
 
 // ---- status ----
 
-// activity is what the model is doing right now, in a few words.
+// activity is what the model is doing right now, in a few words: the
+// command or file when a tool runs, and this step's rebel verb while the
+// model thinks or writes.
 func (m *Model) activity() string {
 	if m.compacting {
 		return "Compacting the conversation"
 	}
-	for i := len(m.items) - 1; i >= 0; i-- {
-		it := m.items[i]
-		switch {
-		case it.kind == itemTool && it.running:
+	for i := len(m.items) - 1; i >= 0 && m.items[i].kind != itemUser; i-- {
+		if it := m.items[i]; it.kind == itemTool && it.running {
 			return toolActivity(it)
-		case it.kind == itemAssistant && it == m.pendingA:
-			return "Writing"
-		case it.kind == itemReasoning && it.running:
-			return "Thinking"
-		case it.kind == itemUser:
-			return "Thinking"
 		}
 	}
-	return "Thinking"
+	if m.verb == "" {
+		return "Thinking"
+	}
+	return m.verb
 }
 
 func toolActivity(it *item) string {

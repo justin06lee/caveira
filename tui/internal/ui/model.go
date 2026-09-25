@@ -98,7 +98,8 @@ type Model struct {
 	turnTokens int     // tokens used before this turn
 	turnTools  int
 	turnFailed bool
-	streamed   int // characters streamed this turn, for the token estimate
+	verb       string // what the status line says the model is up to
+	streamed   int    // characters streamed this turn, for the token estimate
 
 	frame   int
 	ticking bool
@@ -689,6 +690,7 @@ func (m *Model) startTurn(texts ...string) tea.Cmd {
 	m.turnTools = 0
 	m.turnFailed = false
 	m.streamed = 0
+	m.verb = pickVerb(m.verb)
 
 	if m.agent.Session == nil {
 		m.agent.NewSession()
@@ -792,6 +794,8 @@ func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
+		// The model goes back to work on the result: a new verb for it.
+		m.verb = pickVerb(m.verb)
 		m.dirty = true
 
 	case agent.ApprovalEvent:
