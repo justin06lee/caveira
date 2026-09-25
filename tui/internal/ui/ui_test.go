@@ -642,3 +642,37 @@ func TestTypingDuringTheIntroIsKept(t *testing.T) {
 		t.Fatalf("phase %v, input %q; want the hero with the typed text", m.phase, m.input.Value())
 	}
 }
+
+// While the model thinks or writes, the status line says what the
+// underground is up to, a new verb for each step; a running tool still
+// says exactly what it runs.
+func TestStatusLineSpeaksRebel(t *testing.T) {
+	seen := map[string]bool{}
+	for _, v := range rebelVerbs {
+		if v == "" || seen[v] || len([]rune(v)) > 24 || strings.HasSuffix(v, "…") || strings.HasSuffix(v, ".") {
+			t.Errorf("bad verb %q: empty, repeated, too long, or punctuated", v)
+		}
+		seen[v] = true
+	}
+
+	m := session(t, 100, 40)
+	m.running = true
+	m.turnStart = time.Now()
+	m.verb = pickVerb("")
+	status := plain(m.renderStatus(m.inner()))
+	if !strings.Contains(status, m.verb+"…") || strings.Contains(status, "Thinking") {
+		t.Fatalf("status %q should say %q", status, m.verb)
+	}
+
+	m.events = make(chan agent.Event)
+	m.push(&item{kind: itemTool, toolID: "t1", toolName: "bash", preview: "go test ./...", running: true, started: time.Now()})
+	if status := plain(m.renderStatus(m.inner())); !strings.Contains(status, "Running go test") {
+		t.Fatalf("a running tool should show in the status: %q", status)
+	}
+	before := m.verb
+	m.handleEvent(agent.ToolEndEvent{ID: "t1", Result: tools.Result{Summary: "exit 0"}})
+	if m.verb == before || !seen[m.verb] {
+		t.Fatalf("after a tool the next step should get a new verb, still %q", m.verb)
+	}
+	dump(t, "status-rebel", m.View().Content)
+}
