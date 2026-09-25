@@ -23,7 +23,10 @@ import (
 // is Ollama's unless CAVEIRA_DEV_BASE_URL says otherwise; the model is the
 // -m flag, CAVEIRA_DEV_MODEL, or the first of devModels that is installed.
 
-const devBaseURL = "http://localhost:11434/v1"
+const (
+	devBaseURL = "http://localhost:11434/v1"
+	devTimeout = 10 * time.Second
+)
 
 // devModels are tried in order when no model is named: small models whose
 // Ollama templates take tools, then anything the server has.
@@ -48,13 +51,18 @@ func applyDev(cfg *config.Settings, modelFlag, baseFlag string) error {
 	cfg.APIKey, cfg.KeySource = "", "dev"
 	cfg.ReasoningEffort = ""
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	// A server that is not running refuses at once; the timeout is for
+	// one that is running but busy, which can take seconds to list models.
+	ctx, cancel := context.WithTimeout(context.Background(), devTimeout)
 	defer cancel()
 	// The window is the server's, not the API's, whichever model is picked.
 	defer func() { cfg.ContextWindow = ollamaContext(ctx, cfg.BaseURL, cfg.Model) }()
 	models, err := llm.New(cfg.BaseURL, "").Models(ctx)
 	if err != nil {
 		cfg.Model = firstNonEmpty(modelFlag, os.Getenv("CAVEIRA_DEV_MODEL"), devModels[0])
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("dev mode: %s is running but did not list its models within %s; it may be busy loading a model. Try again in a moment", cfg.BaseURL, devTimeout)
+		}
 		return fmt.Errorf("dev mode: nothing is answering at %s. Start Ollama with `ollama serve`, "+
 			"or point CAVEIRA_DEV_BASE_URL at another OpenAI-compatible server", cfg.BaseURL)
 	}
