@@ -163,3 +163,29 @@ func TestTruncateOutput(t *testing.T) {
 		t.Fatalf("truncate: %d %v", len(out), cut)
 	}
 }
+
+// echo and printf of fixed text are refused: their output is known before
+// they run and reaches only the model, so a model calling them is trying
+// to talk through the shell. Anything that reads, expands, or writes runs.
+func TestBashRefusesPrintingFixedText(t *testing.T) {
+	dir := t.TempDir()
+	reg := Default(dir)
+	run := func(cmd string) Result {
+		b, _ := json.Marshal(map[string]string{"command": cmd})
+		return reg.Run(context.Background(), "bash", b)
+	}
+	for _, cmd := range []string{`echo \nHello, world!\n`, `echo 'hello'`, `echo "Hello, world!"`, `printf "hi\n"`, `echo`, `  echo hi  `} {
+		r := run(cmd)
+		if !r.IsError || !strings.Contains(r.Output, "Say it in your reply") {
+			t.Errorf("%q should be refused, got %+v", cmd, r)
+		}
+	}
+	for _, cmd := range []string{`echo $HOME`, `echo hi > out.txt`, `echo a | wc -c`, `echo hi && ls`, `echo $(pwd)`, `echo *`, "echo one\necho two"} {
+		if r := run(cmd); r.IsError {
+			t.Errorf("%q should run, got %+v", cmd, r)
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "out.txt")); err != nil || string(b) != "hi\n" {
+		t.Errorf("echo with a redirect did not write the file: %q, %v", b, err)
+	}
+}

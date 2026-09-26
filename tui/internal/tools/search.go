@@ -378,7 +378,7 @@ func (t *listTool) Name() string { return "list_dir" }
 func (t *listTool) Kind() Kind   { return KindRead }
 func (t *listTool) Description() string {
 	return "List the entries of a directory: names, with a trailing slash for directories and sizes for files. " +
-		"Good for getting oriented; use glob to find files by pattern across a tree."
+		"Good for getting oriented when a task or question is about the project; use glob to find files by pattern across a tree."
 }
 func (t *listTool) Schema() map[string]any {
 	return schema(map[string]any{

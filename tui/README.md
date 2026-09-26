@@ -57,6 +57,8 @@ By default caveira does not ask before running commands or changing files: it is
 
 The model gets seven tools, described to it in `internal/tools`: `read_file` (numbered lines, paged), `write_file`, `edit_file` (exact-string replacement with a diff back), `bash` (non-interactive, timed out, output bounded), `glob`, `grep` (RE2, skips binaries and build output), and `list_dir`. Write and execute tools are the ones `--confirm` gates.
 
+Answering in words is the default, the way Claude Code behaves: the system prompt (`internal/prompt`) keeps tools for work in the project and questions about it, with short examples of both, and each tool's description says what it is not for. `bash` refuses a command that only prints fixed text (`echo hello`), since its output reaches no one; small models reach for it to talk. A reply that is nothing but a tool call written out as text is repaired and run as the call.
+
 ## Run from source
 
 ```sh
