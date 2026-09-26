@@ -9,6 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
+
+	"github.com/justin06lee/caveira/tui/internal/tools"
 )
 
 const richReply = "# Plan\n\nThree steps.\n\n## Build\n\n1. Write the loop:\n\n   ```go\n   for i := 0; i < 3; i++ {\n   \tfmt.Println(i, \"a line long enough that it has to wrap inside the panel instead of running off the side\")\n   }\n   ```\n\n2. Run it.\n\n### Notes\n\n> quoted\n\n```\nplain text block\n```\n\nDone with `go run .`"
@@ -194,6 +196,37 @@ func runCmds(cmd tea.Cmd) {
 			}
 		}
 	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// A tool call shimmers while it runs, then settles into darker gray; only
+// a failure keeps a colour.
+func TestToolCallsAreGrayAndShimmerWhileRunning(t *testing.T) {
+	m := session(t, 100, 40)
+	running := &item{kind: itemTool, toolName: "bash", preview: "go test ./...", running: true, started: time.Now()}
+	a := m.rend.render(running)
+	m.rend.frame += 3
+	running.invalidate()
+	b := m.rend.render(running)
+	if a == b {
+		t.Fatal("a running call should shimmer from frame to frame")
+	}
+	call := func(s string) string { return string([]rune(plain(s))[1:]) } // past the spinner
+	if call(a) != call(b) || !strings.Contains(plain(a), "Bash $ go test ./...") {
+		t.Fatalf("running call reads %q", plain(a))
+	}
+	if strings.Contains(a, fg(th.ok)) || strings.Contains(a, fg(th.accent)) {
+		t.Fatal("running call should be gray")
+	}
+
+	done := &item{kind: itemTool, toolName: "bash", preview: "go test ./...", result: &tools.Result{Summary: "exit 0 · 1 line"}}
+	d := strings.Split(m.rend.render(done), "\n")[0]
+	if !strings.Contains(d, fg(th.faint)) || strings.Contains(d, fg(th.ok)) || strings.Contains(d, fg(th.text)) {
+		t.Fatalf("finished call should be darker gray: %q", d)
+	}
+	failed := &item{kind: itemTool, toolName: "bash", preview: "go test ./...", result: &tools.Result{Summary: "exit 1", IsError: true}}
+	if !strings.Contains(m.rend.render(failed), fg(th.err)) {
+		t.Fatal("a failed call should say so in red")
 	}
 }
 

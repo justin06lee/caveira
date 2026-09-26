@@ -266,14 +266,19 @@ func (m *Model) renderStatus(width int) string {
 
 // shimmer draws text with a soft highlight sweeping across it.
 func shimmer(text string, frame int) string {
+	return shimmerBetween(text, frame, mix(th.muted, th.text, 0.35), th.text)
+}
+
+// shimmerBetween sweeps a highlight of hi across text drawn in lo, one
+// cell further each frame.
+func shimmerBetween(text string, frame int, lo, hi color.Color) string {
 	rs := []rune(text)
 	pos := float64(frame%(len(rs)+12)) - 6
 	var sb strings.Builder
 	for i, r := range rs {
 		d := math.Abs(float64(i) - pos)
 		k := math.Max(0, 1-d/4)
-		c := mix(th.muted, th.text, 0.35+0.65*k)
-		sb.WriteString(lipgloss.NewStyle().Foreground(c).Render(string(r)))
+		sb.WriteString(lipgloss.NewStyle().Foreground(mix(lo, hi, k)).Render(string(r)))
 	}
 	return sb.String()
 }

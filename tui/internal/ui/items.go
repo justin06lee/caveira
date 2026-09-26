@@ -336,21 +336,15 @@ func toolLabel(name string) string {
 	return name
 }
 
+// renderTool draws a tool call as quiet gray text: shimmering while it
+// runs, then settled into a darker gray, so the calls read as the work
+// around the conversation rather than part of it. Only a failure keeps a
+// colour, and the diff its green and red.
 func (r *renderer) renderTool(it *item) string {
-	var mark string
-	switch {
-	case it.running:
-		mark = th.Accent.Render(r.spinner())
-	case it.result != nil && it.result.IsError:
-		mark = th.Err.Render("●")
-	default:
-		mark = th.OK.Render("●")
-	}
 	label := toolLabel(it.toolName)
 	if it.user {
 		label = "Shell"
 	}
-	head := mark + " " + th.Title.Render(label)
 	arg := it.preview
 	if it.toolName == "bash" {
 		arg = "$ " + arg
@@ -360,9 +354,20 @@ func (r *renderer) renderTool(it *item) string {
 		add, del := diffStat(it.result.Diff)
 		stat = "  " + th.OK.Render(fmt.Sprintf("+%d", add)) + " " + th.Err.Render(fmt.Sprintf("−%d", del))
 	}
+	call := label
 	if arg != "" {
-		room := r.width - lipgloss.Width(head) - lipgloss.Width(stat) - 1
-		head += " " + th.Muted.Render(oneLine(arg, room))
+		room := r.width - 2 - lipgloss.Width(label) - 1 - lipgloss.Width(stat)
+		call += " " + oneLine(arg, room)
+	}
+
+	var head string
+	switch {
+	case it.running:
+		head = th.Muted.Render(r.spinner()) + " " + shimmerBetween(call, r.frame*2, th.muted, th.text)
+	case it.result != nil && it.result.IsError:
+		head = th.Err.Render("●") + " " + toolCallDone(label, call)
+	default:
+		head = th.Faint.Render("●") + " " + toolCallDone(label, call)
 	}
 	head += stat
 	if it.result == nil {
@@ -376,7 +381,7 @@ func (r *renderer) renderTool(it *item) string {
 
 	res := it.result
 	summary := res.Summary
-	st := th.Muted
+	st := th.Faint
 	if res.IsError {
 		st = th.Err
 	}
@@ -390,6 +395,12 @@ func (r *renderer) renderTool(it *item) string {
 		parts = append(parts, body)
 	}
 	return strings.Join(parts, "\n")
+}
+
+// toolCallDone is a finished call: the tool a step lighter than what it
+// was given.
+func toolCallDone(label, call string) string {
+	return th.Muted.Render(label) + th.Faint.Render(strings.TrimPrefix(call, label))
 }
 
 // modelOnly are the lines bash appends for the model's benefit; the result
