@@ -19,7 +19,7 @@ type readTool struct{ dir string }
 func (t *readTool) Name() string { return "read_file" }
 func (t *readTool) Kind() Kind   { return KindRead }
 func (t *readTool) Description() string {
-	return "Read a file from the filesystem. Returns the contents with line numbers, in the form `LINE\\tCONTENT`, " +
+	return "Read a file the task or the user's question needs. Returns the contents with line numbers, in the form `LINE\\tCONTENT`, " +
 		"so you can quote exact lines when editing. By default reads up to 2000 lines from the start; " +
 		"use offset and limit to page through large files. Always read a file before editing it. " +
 		"Paths are relative to the working directory unless absolute."

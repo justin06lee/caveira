@@ -15,8 +15,8 @@ func (t *writeTool) Name() string { return "write_file" }
 func (t *writeTool) Kind() Kind   { return KindWrite }
 func (t *writeTool) Description() string {
 	return "Create a file or completely overwrite an existing one with the given content. Parent directories are created. " +
-		"Prefer edit_file for changing part of an existing file: it is smaller, safer, and shows a diff. " +
-		"Use write_file for new files and full rewrites."
+		"Use it only when the task needs a new file or a full rewrite; prefer edit_file for changing part of an existing file: " +
+		"it is smaller, safer, and shows a diff. Never write a file to hold a reply, a note to the user, or a test of the tool."
 }
 func (t *writeTool) Schema() map[string]any {
 	return schema(map[string]any{

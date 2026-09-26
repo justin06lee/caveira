@@ -13,7 +13,7 @@ type editTool struct{ dir string }
 func (t *editTool) Name() string { return "edit_file" }
 func (t *editTool) Kind() Kind   { return KindWrite }
 func (t *editTool) Description() string {
-	return "Replace an exact string in a file. old_string must match the file text exactly, including whitespace and " +
+	return "Replace an exact string in a file, when the task calls for changing it. old_string must match the file text exactly, including whitespace and " +
 		"indentation, and must occur exactly once unless replace_all is true; include a few surrounding lines to make it " +
 		"unique. Read the file first so you quote it precisely. Do not include line-number prefixes from read_file in " +
 		"old_string. Returns a diff of the change."

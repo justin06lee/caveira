@@ -25,7 +25,9 @@ func (t *bashTool) Name() string { return "bash" }
 func (t *bashTool) Kind() Kind   { return KindExecute }
 func (t *bashTool) Description() string {
 	return "Run a shell command in the working directory and return its combined stdout and stderr plus the exit code. " +
-		"Use it for builds, tests, git, package managers, and anything else with a CLI. The shell is non-interactive: " +
+		"Use it for commands that do something in the project: builds, tests, git, package managers, and anything else with a CLI. " +
+		"Never use it to talk to the user or to print text you could write in your reply: echo and printf of fixed text are refused. " +
+		"The shell is non-interactive: " +
 		"commands that prompt for input will hang until the timeout, so pass flags like -y or --no-edit. " +
 		"Prefer the dedicated read_file, edit_file, glob, and grep tools over cat, sed, find, and grep. " +
 		"Do not use cd to move around; give absolute paths or paths relative to the working directory instead. " +
@@ -57,6 +59,11 @@ func (t *bashTool) Run(ctx context.Context, args json.RawMessage) Result {
 	}
 	if strings.TrimSpace(a.Command) == "" {
 		return errorResult("command is required")
+	}
+	if printsOnlyFixedText(a.Command) {
+		r := errorResult("not run: this only prints fixed text, which reaches no one. Say it in your reply instead, as plain text.")
+		r.Summary = "not run · only prints fixed text"
+		return r
 	}
 	timeout := bashDefaultTimeout
 	if a.Timeout > 0 {
@@ -157,4 +164,18 @@ func (t *bashTool) Run(ctx context.Context, args json.RawMessage) Result {
 		summary = strings.TrimSuffix(status, ".")
 	}
 	return Result{Output: sb.String(), Summary: summary, IsError: exit != 0}
+}
+
+// printsOnlyFixedText spots a command that is nothing but echo or printf
+// of literal text: no variables, substitutions, redirects, pipes, or other
+// commands. Its output is known before it runs and goes only back to the
+// model, so running it does nothing; models that call it are trying to
+// talk through the shell.
+func printsOnlyFixedText(command string) bool {
+	c := strings.TrimSpace(command)
+	name, _, _ := strings.Cut(c, " ")
+	if name != "echo" && name != "printf" {
+		return false
+	}
+	return !strings.ContainsAny(c, "$`<>|;&()\n*?[~{")
 }
