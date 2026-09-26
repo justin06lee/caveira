@@ -14,7 +14,7 @@ import (
 // Fenced code blocks are drawn by caveira rather than glamour, as panels of
 // their own: a header strip with the language on the left and a copy
 // button on the right, then the code, highlighted, on a shaded body. The
-// edges are horizontal half cells with the corners cut back, like the chat
+// edges are half a row thick with quarter-cell corners, like the chat
 // bubbles. Terminals without shading get a rounded outline instead.
 
 // mdSegment is a run of a reply: prose for glamour, or one fenced block.
@@ -143,7 +143,7 @@ func codeBlock(seg mdSegment, width int, copied bool) (string, codeSpot) {
 	gap := textW - lipgloss.Width(label) - bw
 
 	out := []string{
-		lead + " " + lipgloss.NewStyle().Foreground(head).Render(strings.Repeat("▄", w-2)),
+		lead + lipgloss.NewStyle().Foreground(head).Render("▗"+strings.Repeat("▄", w-2)+"▖"),
 		lead + headBg.Render("  ") +
 			lipgloss.NewStyle().Foreground(th.faint).Background(head).Render(label) +
 			headBg.Render(strings.Repeat(" ", gap)) +
@@ -157,7 +157,7 @@ func codeBlock(seg mdSegment, width int, copied bool) (string, codeSpot) {
 	for _, l := range highlight(expandTabs(seg.text), seg.lang, textW, body) {
 		out = append(out, lead+bodyBg.Render("  ")+l+bodyBg.Render("  "))
 	}
-	out = append(out, lead+" "+lipgloss.NewStyle().Foreground(body).Render(strings.Repeat("▀", w-2)))
+	out = append(out, lead+lipgloss.NewStyle().Foreground(body).Render("▝"+strings.Repeat("▀", w-2)+"▘"))
 	return strings.Join(out, "\n"), spot
 }
 

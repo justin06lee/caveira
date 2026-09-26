@@ -378,18 +378,8 @@ func TestUserMessageIsABubbleOnTheRight(t *testing.T) {
 	for _, text := range []string{"hi", long, "two\nlines"} {
 		out := bubble(text, 90, th.bubble, th.text, th.muted)
 		lines := strings.Split(plain(out), "\n")
-		// Rounded with horizontal half cells only: the top and bottom
-		// edges start one column in from the body, and no quarter cells.
-		top, bottom := []rune(lines[0]), []rune(lines[len(lines)-1])
-		bodyStart := len([]rune(lines[1])) - len([]rune(strings.TrimLeft(lines[1], " "))) - 2
-		if strings.ContainsAny(out, "▗▖▝▘▐▌") {
-			t.Fatalf("%q: quarter or vertical half cells in the bubble:\n%s", text, plain(out))
-		}
-		if strings.IndexRune(lines[0], '▄') < 0 || top[bodyStart] != ' ' || top[bodyStart+1] != '▄' {
-			t.Fatalf("%q: top edge not cut back at the corner:\n%s", text, plain(out))
-		}
-		if bottom[bodyStart] != ' ' || bottom[bodyStart+1] != '▀' || bottom[len(bottom)-1] != '▀' {
-			t.Fatalf("%q: bottom edge not cut back, or no tail:\n%s", text, plain(out))
+		if !strings.Contains(lines[0], "▗") || !strings.Contains(lines[len(lines)-1], "▝") {
+			t.Fatalf("%q: no rounded edges:\n%s", text, plain(out))
 		}
 		for _, l := range lines {
 			if w := len([]rune(l)); w > 90 {

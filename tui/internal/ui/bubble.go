@@ -21,12 +21,11 @@ func bubbleText(text string, width int) (lines []string, textW int) {
 }
 
 // bubble draws text as a chat bubble against the right edge of width: a
-// filled block whose top and bottom edges are half a row thick, drawn with
-// horizontal half cells only. Each corner is cut back by one column and
-// half a row, which is about square on a cell twice as tall as it is wide,
-// so it reads as rounded rather than notched. A small tail sticks out
-// under the right corner. Where there is no fill colour to draw with
-// (16-colour and colourless terminals), it falls back to a rounded outline.
+// filled block whose top and bottom edges are half a row thick and whose
+// corners are cut back to quarter cells, which is as round as a terminal
+// cell gets. A small tail sticks out under the right corner. Where there
+// is no fill colour to draw with (16-colour and colourless terminals), it
+// falls back to a rounded outline.
 func bubble(text string, width int, fill, fg, outline color.Color) string {
 	wrapped, textW := bubbleText(text, width)
 
@@ -46,14 +45,12 @@ func bubble(text string, width int, fill, fg, outline color.Color) string {
 	body := lipgloss.NewStyle().Background(fill).Foreground(fg)
 
 	out := make([]string, 0, len(wrapped)+2)
-	out = append(out, lead+" "+edge.Render(strings.Repeat("▄", w-2)))
+	out = append(out, lead+edge.Render("▗"+strings.Repeat("▄", w-2)+"▖"))
 	for _, l := range wrapped {
 		pad := strings.Repeat(" ", textW-lipgloss.Width(l))
 		out = append(out, lead+body.Render("  "+l+pad+"  "))
 	}
-	// The bottom edge keeps its right corner and runs one column past it:
-	// the tail.
-	out = append(out, lead+" "+edge.Render(strings.Repeat("▀", w)))
+	out = append(out, lead+edge.Render("▝"+strings.Repeat("▀", w-1)+"▘"))
 	return strings.Join(out, "\n")
 }
 

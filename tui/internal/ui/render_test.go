@@ -42,7 +42,7 @@ func TestSplitFences(t *testing.T) {
 
 // Code blocks are panels of their own: a header strip with the language
 // and a copy button, the code highlighted and wrapped inside, every row
-// the same width, edges in horizontal half cells.
+// the same width, edges in half cells with quarter-cell corners.
 func TestCodeBlockIsAPanelWithACopyButton(t *testing.T) {
 	m := session(t, 100, 60)
 	it := &item{kind: itemAssistant, text: richReply}
@@ -82,8 +82,8 @@ func TestCodeBlockIsAPanelWithACopyButton(t *testing.T) {
 	if !strings.Contains(top, "▄") || bottom == "" {
 		t.Fatalf("no half-cell edges around the block:\n%s", plain(out))
 	}
-	if strings.ContainsAny(out, "▗▖▝▘") {
-		t.Fatal("quarter cells in the panel")
+	if !strings.Contains(top, "▗") || !strings.Contains(bottom, "▝") {
+		t.Fatalf("panel corners not rounded:\n%s", plain(out))
 	}
 	if !strings.Contains(plain(out), "has to wrap") || !strings.Contains(plain(out), "running off the side") {
 		t.Fatalf("long line cut instead of wrapped:\n%s", plain(out))
