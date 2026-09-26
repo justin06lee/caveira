@@ -147,12 +147,18 @@ func (m *Model) refreshTranscript() {
 	}
 	m.dirty = false
 	parts := make([]string, 0, len(m.items)+len(m.queued)+1)
+	m.targets = m.targets[:0]
+	line := 0
 	for _, it := range m.items {
 		s := m.rend.render(it)
 		if s == "" {
 			continue
 		}
+		for i, sp := range it.spots {
+			m.targets = append(m.targets, copyTarget{line: line + sp.row, x0: sp.x0, x1: sp.x1, it: it, block: i})
+		}
 		parts = append(parts, s)
+		line += strings.Count(s, "\n") + 2
 	}
 	parts = append(parts, m.renderQueued()...)
 	m.vp.SetContent(strings.Join(parts, "\n\n"))
@@ -260,14 +266,19 @@ func (m *Model) renderStatus(width int) string {
 
 // shimmer draws text with a soft highlight sweeping across it.
 func shimmer(text string, frame int) string {
+	return shimmerBetween(text, frame, mix(th.muted, th.text, 0.35), th.text)
+}
+
+// shimmerBetween sweeps a highlight of hi across text drawn in lo, one
+// cell further each frame.
+func shimmerBetween(text string, frame int, lo, hi color.Color) string {
 	rs := []rune(text)
 	pos := float64(frame%(len(rs)+12)) - 6
 	var sb strings.Builder
 	for i, r := range rs {
 		d := math.Abs(float64(i) - pos)
 		k := math.Max(0, 1-d/4)
-		c := mix(th.muted, th.text, 0.35+0.65*k)
-		sb.WriteString(lipgloss.NewStyle().Foreground(c).Render(string(r)))
+		sb.WriteString(lipgloss.NewStyle().Foreground(mix(lo, hi, k)).Render(string(r)))
 	}
 	return sb.String()
 }

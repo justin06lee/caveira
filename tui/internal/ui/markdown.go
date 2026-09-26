@@ -6,6 +6,9 @@ import (
 	"charm.land/glamour/v2"
 	"charm.land/glamour/v2/ansi"
 	"charm.land/glamour/v2/styles"
+	"charm.land/lipgloss/v2"
+	"github.com/alecthomas/chroma/v2"
+	xansi "github.com/charmbracelet/x/ansi"
 )
 
 // markdown renders assistant text at a fixed width. It is rebuilt when the
@@ -31,27 +34,59 @@ func newMarkdown(width int) *markdown {
 	return &markdown{width: width, tr: tr}
 }
 
-func (m *markdown) render(src string) string {
-	if m == nil || m.tr == nil {
-		return src
+// render draws a reply: prose through glamour, fenced code blocks as
+// panels of their own (codeblock.go). spots are where each block's copy
+// button landed; copied is the block whose button says so, counting from
+// one, or zero for none.
+func (m *markdown) render(src string, copied int) (out string, spots []codeSpot) {
+	var parts []string
+	row := 0
+	for _, seg := range splitFences(src) {
+		var s string
+		if seg.code {
+			var spot codeSpot
+			s, spot = codeBlock(seg, m.width, len(spots)+1 == copied)
+			spot.row += row
+			spots = append(spots, spot)
+		} else if s = m.prose(seg.text); s == "" {
+			continue
+		}
+		parts = append(parts, s)
+		row += strings.Count(s, "\n") + 2
 	}
-	// Tabs measure as nothing and draw as several cells; expand them first.
-	out, err := m.tr.Render(strings.ReplaceAll(src, "\t", "    "))
+	return strings.Join(parts, "\n\n"), spots
+}
+
+// prose renders markdown with no fenced blocks in it.
+func (m *markdown) prose(src string) string {
+	if m == nil || m.tr == nil {
+		return lipgloss.Wrap(strings.TrimSpace(expandTabs(src)), max(m.width, 10), "")
+	}
+	out, err := m.tr.Render(expandTabs(src))
 	if err != nil {
 		return src
 	}
-	// glamour pads the document with blank lines top and bottom, and pads
-	// every line to the wrap width; the transcript spaces items itself.
-	lines := strings.Split(strings.Trim(out, "\n"), "\n")
+	// glamour pads the document with blank lines top and bottom (some of
+	// them spaces in colour codes), and pads every line to the wrap width;
+	// the transcript spaces items itself.
+	lines := strings.Split(out, "\n")
+	blank := func(l string) bool { return strings.TrimSpace(xansi.Strip(l)) == "" }
+	for len(lines) > 0 && blank(lines[0]) {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && blank(lines[len(lines)-1]) {
+		lines = lines[:len(lines)-1]
+	}
 	for i, l := range lines {
 		lines[i] = strings.TrimRight(l, " ")
 	}
 	return strings.Join(lines, "\n")
 }
 
-// transcriptStyle is glamour's base style recoloured to the theme: quiet
-// headings, bone emphasis, inline code in brass, and a syntax palette cut
-// from the same few colours so code blocks sit in the page instead of on it.
+// transcriptStyle is glamour's base style recoloured to the theme: headings
+// ranked by colour (a terminal has one type size), bone emphasis, inline
+// code in brass, and the code palette for the indented code blocks glamour
+// still draws.
 func transcriptStyle(t *theme) ansi.StyleConfig {
 	s := styles.DarkStyleConfig
 	if !t.dark {
@@ -73,14 +108,20 @@ func transcriptStyle(t *theme) ansi.StyleConfig {
 	s.Heading.Bold = &yes
 	s.H1.Prefix, s.H1.Suffix = "", ""
 	s.H1.BackgroundColor = nil
-	s.H1.Color = c(hexOf(t.bone))
+	s.H1.Color = c(hexOf(t.h1))
 	s.H2.Prefix = ""
-	s.H2.Color = c(hexOf(t.bone))
+	s.H2.Color = c(hexOf(t.h2))
 	s.H3.Prefix = ""
+	s.H3.Color = c(hexOf(t.h3))
 	s.H4.Prefix = ""
+	s.H4.Color = c(text)
 	s.H5.Prefix = ""
+	s.H5.Color = c(hexOf(t.muted))
 	s.H6.Prefix = ""
-	s.H6.Color = c(hexOf(t.muted))
+	s.H6.Color = c(hexOf(t.faint))
+	for _, h := range []*ansi.StyleBlock{&s.H1, &s.H2, &s.H3, &s.H4, &s.H5, &s.H6} {
+		h.Bold = &yes
+	}
 
 	s.Link.Color = c(hexOf(t.info))
 	s.LinkText.Color = c(hexOf(t.info))
@@ -106,46 +147,46 @@ func transcriptStyle(t *theme) ansi.StyleConfig {
 }
 
 func codePalette(t *theme) *ansi.Chroma {
-	p := func(col string) ansi.StylePrimitive { return ansi.StylePrimitive{Color: &col} }
-	italic := true
-	bold := true
-	type pal struct{ text, comment, keyword, typ, op, punct, fn, builtin, num, str, esc string }
-	v := pal{"#D6D4C8", "#6E7068", "#E5836B", "#C9CCB9", "#A9ABA1", "#8E9087", "#9FC2E0", "#D9B574", "#C5A3D9", "#A8C98C", "#D9B574"}
-	if !t.dark {
-		v = pal{"#2F302A", "#8A8C83", "#B8472F", "#4F5243", "#55574F", "#6B6D64", "#2F6391", "#8A5A12", "#7A4B96", "#4A7D2C", "#8A5A12"}
+	p := func(tt chroma.TokenType) ansi.StylePrimitive {
+		c, b, i := syntaxOf(t).of(tt)
+		col := hexOf(c)
+		sp := ansi.StylePrimitive{Color: &col}
+		if b {
+			sp.Bold = &b
+		}
+		if i {
+			sp.Italic = &i
+		}
+		return sp
 	}
-	comment := p(v.comment)
-	comment.Italic = &italic
-	class := p(v.text)
-	class.Bold = &bold
 	return &ansi.Chroma{
-		Text:                p(v.text),
-		Error:               p(hexOf(t.err)),
-		Comment:             comment,
-		CommentPreproc:      p(v.keyword),
-		Keyword:             p(v.keyword),
-		KeywordReserved:     p(v.keyword),
-		KeywordNamespace:    p(v.keyword),
-		KeywordType:         p(v.typ),
-		Operator:            p(v.op),
-		Punctuation:         p(v.punct),
-		Name:                p(v.text),
-		NameOther:           p(v.text),
-		NameException:       p(v.typ),
-		Literal:             p(v.str),
-		LiteralDate:         p(v.num),
-		NameBuiltin:         p(v.builtin),
-		NameTag:             p(v.keyword),
-		NameAttribute:       p(v.fn),
-		NameClass:           class,
-		NameConstant:        p(v.num),
-		NameDecorator:       p(v.builtin),
-		NameFunction:        p(v.fn),
-		LiteralNumber:       p(v.num),
-		LiteralString:       p(v.str),
-		LiteralStringEscape: p(v.esc),
-		GenericDeleted:      p(hexOf(t.delFg)),
-		GenericInserted:     p(hexOf(t.addFg)),
-		GenericSubheading:   p(v.comment),
+		Text:                p(chroma.Text),
+		Error:               p(chroma.Text),
+		Comment:             p(chroma.Comment),
+		CommentPreproc:      p(chroma.CommentPreproc),
+		Keyword:             p(chroma.Keyword),
+		KeywordReserved:     p(chroma.KeywordReserved),
+		KeywordNamespace:    p(chroma.KeywordNamespace),
+		KeywordType:         p(chroma.KeywordType),
+		Operator:            p(chroma.Operator),
+		Punctuation:         p(chroma.Punctuation),
+		Name:                p(chroma.Name),
+		NameOther:           p(chroma.NameOther),
+		NameException:       p(chroma.NameException),
+		Literal:             p(chroma.Literal),
+		LiteralDate:         p(chroma.LiteralDate),
+		NameBuiltin:         p(chroma.NameBuiltin),
+		NameTag:             p(chroma.NameTag),
+		NameAttribute:       p(chroma.NameAttribute),
+		NameClass:           p(chroma.NameClass),
+		NameConstant:        p(chroma.NameConstant),
+		NameDecorator:       p(chroma.NameDecorator),
+		NameFunction:        p(chroma.NameFunction),
+		LiteralNumber:       p(chroma.LiteralNumber),
+		LiteralString:       p(chroma.LiteralString),
+		LiteralStringEscape: p(chroma.LiteralStringEscape),
+		GenericDeleted:      p(chroma.GenericDeleted),
+		GenericInserted:     p(chroma.GenericInserted),
+		GenericSubheading:   p(chroma.GenericSubheading),
 	}
 }

@@ -58,6 +58,11 @@ type item struct {
 	running  bool
 	user     bool // a !command you ran yourself
 
+	// assistant fields: where each code block's copy button is, and the
+	// block (counting from one) that just got copied
+	spots  []codeSpot
+	copied int
+
 	cache      string
 	cacheWidth int
 	cacheKey   string
@@ -87,7 +92,7 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 func (r *renderer) spinner() string { return spinnerFrames[r.frame%len(spinnerFrames)] }
 
 func (r *renderer) render(it *item) string {
-	key := fmt.Sprintf("%v/%v/%s", r.showReasoning, r.expandTools, r.animKey(it))
+	key := fmt.Sprintf("%v/%v/%s/%d", r.showReasoning, r.expandTools, r.animKey(it), it.copied)
 	if it.cacheWidth == r.width && it.cacheKey == key && it.cache != "" {
 		return it.cache
 	}
@@ -246,6 +251,7 @@ func (r *renderer) renderUser(it *item) string {
 // ---- assistant ----
 
 func (r *renderer) renderAssistant(it *item) string {
+	it.spots = nil
 	text := strings.TrimSpace(it.text)
 	if text == "" || it.running && looksLikeCall(text) {
 		// A reply that opens like a tool call written as text waits until
@@ -257,7 +263,11 @@ func (r *renderer) renderAssistant(it *item) string {
 	if r.md == nil {
 		body = lipgloss.Wrap(th.Text.Render(text), max(r.width-2, 10), "")
 	} else {
-		body = r.md.render(text)
+		body, it.spots = r.md.render(text, it.copied)
+		for i := range it.spots {
+			it.spots[i].x0 += 2
+			it.spots[i].x1 += 2
+		}
 	}
 	return th.Bone.Render("●") + " " + strings.ReplaceAll(body, "\n", "\n  ")
 }
@@ -326,21 +336,15 @@ func toolLabel(name string) string {
 	return name
 }
 
+// renderTool draws a tool call as quiet gray text: shimmering while it
+// runs, then settled into a darker gray, so the calls read as the work
+// around the conversation rather than part of it. Only a failure keeps a
+// colour, and the diff its green and red.
 func (r *renderer) renderTool(it *item) string {
-	var mark string
-	switch {
-	case it.running:
-		mark = th.Accent.Render(r.spinner())
-	case it.result != nil && it.result.IsError:
-		mark = th.Err.Render("●")
-	default:
-		mark = th.OK.Render("●")
-	}
 	label := toolLabel(it.toolName)
 	if it.user {
 		label = "Shell"
 	}
-	head := mark + " " + th.Title.Render(label)
 	arg := it.preview
 	if it.toolName == "bash" {
 		arg = "$ " + arg
@@ -350,9 +354,20 @@ func (r *renderer) renderTool(it *item) string {
 		add, del := diffStat(it.result.Diff)
 		stat = "  " + th.OK.Render(fmt.Sprintf("+%d", add)) + " " + th.Err.Render(fmt.Sprintf("−%d", del))
 	}
+	call := label
 	if arg != "" {
-		room := r.width - lipgloss.Width(head) - lipgloss.Width(stat) - 1
-		head += " " + th.Muted.Render(oneLine(arg, room))
+		room := r.width - 2 - lipgloss.Width(label) - 1 - lipgloss.Width(stat)
+		call += " " + oneLine(arg, room)
+	}
+
+	var head string
+	switch {
+	case it.running:
+		head = th.Muted.Render(r.spinner()) + " " + shimmerBetween(call, r.frame*2, th.muted, th.text)
+	case it.result != nil && it.result.IsError:
+		head = th.Err.Render("●") + " " + toolCallDone(label, call)
+	default:
+		head = th.Faint.Render("●") + " " + toolCallDone(label, call)
 	}
 	head += stat
 	if it.result == nil {
@@ -366,7 +381,7 @@ func (r *renderer) renderTool(it *item) string {
 
 	res := it.result
 	summary := res.Summary
-	st := th.Muted
+	st := th.Faint
 	if res.IsError {
 		st = th.Err
 	}
@@ -380,6 +395,12 @@ func (r *renderer) renderTool(it *item) string {
 		parts = append(parts, body)
 	}
 	return strings.Join(parts, "\n")
+}
+
+// toolCallDone is a finished call: the tool a step lighter than what it
+// was given.
+func toolCallDone(label, call string) string {
+	return th.Muted.Render(label) + th.Faint.Render(strings.TrimPrefix(call, label))
 }
 
 // modelOnly are the lines bash appends for the model's benefit; the result
