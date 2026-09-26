@@ -225,8 +225,8 @@ func TestSessionFrame(t *testing.T) {
 func TestPaletteCompletesCommands(t *testing.T) {
 	m := session(t, 110, 40)
 	m.input.SetValue("/c")
-	if got := len(m.paletteMatches()); got != 3 {
-		t.Fatalf("want /compact, /cost, and /clear, got %d matches", got)
+	if got := len(m.paletteMatches()); got != 4 {
+		t.Fatalf("want /compact, /copy, /cost, and /clear, got %d matches", got)
 	}
 	m.layout()
 	frame := m.View().Content
@@ -234,6 +234,7 @@ func TestPaletteCompletesCommands(t *testing.T) {
 	if !strings.Contains(plain(frame), "summarize the conversation") {
 		t.Fatal("palette not drawn")
 	}
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	m.handleKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	m.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	if v := m.input.Value(); v != "/cost" {
@@ -419,7 +420,7 @@ func TestDevSessionIsBadged(t *testing.T) {
 	if !strings.Contains(plain(home), "DEV abliterated-model") {
 		t.Fatal("home info row missing the DEV badge")
 	}
-	s := session(t, 110, 60)
+	s := session(t, 110, 80)
 	s.dev = true
 	s.agent.ContextWindow = 4096 // Ollama's default
 	s.items = s.items[1:]        // drop the card built without dev

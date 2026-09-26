@@ -147,12 +147,18 @@ func (m *Model) refreshTranscript() {
 	}
 	m.dirty = false
 	parts := make([]string, 0, len(m.items)+len(m.queued)+1)
+	m.targets = m.targets[:0]
+	line := 0
 	for _, it := range m.items {
 		s := m.rend.render(it)
 		if s == "" {
 			continue
 		}
+		for i, sp := range it.spots {
+			m.targets = append(m.targets, copyTarget{line: line + sp.row, x0: sp.x0, x1: sp.x1, it: it, block: i})
+		}
 		parts = append(parts, s)
+		line += strings.Count(s, "\n") + 2
 	}
 	parts = append(parts, m.renderQueued()...)
 	m.vp.SetContent(strings.Join(parts, "\n\n"))

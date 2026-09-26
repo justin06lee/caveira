@@ -25,8 +25,10 @@ type theme struct {
 	bone, accent, code         color.Color
 	ok, warn, err, info        color.Color
 	surface, bubble            color.Color // nil where shading would not survive
+	codeHead                   color.Color // a code block's header strip; nil with surface
 	addBg, delBg               color.Color
 	addFg, delFg, accentShadow color.Color
+	h1, h2, h3                 color.Color // headings: a terminal has one type size, so colour ranks them
 
 	Text, Muted, Faint, Line  lipgloss.Style
 	Bone, Accent, Code        lipgloss.Style
@@ -59,7 +61,11 @@ func newTheme(dark bool, profile colorprofile.Profile, bg color.Color) *theme {
 		t.info = hex("#86A3C3")
 		t.addFg = hex("#B5DA9B")
 		t.delFg = hex("#F0A097")
+		t.h1 = hex("#A9C48B")
+		t.h2 = hex("#8DB0D1")
+		t.h3 = hex("#BCA5D6")
 		t.surface = mix(bg, t.text, 0.07)
+		t.codeHead = mix(bg, t.text, 0.13)
 		t.bubble = mix(mix(bg, t.text, 0.10), t.accent, 0.10)
 		t.addBg = mix(bg, hex("#3FAF5A"), 0.17)
 		t.delBg = mix(bg, hex("#E0564B"), 0.17)
@@ -81,7 +87,11 @@ func newTheme(dark bool, profile colorprofile.Profile, bg color.Color) *theme {
 		t.info = hex("#3B6690")
 		t.addFg = hex("#2F6B1F")
 		t.delFg = hex("#A8322A")
+		t.h1 = hex("#4E7A26")
+		t.h2 = hex("#2F6391")
+		t.h3 = hex("#74479A")
 		t.surface = mix(bg, t.text, 0.055)
+		t.codeHead = mix(bg, t.text, 0.11)
 		t.bubble = mix(mix(bg, t.text, 0.05), t.accent, 0.09)
 		t.addBg = mix(bg, hex("#3FAF5A"), 0.15)
 		t.delBg = mix(bg, hex("#E0564B"), 0.15)
@@ -91,7 +101,7 @@ func newTheme(dark bool, profile colorprofile.Profile, bg color.Color) *theme {
 	if profile < colorprofile.ANSI256 {
 		// Sixteen colours cannot shade a panel without shouting, and the
 		// painted skull would round to white; draw both in one colour.
-		t.surface, t.bubble, t.addBg, t.delBg = nil, nil, nil, nil
+		t.surface, t.codeHead, t.bubble, t.addBg, t.delBg = nil, nil, nil, nil, nil
 		t.mascot = art.MascotMonoDark
 		if !dark {
 			t.mascot = art.MascotMonoLight

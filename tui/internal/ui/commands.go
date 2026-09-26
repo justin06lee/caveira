@@ -23,6 +23,7 @@ var commands = []command{
 	{name: "/model", args: "[id]", desc: "choose the model and reasoning effort", aliases: []string{"/m", "/models"}},
 	{name: "/effort", args: "[level]", desc: "reasoning effort, none to max", aliases: []string{"/e"}},
 	{name: "/compact", desc: "summarize the conversation to free context"},
+	{name: "/copy", desc: "copy the last code block, or the last reply if it has none"},
 	{name: "/cost", desc: "tokens and spend for this session", aliases: []string{"/usage"}},
 	{name: "/clear", desc: "start a new session", aliases: []string{"/new"}},
 	{name: "/session", desc: "where this session is saved"},
@@ -38,6 +39,7 @@ var keyHelp = [][2]string{
 	{"ctrl+t", "show or hide thinking"},
 	{"ctrl+o", "expand or collapse tool output"},
 	{"pgup pgdn", "scroll (or the mouse wheel)"},
+	{"click copy", "copy a code block"},
 	{"ctrl+end", "jump back to the bottom"},
 	{"↑ ↓", "earlier prompts"},
 	{"!cmd", "run a shell command yourself; the model sees the output"},
@@ -184,6 +186,9 @@ func (m *Model) slash(text string) tea.Cmd {
 			return nil
 		}
 		return m.runCompact()
+
+	case "/copy":
+		return m.copyLast()
 
 	case "/cost", "/usage":
 		m.push(m.costPanel())

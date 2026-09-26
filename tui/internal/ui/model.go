@@ -77,6 +77,7 @@ type Model struct {
 	profile colorprofile.Profile
 
 	items    []*item
+	targets  []copyTarget // the copy buttons in the transcript, by line
 	dirty    bool
 	follow   bool
 	pendingR *item // in-progress reasoning block
@@ -347,6 +348,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.vp, cmd = m.vp.Update(msg)
 		m.follow = m.vp.AtBottom()
 		return m, cmd
+
+	case tea.MouseClickMsg:
+		if m.phase != phaseSession {
+			return m, nil
+		}
+		return m, m.click(msg.Mouse())
+
+	case copiedDoneMsg:
+		m.copiedDone(msg)
+		return m, nil
 
 	case tickMsg:
 		if !m.running && !m.hasRunningTool() && (m.picker == nil || !m.picker.loading) {

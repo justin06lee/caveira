@@ -58,6 +58,11 @@ type item struct {
 	running  bool
 	user     bool // a !command you ran yourself
 
+	// assistant fields: where each code block's copy button is, and the
+	// block (counting from one) that just got copied
+	spots  []codeSpot
+	copied int
+
 	cache      string
 	cacheWidth int
 	cacheKey   string
@@ -87,7 +92,7 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 func (r *renderer) spinner() string { return spinnerFrames[r.frame%len(spinnerFrames)] }
 
 func (r *renderer) render(it *item) string {
-	key := fmt.Sprintf("%v/%v/%s", r.showReasoning, r.expandTools, r.animKey(it))
+	key := fmt.Sprintf("%v/%v/%s/%d", r.showReasoning, r.expandTools, r.animKey(it), it.copied)
 	if it.cacheWidth == r.width && it.cacheKey == key && it.cache != "" {
 		return it.cache
 	}
@@ -246,6 +251,7 @@ func (r *renderer) renderUser(it *item) string {
 // ---- assistant ----
 
 func (r *renderer) renderAssistant(it *item) string {
+	it.spots = nil
 	text := strings.TrimSpace(it.text)
 	if text == "" || it.running && looksLikeCall(text) {
 		// A reply that opens like a tool call written as text waits until
@@ -257,7 +263,11 @@ func (r *renderer) renderAssistant(it *item) string {
 	if r.md == nil {
 		body = lipgloss.Wrap(th.Text.Render(text), max(r.width-2, 10), "")
 	} else {
-		body = r.md.render(text)
+		body, it.spots = r.md.render(text, it.copied)
+		for i := range it.spots {
+			it.spots[i].x0 += 2
+			it.spots[i].x1 += 2
+		}
 	}
 	return th.Bone.Render("●") + " " + strings.ReplaceAll(body, "\n", "\n  ")
 }
