@@ -17,6 +17,8 @@ type Options struct {
 	WorkDir string
 	Model   string
 	Now     time.Time
+	// Desktop says the user is in the desktop app, not a terminal.
+	Desktop bool
 }
 
 // instructionFiles are read from the project root down to the working
@@ -31,7 +33,11 @@ func Build(o Options) string {
 		o.Now = time.Now()
 	}
 	var sb strings.Builder
-	sb.WriteString(core)
+	if o.Desktop {
+		sb.WriteString(desktop.Replace(core))
+	} else {
+		sb.WriteString(core)
+	}
 	sb.WriteString("\n\n")
 	sb.WriteString(environment(o))
 	if instr := ProjectInstructions(o.WorkDir); instr != "" {
@@ -114,6 +120,12 @@ assistant: [runs the tests, reads the failures and the code they cover, fixes th
 - Do not echo file contents or diffs the user can already see in the tool output. Summarize what changed and why in a sentence or two.
 - Report faithfully. If tests failed, say so and show the failure. If you skipped a step, say which. If it is done and verified, say that plainly.
 - You are talking to a developer. Assume competence; skip explanations of basics unless asked.`
+
+// desktop rewrites the two places the prompt says where the user is.
+var desktop = strings.NewReplacer(
+	"running in the user's terminal", "running in the caveira desktop app on the user's machine",
+	"The user is reading a terminal.", "The user is reading a chat window.",
+)
 
 func environment(o Options) string {
 	var sb strings.Builder

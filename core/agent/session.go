@@ -117,6 +117,14 @@ func LoadSession(id string) (*Session, error) {
 	return &s, nil
 }
 
+// DeleteSession removes one session's file.
+func DeleteSession(id string) error {
+	if id == "" || strings.ContainsAny(id, `/\`) {
+		return errors.New("not a session id: " + id)
+	}
+	return os.Remove(filepath.Join(sessionsDir(), id+".json"))
+}
+
 // LatestSession finds the most recently updated session for workDir.
 func LatestSession(workDir string) (*Session, error) {
 	sessions, err := ListSessions(workDir)

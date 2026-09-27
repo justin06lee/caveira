@@ -212,6 +212,23 @@ func parseEnvFile(path string) (map[string]string, error) {
 	return vars, sc.Err()
 }
 
+// ReadFile is what the settings file alone says, without defaults, .env
+// files, or the environment: the layer a settings screen edits.
+func ReadFile() (Settings, error) {
+	var s Settings
+	b, err := os.ReadFile(Path())
+	if errors.Is(err, os.ErrNotExist) {
+		return s, nil
+	}
+	if err != nil {
+		return s, err
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		return s, errors.New(Path() + ": " + err.Error())
+	}
+	return s, nil
+}
+
 // Save writes the settings file, 0600 because it may hold the key.
 func Save(s Settings) error {
 	if err := os.MkdirAll(Dir(), 0o700); err != nil {
