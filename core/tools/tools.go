@@ -6,10 +6,13 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -161,9 +164,44 @@ func resolve(dir, p string) (abs, rel string) {
 	return abs, rel
 }
 
+// decode reads a call's arguments. Small models often quote a boolean or
+// a number ("replace_all": "false"); a field that does not fit because of
+// that is read as what its string says.
 func decode(args json.RawMessage, into any) error {
-	dec := json.NewDecoder(strings.NewReader(string(args)))
-	return dec.Decode(into)
+	err := json.NewDecoder(strings.NewReader(string(args))).Decode(into)
+	var fields map[string]any
+	for tries := 0; err != nil && tries < 8; tries++ {
+		var typeErr *json.UnmarshalTypeError
+		if !errors.As(err, &typeErr) || typeErr.Value != "string" {
+			return err
+		}
+		if fields == nil && json.Unmarshal(args, &fields) != nil {
+			return err
+		}
+		s, ok := fields[typeErr.Field].(string)
+		if !ok {
+			return err
+		}
+		switch typeErr.Type.Kind() {
+		case reflect.Bool:
+			b, perr := strconv.ParseBool(strings.TrimSpace(s))
+			if perr != nil {
+				return err
+			}
+			fields[typeErr.Field] = b
+		case reflect.Int, reflect.Int64, reflect.Int32, reflect.Float64:
+			n, perr := strconv.ParseFloat(strings.TrimSpace(s), 64)
+			if perr != nil {
+				return err
+			}
+			fields[typeErr.Field] = n
+		default:
+			return err
+		}
+		fixed, _ := json.Marshal(fields)
+		err = json.Unmarshal(fixed, into)
+	}
+	return err
 }
 
 func clip(s string, n int) string {

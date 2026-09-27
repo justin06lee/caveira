@@ -189,3 +189,21 @@ func TestBashRefusesPrintingFixedText(t *testing.T) {
 		t.Errorf("echo with a redirect did not write the file: %q, %v", b, err)
 	}
 }
+
+// Small models quote booleans and numbers; the tools read them anyway.
+func TestQuotedScalarsAreRead(t *testing.T) {
+	var a struct {
+		Path       string `json:"path"`
+		ReplaceAll bool   `json:"replace_all"`
+		Limit      int    `json:"limit"`
+	}
+	if err := decode(json.RawMessage(`{"path":"12","replace_all":"true","limit":"50"}`), &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.Path != "12" || !a.ReplaceAll || a.Limit != 50 {
+		t.Fatalf("%+v", a)
+	}
+	if err := decode(json.RawMessage(`{"replace_all":"sometimes"}`), &a); err == nil {
+		t.Fatal("read a string that is not a boolean as one")
+	}
+}
