@@ -62,8 +62,8 @@ func (m *Model) homeLayout() homeFrame {
 	inner := m.inner()
 	var f homeFrame
 	boxRows := m.input.Height() + 2
-	// title, gap, tagline, two gaps, box, info, gap, tips
-	fixed := 1 + 1 + 1 + 2 + boxRows + 1 + 1 + 1
+	// title, gap, tagline, gap, box, info, gap, tips
+	fixed := 1 + 1 + 1 + 1 + boxRows + 1 + 1 + 1
 	for _, s := range []struct{ scale, minH int }{{3, 40}, {2, 28}, {1, 20}} {
 		if m.height >= s.minH && inner >= art.MascotWidth(s.scale)+4 {
 			f.scale = s.scale
@@ -84,7 +84,7 @@ func (m *Model) homeLayout() homeFrame {
 	}
 	f.titleY = y
 	f.tagY = y + 2
-	y += 3 + 2
+	y += 3 + 1
 	f.boxY = y
 	f.boxW = min(inner, homeBoxMax)
 	f.boxX = center(f.boxW)
