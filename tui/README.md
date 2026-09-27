@@ -70,7 +70,7 @@ go run .                 # or: go build -o bin/caveira . && ./bin/caveira
 go test ./...            # the interface; the agent's tests are in ../core
 ```
 
-From the repo root, `make` builds and installs `caveira`, with a `cav` link beside it, into `~/.local/bin` (`BINDIR=/usr/local/bin make` to change that) and `make update` replaces an installed binary with a fresh build.
+From the repo root, `make` builds and installs `caveira`, with a `cav` link beside it, into `~/.local/bin` (`BINDIR=/usr/local/bin make` to change that), along with the desktop app, and `make update` replaces the installed builds with fresh ones. `make install-tui` does the terminal client alone.
 
 ## Layout
 
@@ -86,4 +86,4 @@ The agent itself is not in here: it is the `core` module at the repository root,
 - `core/agent` — the loop: stream a reply, run the tools it asks for, feed results back; approvals, compaction, sessions.
 - `core/config` — settings resolution and what is known about each model.
 - `core/local` — running on a model on this machine: picking an installed Ollama model and making its `caveira/` copy.
-- `designs/` — TUI screens drawn in the cell editor.
+- `designs/` — TUI screens drawn as terminal cell art.
