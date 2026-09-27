@@ -14,10 +14,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 
-	"github.com/justin06lee/caveira/tui/internal/agent"
-	"github.com/justin06lee/caveira/tui/internal/config"
-	"github.com/justin06lee/caveira/tui/internal/llm"
-	"github.com/justin06lee/caveira/tui/internal/tools"
+	"github.com/justin06lee/caveira/core/agent"
+	"github.com/justin06lee/caveira/core/config"
+	"github.com/justin06lee/caveira/core/llm"
+	"github.com/justin06lee/caveira/core/tools"
 )
 
 func testModel(t *testing.T, w, h int) *Model {

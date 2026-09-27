@@ -10,7 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 
-	"github.com/justin06lee/caveira/tui/internal/tools"
+	"github.com/justin06lee/caveira/core/tools"
 )
 
 const richReply = "# Plan\n\nThree steps.\n\n## Build\n\n1. Write the loop:\n\n   ```go\n   for i := 0; i < 3; i++ {\n   \tfmt.Println(i, \"a line long enough that it has to wrap inside the panel instead of running off the side\")\n   }\n   ```\n\n2. Run it.\n\n### Notes\n\n> quoted\n\n```\nplain text block\n```\n\nDone with `go run .`"

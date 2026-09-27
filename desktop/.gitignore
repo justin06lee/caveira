@@ -1,0 +1,10 @@
+# The root ignores every build/ and dist/; the app keeps its icon, its
+# Info.plist templates, and the placeholder go:embed needs in a fresh clone.
+!build/
+build/bin/
+!frontend/dist/
+frontend/dist/*
+!frontend/dist/.gitkeep
+frontend/node_modules/
+frontend/wailsjs/
+frontend/package.json.md5

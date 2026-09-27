@@ -10,8 +10,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/justin06lee/caveira/core/tools"
 	"github.com/justin06lee/caveira/tui/internal/art"
-	"github.com/justin06lee/caveira/tui/internal/tools"
 )
 
 type itemKind int

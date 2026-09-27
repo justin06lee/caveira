@@ -59,27 +59,31 @@ By default caveira does not ask before running commands or changing files: it is
 
 ## Tools
 
-The model gets seven tools, described to it in `internal/tools`: `read_file` (numbered lines, paged), `write_file`, `edit_file` (exact-string replacement with a diff back), `bash` (non-interactive, timed out, output bounded), `glob`, `grep` (RE2, skips binaries and build output), and `list_dir`. Write and execute tools are the ones `--confirm` gates.
+The model gets seven tools, described to it in `core/tools`: `read_file` (numbered lines, paged), `write_file`, `edit_file` (exact-string replacement with a diff back), `bash` (non-interactive, timed out, output bounded), `glob`, `grep` (RE2, skips binaries and build output), and `list_dir`. Write and execute tools are the ones `--confirm` gates.
 
-Answering in words is the default, the way Claude Code behaves: the system prompt (`internal/prompt`) keeps tools for work in the project and questions about it, with short examples of both, and each tool's description says what it is not for. `bash` refuses a command that only prints fixed text (`echo hello`), since its output reaches no one; small models reach for it to talk. A reply that is nothing but a tool call written out as text is repaired and run as the call.
+Answering in words is the default, the way Claude Code behaves: the system prompt (`core/prompt`) keeps tools for work in the project and questions about it, with short examples of both, and each tool's description says what it is not for. `bash` refuses a command that only prints fixed text (`echo hello`), since its output reaches no one; small models reach for it to talk. A reply that is nothing but a tool call written out as text is repaired and run as the call.
 
 ## Run from source
 
 ```sh
 go run .                 # or: go build -o bin/caveira . && ./bin/caveira
-go test ./...
+go test ./...            # the interface; the agent's tests are in ../core
 ```
 
-From the repo root, `make` builds and installs `caveira`, with a `cav` link beside it, into `~/.local/bin` (`BINDIR=/usr/local/bin make` to change that) and `make update` replaces an installed binary with a fresh build.
+From the repo root, `make` builds and installs `caveira`, with a `cav` link beside it, into `~/.local/bin` (`BINDIR=/usr/local/bin make` to change that), along with the desktop app, and `make update` replaces the installed builds with fresh ones. `make install-tui` does the terminal client alone.
 
 ## Layout
 
-- `main.go` — flags, configuration, and the one-shot `-p` mode.
-- `internal/llm` — streaming client for OpenAI-compatible chat completions: SSE parsing, tool-call assembly, retries.
-- `internal/tools` — the tool set and its registry.
-- `internal/prompt` — the system prompt: stance, working method, tool guidance, environment, project instructions.
-- `internal/agent` — the loop: stream a reply, run the tools it asks for, feed results back; approvals, compaction, sessions.
+- `main.go` — flags, configuration, and the one-shot `-p` mode; `dev.go` — `--dev`, on top of `core/local`.
 - `internal/ui` — the Bubble Tea screens: the home screen with its intro (`home.go`), and the session with its transcript (`items.go`), status line, input, footer, approval card (`view.go`), and command palette (`commands.go`); `theme.go` holds the palette for dark, light, and low-colour terminals.
 - `internal/art` — the 11×11 pixel skull mascot (`mascot.go`), rendered as half-block cells in colour or in one colour; `go run ./internal/art/preview` prints it.
-- `internal/config` — settings resolution and what is known about each model.
-- `designs/` — TUI screens drawn in the cell editor.
+
+The agent itself is not in here: it is the `core` module at the repository root, shared with the desktop app, which this module pulls in with a `replace` directive.
+
+- `core/llm` — streaming client for OpenAI-compatible chat completions: SSE parsing, tool-call assembly, retries.
+- `core/tools` — the tool set and its registry.
+- `core/prompt` — the system prompt: stance, working method, tool guidance, environment, project instructions.
+- `core/agent` — the loop: stream a reply, run the tools it asks for, feed results back; approvals, compaction, sessions.
+- `core/config` — settings resolution and what is known about each model.
+- `core/local` — running on a model on this machine: picking an installed Ollama model and making its `caveira/` copy.
+- `designs/` — TUI screens drawn as terminal cell art.

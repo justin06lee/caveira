@@ -1,0 +1,16 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "caveira",
+  "outputfilename": "caveira",
+  "frontend:install": "bun install",
+  "frontend:build": "bun run build",
+  "frontend:dev:watcher": "bun run dev",
+  "frontend:dev:serverUrl": "auto",
+  "info": {
+    "companyName": "caveira",
+    "productName": "caveira",
+    "productVersion": "0.1.0",
+    "comments": "A coding agent for abliterated models.",
+    "copyright": "© 2026 justin06lee"
+  }
+}
