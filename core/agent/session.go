@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/justin06lee/caveira/tui/internal/config"
-	"github.com/justin06lee/caveira/tui/internal/llm"
+	"github.com/justin06lee/caveira/core/config"
+	"github.com/justin06lee/caveira/core/llm"
 )
 
 // Session is a conversation on disk, so a run can be picked up later.

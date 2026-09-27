@@ -9,8 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/justin06lee/caveira/tui/internal/agent"
-	"github.com/justin06lee/caveira/tui/internal/config"
+	"github.com/justin06lee/caveira/core/agent"
+	"github.com/justin06lee/caveira/core/config"
 )
 
 // command is one slash command, as the palette and /help list it.

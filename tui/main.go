@@ -21,10 +21,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/justin06lee/caveira/tui/internal/agent"
-	"github.com/justin06lee/caveira/tui/internal/config"
-	"github.com/justin06lee/caveira/tui/internal/llm"
-	"github.com/justin06lee/caveira/tui/internal/prompt"
+	"github.com/justin06lee/caveira/core/agent"
+	"github.com/justin06lee/caveira/core/config"
+	"github.com/justin06lee/caveira/core/llm"
+	"github.com/justin06lee/caveira/core/prompt"
 	"github.com/justin06lee/caveira/tui/internal/ui"
 )
 

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/justin06lee/caveira/tui/internal/llm"
+	"github.com/justin06lee/caveira/core/llm"
 )
 
 func knownTools(name string) bool { return name == "read_file" || name == "list_dir" || name == "bash" }

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/justin06lee/caveira/tui/internal/llm"
-	"github.com/justin06lee/caveira/tui/internal/tools"
+	"github.com/justin06lee/caveira/core/llm"
+	"github.com/justin06lee/caveira/core/tools"
 )
 
 // Event is something the UI wants to know about while a turn runs. Every

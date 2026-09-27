@@ -1,4 +1,4 @@
-package main
+package local
 
 import (
 	"bytes"
@@ -16,33 +16,35 @@ import (
 // that, and the OpenAI-compatible endpoint ignores a num_ctx in the
 // request. Llama 3's template also puts the tool list into the user's
 // last message with an order to answer with a function call, so llama3.2
-// ran a tool for "hi". Both are fixed without touching the server: dev
-// mode creates a caveira/ copy of the model (Ollama shares the weights, so
+// ran a tool for "hi". Both are fixed without touching the server: Apply
+// creates a caveira/ copy of the model (Ollama shares the weights, so
 // it costs no disk) with a bigger window, a steadier temperature, and,
 // where the model has Llama 3's template, llama3ToolTemplate instead.
 
 const (
-	devCopyPrefix  = "caveira/"
-	devWindow      = 16_384
-	devTemperature = 0.3
+	copyPrefix = "caveira/"
+	// Window is the context a caveira/ copy gets at least.
+	Window      = 16_384
+	temperature = 0.3
 )
 
-func isDevCopy(model string) bool { return strings.HasPrefix(model, devCopyPrefix) }
+// IsCopy reports whether model is a caveira/ copy made by Apply.
+func IsCopy(model string) bool { return strings.HasPrefix(model, copyPrefix) }
 
 // ollamaPrepare creates or refreshes the caveira/ copy of model and
 // returns its name and window. ok is false when the server is not Ollama
 // or would not make the copy; the caller then runs the model as it is.
 func ollamaPrepare(ctx context.Context, baseURL, model string) (name string, window int, ok bool) {
-	base := strings.TrimPrefix(model, devCopyPrefix)
+	base := strings.TrimPrefix(model, copyPrefix)
 	info, ok := ollamaShow(ctx, baseURL, base)
 	if !ok {
 		return "", 0, false
 	}
-	window = max(devWindow, ollamaContext(ctx, baseURL, base))
+	window = max(Window, ollamaContext(ctx, baseURL, base))
 	body := map[string]any{
-		"model":      devCopyPrefix + base,
+		"model":      copyPrefix + base,
 		"from":       base,
-		"parameters": map[string]any{"num_ctx": window, "temperature": devTemperature},
+		"parameters": map[string]any{"num_ctx": window, "temperature": temperature},
 		"stream":     false,
 	}
 	if forcesToolCalls(info.Template) {
@@ -54,7 +56,7 @@ func ollamaPrepare(ctx context.Context, baseURL, model string) (name string, win
 	if !ollamaCall(ctx, http.MethodPost, ollamaRoot(baseURL)+"/api/create", body, &res) || res.Status != "success" {
 		return "", 0, false
 	}
-	return devCopyPrefix + base, window, true
+	return copyPrefix + base, window, true
 }
 
 // forcesToolCalls spots Llama 3's template, which tells the model to

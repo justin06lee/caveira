@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/justin06lee/caveira/tui/internal/config"
-	"github.com/justin06lee/caveira/tui/internal/llm"
-	"github.com/justin06lee/caveira/tui/internal/tools"
+	"github.com/justin06lee/caveira/core/config"
+	"github.com/justin06lee/caveira/core/llm"
+	"github.com/justin06lee/caveira/core/tools"
 )
 
 // Totals is cumulative usage for the session.

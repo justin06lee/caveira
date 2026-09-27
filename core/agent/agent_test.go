@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/justin06lee/caveira/tui/internal/config"
-	"github.com/justin06lee/caveira/tui/internal/llm"
+	"github.com/justin06lee/caveira/core/config"
+	"github.com/justin06lee/caveira/core/llm"
 )
 
 // sse builds a streamed response body from text and an optional tool call.

@@ -12,7 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/justin06lee/caveira/tui/internal/config"
+	"github.com/justin06lee/caveira/core/config"
 )
 
 // The session screen, top to bottom: the transcript, a gap, the status line

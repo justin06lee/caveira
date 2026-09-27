@@ -13,7 +13,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/justin06lee/caveira/tui/internal/llm"
+	"github.com/justin06lee/caveira/core/llm"
 )
 
 // Kind is how much a tool can change: it decides what needs confirmation.

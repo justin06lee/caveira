@@ -28,6 +28,7 @@ tui:
 	cd tui && go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) .
 
 test:
+	cd core && go vet ./... && go test ./...
 	cd tui && go vet ./... && go test ./...
 
 # The cell editor: typecheck and bundle. Run it with `bun run dev` in cell-editor.

@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/justin06lee/caveira/tui/internal/llm"
+	"github.com/justin06lee/caveira/core/llm"
 )
 
 // Some models write a tool call out as the text of their reply instead of
