@@ -20,7 +20,7 @@ An app opened from the Dock does not get your shell's environment, so on launch 
 
 From the repository root, `make` builds both clients, installs `caveira.app` into `/Applications` (and the terminal client into `~/.local/bin`), and opens the app. `make update` quits the running app first and opens the new one after. Each local build is signed anew, which macOS treats as a different app for folder access (Documents, Desktop, external drives), so `make` also clears the old build's grants and the new one asks again.
 
-To build just the app: `make desktop`, which leaves it in `desktop/build/bin/caveira.app`. Wails is run with `go run`, so there is nothing to install besides Go, bun, and the Xcode command line tools.
+To build just the app: `make desktop`, which leaves it in `desktop/build/bin/caveira.app`. Wails is run with `go run`, so there is nothing to install besides Go, bun, and the Xcode command line tools. With the full Xcode installed, the build also compiles the app's Icon Composer icon; without it the app keeps the classic icon, which macOS 26 shades with glass in the Dock.
 
 ## Working on it
 
@@ -51,3 +51,5 @@ Setting `HOME` keeps the harness's chats and settings out of your real ones.
 - `frontend/src/lib` — the bridge to Go, the store, theme, and formatting.
 - `frontend/src/components` — the sidebar, chat pane, transcript, tool rows, composer, settings, and first-run screens.
 - `frontend/src/styles.css` — the whole look: the icon's off-white and black, and the steps between them.
+- `build/appicon.png` — the classic icon Wails packages, for macOS before 26.
+- `build/darwin/caveira.icon` — the Icon Composer icon for macOS 26, with glass, highlight, and shadow off so the Dock shows it flat: the eye from `assets/caveira-icon.svg` on a solid `#F8F7F2` fill.

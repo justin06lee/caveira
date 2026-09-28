@@ -38,9 +38,21 @@ tui:
 	cd tui && go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) .
 
 # Wails builds the frontend with bun, compiles, and packages the .app.
+# macOS 26 shades a classic .icns with glass in the Dock, so the app also
+# carries an Icon Composer icon with glass, highlight and shadow turned off;
+# actool comes with Xcode, and without it the app keeps the classic icon. Its
+# paths are absolute because it resolves relative ones in a helper process.
 desktop:
 	cd desktop && CGO_CFLAGS=$(MACOS_MIN) CGO_LDFLAGS=$(MACOS_MIN) \
 		$(WAILS) build -clean -skipbindings -ldflags "$(LDFLAGS)"
+	@if xcrun --find actool >/dev/null 2>&1; then \
+		xcrun actool $(CURDIR)/desktop/build/darwin/caveira.icon --app-icon caveira \
+			--compile $(CURDIR)/desktop/build/bin/$(APP)/Contents/Resources \
+			--platform macosx --target-device mac --minimum-deployment-target 13.0 \
+			--output-partial-info-plist $(CURDIR)/desktop/build/bin/icon.plist >/dev/null && \
+		rm -f desktop/build/bin/$(APP)/Contents/Resources/caveira.icns && \
+		codesign --force --sign - desktop/build/bin/$(APP); \
+	else echo "actool not found (install Xcode): keeping the classic icon"; fi
 
 # `cav` is a link to `caveira`, so either name starts it.
 install-tui: tui
