@@ -66,9 +66,10 @@ type ChatView struct {
 	NeedsKey bool   `json:"needsKey,omitempty"`
 }
 
-// ChatHeader is a chat in the sidebar.
+// ChatHeader is a chat in the sidebar, under the project folder Dir.
 type ChatHeader struct {
 	ID      string `json:"id"`
+	Dir     string `json:"dir"`
 	Title   string `json:"title"`
 	Updated string `json:"updated"`
 	Running bool   `json:"running"`
@@ -253,7 +254,9 @@ func (a *App) OpenChat(id string) (ChatView, error) {
 	return c.view(), nil
 }
 
-// Chats lists the saved chats for dir, newest first.
+// Chats lists the saved chats for dir, newest first; every project's
+// when dir is empty, which the sidebar sorts into its folders. Only each
+// file's header is read, so all of them is cheap.
 func (a *App) Chats(dir string) ([]ChatHeader, error) {
 	sessions, err := agent.ListSessions(dir)
 	if err != nil {
@@ -263,7 +266,7 @@ func (a *App) Chats(dir string) ([]ChatHeader, error) {
 	defer a.mu.Unlock()
 	out := make([]ChatHeader, 0, len(sessions))
 	for _, s := range sessions {
-		h := ChatHeader{ID: s.ID, Title: s.Title, Updated: s.UpdatedAt.Format(time.RFC3339)}
+		h := ChatHeader{ID: s.ID, Dir: s.WorkDir, Title: s.Title, Updated: s.UpdatedAt.Format(time.RFC3339)}
 		if c, ok := a.chats[s.ID]; ok {
 			h.Running = c.cancel != nil
 		}

@@ -27,8 +27,13 @@ export interface State {
   version: string;
   settings: SettingsView | null;
   projects: Project[];
+  // project is where the open chat is, and where ⌘N starts one.
   project: Project | null;
+  // headers is every project's saved chats, newest first; the sidebar
+  // sorts them into its folders by dir.
   headers: ChatHeader[];
+  // expanded is the project folders open in the sidebar, by path.
+  expanded: string[];
   chatId: string | null;
   chats: Record<string, Chat>;
   settingsOpen: boolean;
@@ -49,6 +54,7 @@ let state: State = {
   projects: [],
   project: null,
   headers: [],
+  expanded: [],
   chatId: null,
   chats: {},
   settingsOpen: false,
@@ -107,6 +113,35 @@ export function toast(e: unknown): void {
 
 const LAST_PROJECT = "caveira.project";
 const LAST_CHAT = "caveira.chat";
+const EXPANDED = "caveira.expanded";
+
+function loadExpanded(): string[] | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(EXPANDED) ?? "null");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveExpanded(expanded: string[]): void {
+  localStorage.setItem(EXPANDED, JSON.stringify(expanded));
+}
+
+// toggleFolder opens or closes a project folder in the sidebar.
+export function toggleFolder(path: string): void {
+  setState((s) => ({
+    expanded: s.expanded.includes(path) ? s.expanded.filter((x) => x !== path) : [...s.expanded, path],
+  }));
+  saveExpanded(getState().expanded);
+}
+
+// expand opens the folder the open chat is in, however it got opened.
+function expand(path: string): void {
+  if (getState().expanded.includes(path)) return;
+  setState((s) => ({ expanded: [...s.expanded, path] }));
+  saveExpanded(getState().expanded);
+}
 
 // boot comes back to the project and chat the window last showed. The
 // project is in place before the first frame, so the window does not
@@ -115,12 +150,15 @@ export async function boot(): Promise<void> {
   const b = await api.boot();
   const last = localStorage.getItem(LAST_PROJECT);
   const project = b.projects.find((p) => p.path === last) ?? b.projects[0] ?? null;
+  const headers = (await api.chats("").catch(() => null)) ?? [];
   setState(() => ({
     ready: true,
     version: b.version,
     settings: b.settings,
     projects: b.projects,
     project,
+    headers,
+    expanded: loadExpanded() ?? [],
     onboarded: b.onboarded,
     workspace: b.workspace,
   }));
@@ -153,21 +191,35 @@ export async function refreshProjects(): Promise<void> {
 // resume names if it belongs to p.
 export async function selectProject(p: Project, resume?: string): Promise<void> {
   try {
-    const fresh = await api.openProject(p.path);
-    localStorage.setItem(LAST_PROJECT, fresh.path);
-    setState((s) => ({
-      project: fresh,
-      projects: [fresh, ...s.projects.filter((x) => x.path !== fresh.path)],
-      headers: [],
-      chatId: null,
-    }));
-    const headers = (await api.chats(fresh.path)) ?? [];
-    setState(() => ({ headers }));
-    if (resume && headers.some((h) => h.id === resume)) await openChat(resume);
+    await enter(p.path);
+    const s = getState();
+    if (resume && s.headers.some((h) => h.id === resume && h.dir === s.project?.path)) await openChat(resume);
     else await newChat();
   } catch (e) {
     toast(e);
   }
+}
+
+function freshen(p: Project): void {
+  setState((s) => ({
+    projects: s.projects.map((x) => (x.path === p.path ? p : x)),
+    project: s.project?.path === p.path ? p : s.project,
+  }));
+}
+
+// enter makes dir the project, opening its folder in the sidebar. A
+// project already there keeps its place, so the folders do not shuffle
+// under the pointer; a new one goes on top.
+async function enter(dir: string): Promise<void> {
+  const fresh = await api.openProject(dir);
+  localStorage.setItem(LAST_PROJECT, fresh.path);
+  const known = getState().projects.some((x) => x.path === fresh.path);
+  setState((s) => ({
+    project: fresh,
+    projects: known ? s.projects.map((x) => (x.path === fresh.path ? fresh : x)) : [fresh, ...s.projects],
+  }));
+  expand(fresh.path);
+  if (!known) await refreshHeaders();
 }
 
 export async function chooseProject(): Promise<void> {
@@ -182,13 +234,24 @@ export async function chooseProject(): Promise<void> {
   }
 }
 
+// forgetProject takes p out of the sidebar. Its folder and its chats stay
+// where they are; opening it again brings them back.
 export async function forgetProject(p: Project): Promise<void> {
-  await api.forgetProject(p.path);
-  setState((s) => ({ projects: s.projects.filter((x) => x.path !== p.path) }));
+  try {
+    await api.forgetProject(p.path);
+  } catch (e) {
+    toast(e);
+    return;
+  }
+  setState((s) => ({
+    projects: s.projects.filter((x) => x.path !== p.path),
+    expanded: s.expanded.filter((x) => x !== p.path),
+  }));
+  saveExpanded(getState().expanded);
   const s = getState();
   if (s.project?.path === p.path) {
     localStorage.removeItem(LAST_PROJECT);
-    setState(() => ({ project: null, headers: [], chatId: null }));
+    setState(() => ({ project: null, chatId: null }));
     if (s.projects[0]) await selectProject(s.projects[0]);
   }
 }
@@ -197,11 +260,13 @@ function withTurns(v: ChatView, old?: Chat): Chat {
   return { ...v, items: v.items ?? [], turns: old?.turns ?? [] };
 }
 
-export async function newChat(): Promise<void> {
-  const p = getState().project;
-  if (!p) return;
-  setState(() => ({ chatId: null }));
+// newChat starts a chat in the project at dir, or in the current one.
+export async function newChat(dir?: string): Promise<void> {
   try {
+    if (dir && dir !== getState().project?.path) await enter(dir);
+    const p = getState().project;
+    if (!p) return;
+    setState(() => ({ chatId: null }));
     const v = await api.newChat(p.path);
     localStorage.setItem(LAST_CHAT, v.id);
     setState((s) => ({ chatId: v.id, chats: { ...s.chats, [v.id]: withTurns(v, s.chats[v.id]) } }));
@@ -210,8 +275,20 @@ export async function newChat(): Promise<void> {
   }
 }
 
+// openChat opens a saved chat, switching to its project if it is in
+// another one.
 export async function openChat(id: string): Promise<void> {
   localStorage.setItem(LAST_CHAT, id);
+  const s = getState();
+  const dir = s.headers.find((h) => h.id === id)?.dir ?? s.chats[id]?.dir;
+  const owner = dir && dir !== s.project?.path ? s.projects.find((p) => p.path === dir) : undefined;
+  if (owner) {
+    localStorage.setItem(LAST_PROJECT, owner.path);
+    setState(() => ({ project: owner }));
+    // Read again behind it: the branch may have moved since the list was.
+    api.openProject(owner.path).then(freshen, () => {});
+  }
+  if (dir) expand(dir);
   setState(() => ({ chatId: id }));
   try {
     const v = await api.openChat(id);
@@ -227,10 +304,8 @@ export async function refreshChat(id: string): Promise<void> {
 }
 
 export async function refreshHeaders(): Promise<void> {
-  const p = getState().project;
-  if (!p) return;
-  const headers = (await api.chats(p.path)) ?? [];
-  if (getState().project?.path === p.path) setState(() => ({ headers }));
+  const headers = (await api.chats("")) ?? [];
+  setState(() => ({ headers }));
 }
 
 export async function deleteChat(id: string): Promise<void> {
@@ -242,7 +317,8 @@ export async function deleteChat(id: string): Promise<void> {
       return { chats, headers: s.headers.filter((h) => h.id !== id) };
     });
     if (getState().chatId === id) {
-      const next = getState().headers[0];
+      const dir = getState().project?.path;
+      const next = getState().headers.find((h) => h.dir === dir);
       if (next) await openChat(next.id);
       else await newChat();
     }
