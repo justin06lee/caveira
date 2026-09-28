@@ -167,6 +167,11 @@ func TestTurnBuildsTheTranscript(t *testing.T) {
 	if err != nil || len(headers) != 1 || headers[0].ID != v.ID {
 		t.Fatalf("chats: %+v, %v", headers, err)
 	}
+	// Every project's, for the sidebar's folders: each says whose it is.
+	all, err := a.Chats("")
+	if err != nil || len(all) != 1 || all[0].ID != v.ID || all[0].Dir != dir {
+		t.Fatalf("all chats: %+v, %v", all, err)
+	}
 
 	// Forget it and read it back from disk.
 	a.mu.Lock()

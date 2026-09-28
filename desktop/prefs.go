@@ -30,8 +30,8 @@ type prefs struct {
 	EmptyImports []string `json:"empty_imports,omitempty"`
 }
 
-// maxProjects is room for everything an import brings in; the project
-// menu scrolls.
+// maxProjects is room for everything an import brings in; the sidebar
+// scrolls.
 const maxProjects = 40
 
 func prefsPath() string { return filepath.Join(config.Dir(), "desktop.json") }

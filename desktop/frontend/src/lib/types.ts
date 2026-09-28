@@ -143,6 +143,8 @@ export interface ChatView {
 
 export interface ChatHeader {
   id: string;
+  // dir is the project the chat belongs to.
+  dir: string;
   title: string;
   updated: string;
   running: boolean;
