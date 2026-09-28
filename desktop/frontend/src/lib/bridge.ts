@@ -7,10 +7,16 @@ import type {
   ChatEvent,
   ChatHeader,
   ChatView,
+  ImportApp,
+  ImportPick,
+  ImportProgress,
+  ImportResult,
+  Listing,
   ModelOption,
   Project,
   SettingsInput,
   SettingsView,
+  Workspace,
 } from "./types";
 
 declare global {
@@ -36,6 +42,14 @@ export const api = {
   chooseProject: () => call<Project>("ChooseProject"),
   forgetProject: (dir: string) => call<void>("ForgetProject", dir),
   reveal: (dir: string) => call<void>("Reveal", dir),
+  projects: () => call<Project[] | null>("Projects"),
+  listDir: (base: string, rel: string) => call<Listing>("ListDir", base, rel),
+  makeFolder: (base: string, rel: string) => call<Project>("MakeFolder", base, rel),
+  setWorkspace: (dir: string) => call<Workspace>("SetWorkspace", dir),
+  suggestWorkspace: () => call<Workspace>("SuggestWorkspace"),
+  finishOnboarding: () => call<void>("FinishOnboarding"),
+  scanImports: () => call<ImportApp[] | null>("ScanImports"),
+  importChats: (picks: ImportPick[]) => call<ImportResult>("Import", picks),
   settings: () => call<SettingsView>("Settings"),
   saveSettings: (s: SettingsInput) => call<SettingsView>("SaveSettings", s),
   models: (local: boolean) => call<ModelOption[] | null>("Models", local),
@@ -53,6 +67,10 @@ export const api = {
 
 export function onChatEvent(cb: (e: ChatEvent) => void): () => void {
   return window.runtime?.EventsOn("chat", (e) => cb(e as ChatEvent)) ?? (() => {});
+}
+
+export function onImport(cb: (p: ImportProgress) => void): () => void {
+  return window.runtime?.EventsOn("import", (p) => cb(p as ImportProgress)) ?? (() => {});
 }
 
 export function onMenu(cb: (action: string) => void): () => void {

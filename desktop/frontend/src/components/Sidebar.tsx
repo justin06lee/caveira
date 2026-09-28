@@ -16,7 +16,6 @@ import { api } from "../lib/bridge";
 import { ago } from "../lib/format";
 import { useDismiss } from "../lib/hooks";
 import {
-  chooseProject,
   deleteChat,
   forgetProject,
   newChat,
@@ -60,7 +59,7 @@ export function Sidebar({ hidden }: { hidden: boolean }) {
         <span className="brand-name">caveira</span>
       </div>
 
-      <ProjectPicker />
+      <ProjectMenu />
 
       <button className="new-chat" onClick={() => newChat()}>
         <SquarePen size={15} />
@@ -139,7 +138,7 @@ function ChatRow(props: { id: string; title: string; when: string; current: bool
   );
 }
 
-function ProjectPicker() {
+function ProjectMenu() {
   const project = useStore((s) => s.project);
   const projects = useStore((s) => s.projects);
   const [open, setOpen] = useState(false);
@@ -169,47 +168,49 @@ function ProjectPicker() {
       {open && (
         <div className="menu" style={{ top: "calc(100% + 4px)", left: 8, right: 8 }}>
           <div className="menu-label">Projects</div>
-          {projects.map((p) => (
-            <button
-              key={p.path}
-              className="menu-item"
-              onClick={() => {
-                close();
-                if (p.path !== project.path) selectProject(p);
-              }}
-            >
-              <span className="grow">
-                {p.name}
-                <span className="sub">{p.short}</span>
-              </span>
-              {p.path === project.path ? (
-                <Check size={14} className="check" />
-              ) : (
-                <span
-                  role="button"
-                  className="icon-btn"
-                  style={{ width: 22, height: 22 }}
-                  title="Remove from this list"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    forgetProject(p);
-                  }}
-                >
-                  <X size={12} />
+          <div className="menu-scroll">
+            {projects.map((p) => (
+              <button
+                key={p.path}
+                className="menu-item"
+                onClick={() => {
+                  close();
+                  if (p.path !== project.path) selectProject(p);
+                }}
+              >
+                <span className="grow">
+                  {p.name}
+                  <span className="sub">{p.short}</span>
                 </span>
-              )}
-            </button>
-          ))}
+                {p.path === project.path ? (
+                  <Check size={14} className="check" />
+                ) : (
+                  <span
+                    role="button"
+                    className="icon-btn"
+                    style={{ width: 22, height: 22 }}
+                    title="Remove from this list"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      forgetProject(p);
+                    }}
+                  >
+                    <X size={12} />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
           <div className="menu-sep" />
           <button
             className="menu-item"
             onClick={() => {
               close();
-              chooseProject();
+              setState(() => ({ pickerOpen: true }));
             }}
           >
             <FolderPlus size={15} className="muted-icon" />
-            <span className="grow">Open folder…</span>
+            <span className="grow">Open project…</span>
             <kbd>⌘O</kbd>
           </button>
           <button

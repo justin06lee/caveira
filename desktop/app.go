@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/justin06lee/caveira/core/config"
+	"github.com/justin06lee/caveira/core/importer"
 	"github.com/justin06lee/caveira/core/llm"
 	"github.com/justin06lee/caveira/core/local"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -36,6 +37,8 @@ type App struct {
 	// picked is the last local model set up, so every new chat does not
 	// ask the server again.
 	picked *localPick
+	// found is what the last look for other agents' chats found.
+	found []importer.Chat
 }
 
 // localPick is what local.Apply settled on for one set of settings.
@@ -72,21 +75,37 @@ type Project struct {
 
 // Boot is everything the window needs to draw its first frame.
 type Boot struct {
-	Version  string       `json:"version"`
-	Settings SettingsView `json:"settings"`
-	Projects []Project    `json:"projects"`
+	Version   string       `json:"version"`
+	Settings  SettingsView `json:"settings"`
+	Projects  []Project    `json:"projects"`
+	Workspace Workspace    `json:"workspace"`
+	// Onboarded is false until the first-run steps are done.
+	Onboarded bool `json:"onboarded"`
 }
 
 func (a *App) Boot() Boot {
 	waitShellEnv()
 	a.mu.Lock()
 	dirs := a.prefs.existingProjects()
+	ws, onboarded := a.prefs.Workspace, a.prefs.Onboarded
 	a.mu.Unlock()
-	projects := make([]Project, 0, len(dirs))
+	return Boot{Version: a.version, Settings: a.Settings(), Projects: projects(dirs), Workspace: workspace(ws), Onboarded: onboarded}
+}
+
+// Projects is the recent projects, for after an import adds some.
+func (a *App) Projects() []Project {
+	a.mu.Lock()
+	dirs := a.prefs.existingProjects()
+	a.mu.Unlock()
+	return projects(dirs)
+}
+
+func projects(dirs []string) []Project {
+	out := make([]Project, 0, len(dirs))
 	for _, d := range dirs {
-		projects = append(projects, project(d))
+		out = append(out, project(d))
 	}
-	return Boot{Version: a.version, Settings: a.Settings(), Projects: projects}
+	return out
 }
 
 func project(dir string) Project {

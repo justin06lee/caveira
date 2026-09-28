@@ -20,9 +20,19 @@ type prefs struct {
 	Local        bool   `json:"local,omitempty"`
 	LocalBaseURL string `json:"local_base_url,omitempty"`
 	LocalModel   string `json:"local_model,omitempty"`
+	// Workspace is the folder the project picker opens in.
+	Workspace string `json:"workspace,omitempty"`
+	// Onboarded is set once the first-run steps (import, workspace) are
+	// done or skipped.
+	Onboarded bool `json:"onboarded,omitempty"`
+	// EmptyImports are chats an import found nothing in, by the id they
+	// would have had, so the next look does not offer them again.
+	EmptyImports []string `json:"empty_imports,omitempty"`
 }
 
-const maxProjects = 12
+// maxProjects is room for everything an import brings in; the project
+// menu scrolls.
+const maxProjects = 40
 
 func prefsPath() string { return filepath.Join(config.Dir(), "desktop.json") }
 
@@ -62,6 +72,32 @@ func (p *prefs) touch(dir string) {
 		}
 	}
 	p.Projects = out
+}
+
+// add puts dirs after the projects already known, in the order given,
+// and says how many were new.
+func (p *prefs) add(dirs []string) int {
+	known := map[string]bool{}
+	for _, d := range p.Projects {
+		known[d] = true
+	}
+	n := 0
+	for _, d := range dirs {
+		if !known[d] && len(p.Projects) < maxProjects {
+			p.Projects = append(p.Projects, d)
+			known[d] = true
+			n++
+		}
+	}
+	return n
+}
+
+func (p prefs) emptyImports() map[string]bool {
+	out := make(map[string]bool, len(p.EmptyImports))
+	for _, id := range p.EmptyImports {
+		out[id] = true
+	}
+	return out
 }
 
 func (p *prefs) forget(dir string) {

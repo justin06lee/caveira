@@ -4,17 +4,29 @@ The desktop client: the same agent as the terminal one, in a window. Go and [Wai
 
 ## What it does
 
-Open a folder and talk to caveira about it. It reads, searches, edits, and runs commands in that folder the way the terminal client does, because it is the same agent: the loop, tools, prompt, and settings all come from the shared `core` module at the repository root.
+Open a project and talk to caveira about it. It reads, searches, edits, and runs commands in that folder the way the terminal client does, because it is the same agent: the loop, tools, prompt, and settings all come from the shared `core` module at the repository root.
 
-The window is a sidebar and a conversation. The sidebar holds the project (switch between recent folders, open another with ⌘O, show it in the Finder) and its chats, newest first, with a dot on any that is still working; ⌘N starts a new one, and chats keep running when you switch away from them. In the conversation, your messages sit on the right and caveira's replies are plain markdown, code in panels with a copy button. Each tool call is one quiet line (`Read main.go · 11 lines`, `Edit main.go +1 −1`, `Run go test ./...`) that shimmers while it runs and opens to show its output or diff; a failed one turns red. A model's thinking folds into a "Thought" line. Each turn closes with how long it took, how many tools it ran, and what it cost. Under the composer: the model and reasoning effort (click to switch; the choice becomes the default for new chats), how full the context window is, and what the chat has spent. `enter` sends, `shift+enter` adds a line, `esc` stops.
+The first launch takes two steps, both skippable and both in Settings afterwards. First it offers to bring over the chats other coding agents left on this Mac, from Claude Code, Codex, and OpenCode, grouped by app and project; see [Importing](#importing). Then it asks where your projects live, with the folder most of the known projects share already typed in.
+
+Projects are opened with the picker (⌘O, and the whole window when no project is open): a box to type in, and the workspace folder's contents under it, one line each, the way `ls -a` would list them. Typing narrows the list to what starts with the last part of the path, and a slash goes into a folder. Tab completes as far as the matches agree and, when they agree no further, steps through them the way a shell's menu completion does. `..` and enter go up a level for as long as the picker is open; `~/` and `/` start from home or the root. Hidden files show with the eye in the box, or ⌘⇧. as in the Finder, or when what is typed starts with a dot. Enter opens the highlighted folder, or a folder typed with a slash after it; a name that is not there is offered as a new folder. Browse… is the Finder's own dialog.
+
+The window is a sidebar and a conversation. The sidebar holds the project (switch between recent projects, open another with ⌘O, show it in the Finder) and its chats, newest first, with a dot on any that is still working; ⌘N starts a new one, and chats keep running when you switch away from them. In the conversation, your messages sit on the right and caveira's replies are plain markdown, code in panels with a copy button. Each tool call is one quiet line (`Read main.go · 11 lines`, `Edit main.go +1 −1`, `Run go test ./...`) that shimmers while it runs and opens to show its output or diff; a failed one turns red. A model's thinking folds into a "Thought" line. Each turn closes with how long it took, how many tools it ran, and what it cost. Under the composer: the model and reasoning effort (click to switch; the choice becomes the default for new chats), how full the context window is, and what the chat has spent. `enter` sends, `shift+enter` adds a line, `esc` stops.
 
 With "Ask before commands and edits" on, a command or file change waits in the transcript as a card showing the command, or the lines an edit takes out and puts in, with Deny, Always allow, and Allow.
 
 caveira runs on [abliteration.ai](https://abliteration.ai) or on a model on this machine. The first launch asks for an API key, or offers the local route: Ollama at `localhost:11434`, where models run as `caveira/` copies with room for the prompt, exactly as the terminal client's `--dev` does (see `core/local`). Settings (⌘,) switch between the two and hold the key, endpoint, default model, effort, the ask-first switch, and light, dark, or system appearance.
 
-Chats are the same session files the terminal uses, under `~/.caveira/sessions/`, so a chat started in one opens in the other. The key, endpoint, model, effort, and ask-first setting are `~/.caveira/config.json`, shared with the terminal; `.env` files and the environment still win over it, and the settings screen says when they do. What only the app keeps (recent projects, appearance, the local model setting) is `~/.caveira/desktop.json`.
+Chats are the same session files the terminal uses, under `~/.caveira/sessions/`, so a chat started in one opens in the other. The key, endpoint, model, effort, and ask-first setting are `~/.caveira/config.json`, shared with the terminal; `.env` files and the environment still win over it, and the settings screen says when they do. What only the app keeps (recent projects, the workspace, appearance, the local model setting) is `~/.caveira/desktop.json`.
 
 An app opened from the Dock does not get your shell's environment, so on launch it asks your login shell for it once, the way editors do: the agent's commands find `go`, `bun`, and whatever else your `PATH` has, and a key exported in your shell profile is seen.
+
+## Importing
+
+File → Import from Other Agents…, Settings, or the first launch. Each app's chats are read into caveira's own session format by `core/importer`: tool calls caveira also has become its own (a Claude Code `Edit` is an `edit_file`, with the diff Claude Code kept beside it), the text agents slip into user messages (environment blocks, reminders, slash-command records) is left out, a compacted chat starts from its summary as caveira's own do, and every tool call is answered so the history is one an endpoint accepts when the chat is carried on. Tool results are cut to 24 KB each. A tool caveira does not have keeps its name and input and shows as a line of its own.
+
+Where each app keeps its chats: Claude Code in `~/.claude/projects` (or `$CLAUDE_CONFIG_DIR`), Codex in `~/.codex/sessions` (or `$CODEX_HOME`), OpenCode in `~/.local/share/opencode/opencode.db` (or `$XDG_DATA_HOME`), read with the `sqlite3` that ships with macOS. Chats that ran in temporary folders or inside app bundles, subagents' threads, and Codex's own copies of Claude Code chats are left out. The originals are only read.
+
+An imported chat keeps its id in the other app (`claude-<id>`, `codex-<id>`, `opencode-<id>`), so importing again brings over only what is new; a chat already imported is not refreshed from the original. Chats with nothing said in them are remembered in `desktop.json` and not offered again. Their folders join the recent projects, up to forty.
 
 ## Build and run
 
@@ -37,19 +49,21 @@ cd frontend && bun run build && cd ..
 HOME=/tmp/caveira-home CAVEIRA_HARNESS=localhost:34999 go test -run TestHarness -timeout 0 .
 ```
 
-Setting `HOME` keeps the harness's chats and settings out of your real ones.
+Setting `HOME` keeps the harness's chats and settings out of your real ones. To try the import on real chats, link `~/.claude`, `~/.codex`, and `~/.local/share/opencode` into that home; the importer only reads them. The frontend is embedded when the test builds, so restart the harness after `bun run build`.
 
 ## Layout
 
 - `main.go` — the window, its menu, and its options.
 - `app.go` — what the window can ask for: projects, settings, model lists.
+- `files.go` — the folder picker's listings, new folders, the workspace, and the end of the first run.
+- `imports.go` — finding and importing other agents' chats (the reading itself is `core/importer`).
 - `chat.go` — chats: building an agent from the settings, running turns, approvals, and turning agent events into the transcript and the events the window hears.
 - `transcript.go` — rebuilding a saved chat's transcript from its messages.
 - `prefs.go` — `~/.caveira/desktop.json`.
 - `shellenv.go` — the login shell's environment for a Dock launch.
 - `harness_test.go` — the browser harness.
 - `frontend/src/lib` — the bridge to Go, the store, theme, and formatting.
-- `frontend/src/components` — the sidebar, chat pane, transcript, tool rows, composer, settings, and first-run screens.
+- `frontend/src/components` — the sidebar, chat pane, transcript, tool rows, composer, settings, the first run (`Onboarding`, `ImportPanel`), and the folder picker (`PathPicker`, shown by `Welcome` and `OpenProject`).
 - `frontend/src/styles.css` — the whole look: the icon's off-white and black, and the steps between them.
 - `build/appicon.png` — the classic icon Wails packages, for macOS before 26.
 - `build/darwin/caveira.icon` — the Icon Composer icon for macOS 26, with glass, highlight, and shadow off so the Dock shows it flat: the eye from `assets/caveira-icon.svg` on a solid `#F8F7F2` fill.

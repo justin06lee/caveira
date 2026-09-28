@@ -1414,6 +1414,9 @@ select.field {
   place-items: center;
   animation: fade 0.16s var(--ease);
 }
+:root[data-theme="dark"] .scrim {
+  background: rgba(0, 0, 0, 0.5);
+}
 .sheet {
   width: min(520px, calc(100vw - 48px));
   max-height: calc(100vh - 80px);
@@ -1475,6 +1478,502 @@ select.field {
 .sheet-foot .version {
   font-size: 12px;
   color: var(--faint);
+}
+
+/* folder picker: a box to type a path in, and what is there branching
+   off it, as ls -a would list it */
+
+.picker {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.pick-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 46px;
+  padding: 0 7px 0 16px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: text;
+  transition: border-color 0.12s;
+}
+.pick-input:focus-within {
+  border-color: var(--text);
+}
+.pick-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: 14px/1 var(--mono);
+  user-select: text;
+  -webkit-user-select: text;
+}
+.pick-input input::placeholder {
+  color: var(--faint);
+  font-family: var(--sans);
+  font-size: 14.5px;
+}
+.pick-eye {
+  flex: none;
+  color: var(--faint);
+}
+.pick-eye.on {
+  color: var(--text);
+}
+
+.pick-where {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 4px 0 14px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.pick-where .grow {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pick-list {
+  overflow-y: auto;
+  max-height: var(--pick-max, 46vh);
+  padding: 0 0 4px 10px;
+  color: var(--faint);
+}
+.pick-stub {
+  width: 9px;
+  height: 6px;
+  border-right: 1.3px solid currentColor;
+}
+.pick-row {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  font: 13px var(--mono);
+}
+.elbow {
+  flex: none;
+  width: 28px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pick-main {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 6px;
+  border-radius: 7px;
+  color: var(--muted);
+}
+.pick-row.dir .pick-main {
+  color: var(--text);
+}
+.pick-row.dotfile .pick-main {
+  opacity: 0.6;
+}
+.pick-row:hover .pick-main {
+  background: var(--hover);
+}
+.pick-row.on .pick-main {
+  background: var(--active);
+  opacity: 1;
+}
+.pick-row.on .elbow {
+  stroke: var(--muted);
+}
+.pick-icon {
+  flex: none;
+  color: var(--muted);
+}
+.pick-row.on .pick-icon {
+  color: var(--text);
+}
+.pick-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pick-name .slash {
+  color: var(--faint);
+}
+.pick-name .hit {
+  text-decoration: underline;
+  text-decoration-color: var(--faint);
+  text-underline-offset: 3px;
+}
+.pick-row.create .pick-name {
+  font-family: var(--sans);
+  color: var(--muted);
+}
+.pick-row.create .pick-name b {
+  font-family: var(--mono);
+  font-weight: 500;
+  color: var(--text);
+}
+.pick-tag,
+.pick-hint {
+  flex: none;
+  font: 11px var(--sans);
+  color: var(--faint);
+}
+.pick-more,
+.pick-empty {
+  padding: 7px 0 3px 34px;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+.pick-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+}
+.pick-keys {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.pick-keys kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 4px;
+  margin-right: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  font: 10.5px/15px var(--mono);
+  text-align: center;
+  color: var(--muted);
+}
+.btn kbd.on-primary {
+  color: inherit;
+  opacity: 0.55;
+  margin-left: 2px;
+}
+
+/* the picker over the window, and inside settings */
+
+.scrim.top {
+  place-items: start center;
+}
+.pick-sheet {
+  margin-top: 13vh;
+  width: min(640px, calc(100vw - 48px));
+  padding: 12px 12px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+  animation: pop 0.18s var(--ease);
+  --pick-max: 48vh;
+}
+.pick-sheet .pick-input {
+  border-color: transparent;
+  background: var(--bg);
+}
+.pick-sheet .pick-input:focus-within {
+  border-color: var(--border-strong);
+}
+.row-picker {
+  margin-top: 12px;
+  --pick-max: 220px;
+}
+.row-hint .mono {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* welcome: the project picker with nothing open */
+
+.welcome {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  padding: 0 32px 24px;
+  animation: fade 0.4s var(--ease);
+}
+.welcome-inner {
+  width: min(620px, 100%);
+  margin-top: 11vh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  --pick-max: calc(100vh - 11vh - 290px);
+}
+.welcome-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.welcome-brand h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.recent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.recent-chips .chip {
+  border: 1px solid var(--border);
+  padding: 4px 10px 4px 8px;
+}
+
+/* onboarding */
+
+.onboard {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: 0 32px 40px;
+}
+.onboard-inner {
+  width: min(620px, 100%);
+  margin-top: 7vh;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  animation: rise 0.35s var(--ease);
+  --pick-max: calc(100vh - 7vh - 330px);
+}
+.onboard-inner h1 {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 18px 0 6px;
+}
+.onboard-inner .sub {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0 0 24px;
+  max-width: 520px;
+}
+.steps {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 26px;
+}
+.steps span {
+  width: 18px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--border-strong);
+  transition: background 0.2s;
+}
+.steps span.on {
+  background: var(--text);
+}
+.step-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+/* import */
+
+.import {
+  width: 100%;
+}
+.import-intro {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.import-note {
+  padding: 18px 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.import-apps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.import-app {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.import-app-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px 0 16px;
+}
+.import-app-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 6px 13px 0;
+  text-align: left;
+}
+.import-app-title .grow {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.import-app-name {
+  font-weight: 550;
+}
+.import-meta {
+  flex: none;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.import-app .chev {
+  color: var(--faint);
+  transition: transform 0.18s var(--ease);
+}
+.import-app.open .chev {
+  transform: rotate(90deg);
+}
+.import-projects {
+  border-top: 1px solid var(--border);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.import-project {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px;
+}
+.import-project .grow {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.import-project .sub {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.import-project.done .grow {
+  color: var(--faint);
+}
+.tick {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1.5px solid var(--border-strong);
+  display: grid;
+  place-items: center;
+  color: var(--accent-fg);
+  transition: background 0.12s, border-color 0.12s;
+}
+.tick.on,
+.tick.some {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.tick:disabled {
+  opacity: 0.4;
+}
+.import-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.import-progress .bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.import-progress .bar div {
+  height: 100%;
+  background: var(--text);
+  border-radius: 4px;
+  transition: width 0.2s linear;
+}
+.import-done {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.import-done-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 550;
+}
+.import-done-head svg {
+  color: var(--green);
+}
+.import-done-sub {
+  margin: 4px 0 0 26px;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+.import-error {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--red);
+}
+.import-sheet {
+  width: min(600px, calc(100vw - 48px));
+}
+.import-sheet .sheet-body {
+  padding-bottom: 20px;
+}
+
+/* the project menu holds up to forty */
+
+.menu-scroll {
+  max-height: min(360px, 50vh);
+  overflow-y: auto;
 }
 
 /* toast */

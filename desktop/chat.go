@@ -239,6 +239,9 @@ func (a *App) OpenChat(id string) (ChatView, error) {
 	c := newChat(s.ID, s.WorkDir, ag)
 	c.title, c.local, c.gen, c.problem = s.Title, onLocal, gen, problem
 	c.cost = s.Totals.CostUSD
+	if s.Source != "" {
+		c.push(Item{Kind: "notice", Tone: "info", Text: "Imported from " + s.Source + "."})
+	}
 	c.load(s.Messages, ag)
 
 	a.mu.Lock()
@@ -689,6 +692,23 @@ var toolLabels = map[string]string{
 	"glob":       "Find",
 	"grep":       "Search",
 	"list_dir":   "List",
+
+	// Tools other agents have, in chats imported from them.
+	"apply_patch": "Patch",
+	"exec":        "Script",
+	"Task":        "Agent",
+	"Agent":       "Agent",
+	"task":        "Agent",
+	"WebFetch":    "Fetch",
+	"webfetch":    "Fetch",
+	"WebSearch":   "Web search",
+	"websearch":   "Web search",
+	"web_search":  "Web search",
+	"TodoWrite":   "Plan",
+	"todowrite":   "Plan",
+	"update_plan": "Plan",
+	"MultiEdit":   "Edit",
+	"view_image":  "View",
 }
 
 func toolLabel(name string) string {
