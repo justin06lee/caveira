@@ -4,7 +4,17 @@
 
 import { useSyncExternalStore } from "react";
 import { api, errorText, onChatEvent } from "./bridge";
-import type { ChatEvent, ChatHeader, ChatView, Item, Project, SettingsInput, SettingsView, TurnStats } from "./types";
+import type {
+  ChatEvent,
+  ChatHeader,
+  ChatView,
+  Item,
+  Project,
+  SettingsInput,
+  SettingsView,
+  TurnStats,
+  Workspace,
+} from "./types";
 
 export interface Chat extends ChatView {
   // turns closes each finished turn with its stats, after the item that
@@ -24,6 +34,12 @@ export interface State {
   settingsOpen: boolean;
   sidebar: boolean;
   toast: string | null;
+  // onboarded is false until the first-run steps are done or skipped.
+  onboarded: boolean;
+  // workspace is where the project picker opens; empty means home.
+  workspace: Workspace;
+  pickerOpen: boolean;
+  importOpen: boolean;
 }
 
 let state: State = {
@@ -38,6 +54,10 @@ let state: State = {
   settingsOpen: false,
   sidebar: true,
   toast: null,
+  onboarded: true,
+  workspace: { path: "", short: "" },
+  pickerOpen: false,
+  importOpen: false,
 };
 
 const listeners = new Set<() => void>();
@@ -95,8 +115,38 @@ export async function boot(): Promise<void> {
   const b = await api.boot();
   const last = localStorage.getItem(LAST_PROJECT);
   const project = b.projects.find((p) => p.path === last) ?? b.projects[0] ?? null;
-  setState(() => ({ ready: true, version: b.version, settings: b.settings, projects: b.projects, project }));
+  setState(() => ({
+    ready: true,
+    version: b.version,
+    settings: b.settings,
+    projects: b.projects,
+    project,
+    onboarded: b.onboarded,
+    workspace: b.workspace,
+  }));
   if (project) await selectProject(project, localStorage.getItem(LAST_CHAT) ?? undefined);
+}
+
+// openPath opens the folder at path as the project, from the picker.
+export async function openPath(path: string): Promise<void> {
+  setState(() => ({ pickerOpen: false }));
+  await selectProject({ path, name: "", short: "", branch: "" });
+}
+
+// makeProject creates a folder under base and opens it.
+export async function makeProject(base: string, rel: string): Promise<void> {
+  try {
+    const p = await api.makeFolder(base, rel);
+    setState(() => ({ pickerOpen: false }));
+    await selectProject(p);
+  } catch (e) {
+    toast(e);
+  }
+}
+
+export async function refreshProjects(): Promise<void> {
+  const projects = (await api.projects()) ?? [];
+  setState(() => ({ projects }));
 }
 
 // selectProject switches to p and opens a fresh chat there, or the chat
@@ -123,7 +173,10 @@ export async function selectProject(p: Project, resume?: string): Promise<void> 
 export async function chooseProject(): Promise<void> {
   try {
     const p = await api.chooseProject();
-    if (p.path) await selectProject(p);
+    if (p.path) {
+      setState(() => ({ pickerOpen: false }));
+      await selectProject(p);
+    }
   } catch (e) {
     toast(e);
   }

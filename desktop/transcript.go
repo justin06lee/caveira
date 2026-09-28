@@ -43,6 +43,8 @@ func (c *chat) load(msgs []llm.Message, ag *agent.Agent) {
 				if t, ok := ag.Tools.Get(call.Function.Name); ok {
 					tv.Preview = t.Preview(json.RawMessage(call.Function.Arguments))
 					tv.Kind = t.Kind().String()
+				} else {
+					tv.Preview = argPreview(call.Function.Arguments)
 				}
 				e := c.push(Item{Kind: "tool", Tool: tv})
 				c.byCall[call.ID] = e.Item.ID
@@ -68,6 +70,25 @@ func (c *chat) load(msgs []llm.Message, ag *agent.Agent) {
 			}
 		}
 	}
+}
+
+// argPreview is a line to show for a call to a tool caveira does not
+// have, which only an imported chat holds: the argument that says most.
+func argPreview(args string) string {
+	var in map[string]any
+	if json.Unmarshal([]byte(args), &in) != nil {
+		return ""
+	}
+	for _, k := range []string{"description", "command", "prompt", "url", "query", "pattern", "file_path", "path", "skill", "input"} {
+		if v, ok := in[k].(string); ok && strings.TrimSpace(v) != "" {
+			line := strings.TrimSpace(firstLine(strings.TrimSpace(v)))
+			if r := []rune(line); len(r) > 120 {
+				line = string(r[:120]) + "…"
+			}
+			return line
+		}
+	}
+	return ""
 }
 
 func firstLine(s string) string {

@@ -36,10 +36,69 @@ export interface SettingsInput {
   theme: Theme;
 }
 
+export interface Workspace {
+  path: string;
+  short: string;
+}
+
 export interface Boot {
   version: string;
   settings: SettingsView;
   projects: Project[];
+  workspace: Workspace;
+  onboarded: boolean;
+}
+
+// The folder picker.
+
+export interface Entry {
+  name: string;
+  dir: boolean;
+  link?: boolean;
+  repo?: boolean;
+}
+
+export interface Listing {
+  path: string;
+  name: string;
+  short: string;
+  entries: Entry[] | null;
+}
+
+// Importing from other agents.
+
+export interface ImportProject {
+  path: string;
+  name: string;
+  short: string;
+  chats: number;
+  done: number;
+  updated: string;
+}
+
+export interface ImportApp {
+  id: string;
+  name: string;
+  chats: number;
+  projects: ImportProject[];
+}
+
+export interface ImportPick {
+  app: string;
+  dirs: string[];
+}
+
+export interface ImportResult {
+  chats: number;
+  projects: number;
+  skipped: number;
+  empty: number;
+  failed: number;
+}
+
+export interface ImportProgress {
+  done: number;
+  total: number;
 }
 
 export interface ToolView {

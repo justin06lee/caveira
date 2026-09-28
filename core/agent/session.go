@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -17,10 +18,13 @@ import (
 
 // Session is a conversation on disk, so a run can be picked up later.
 type Session struct {
-	ID        string        `json:"id"`
-	WorkDir   string        `json:"work_dir"`
-	Model     string        `json:"model"`
-	Title     string        `json:"title"`
+	ID      string `json:"id"`
+	WorkDir string `json:"work_dir"`
+	Model   string `json:"model"`
+	Title   string `json:"title"`
+	// Source names the app a chat was imported from ("Claude Code"),
+	// empty for one caveira started.
+	Source    string        `json:"source,omitempty"`
 	CreatedAt time.Time     `json:"created_at"`
 	UpdatedAt time.Time     `json:"updated_at"`
 	Messages  []llm.Message `json:"messages"`
@@ -79,18 +83,23 @@ func (a *Agent) save() {
 	if len(s.Messages) == 0 {
 		return
 	}
+	_ = s.Save()
+}
+
+// Save writes the session to its file.
+func (s *Session) Save() error {
 	if err := os.MkdirAll(sessionsDir(), 0o700); err != nil {
-		return
+		return err
 	}
 	b, err := json.MarshalIndent(s, "", " ")
 	if err != nil {
-		return
+		return err
 	}
 	tmp := s.Path() + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return
+		return err
 	}
-	_ = os.Rename(tmp, s.Path())
+	return os.Rename(tmp, s.Path())
 }
 
 func firstLine(s string, n int) string {
@@ -117,6 +126,15 @@ func LoadSession(id string) (*Session, error) {
 	return &s, nil
 }
 
+// HasSession says whether a session with this id is saved.
+func HasSession(id string) bool {
+	if id == "" || strings.ContainsAny(id, `/\`) {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(sessionsDir(), id+".json"))
+	return err == nil
+}
+
 // DeleteSession removes one session's file.
 func DeleteSession(id string) error {
 	if id == "" || strings.ContainsAny(id, `/\`) {
@@ -138,7 +156,8 @@ func LatestSession(workDir string) (*Session, error) {
 }
 
 // ListSessions returns session headers for workDir (or all when empty),
-// newest first. Messages are not loaded.
+// newest first. Messages are not loaded, or read: an imported chat can be
+// megabytes, and the sidebar asks for this list after every turn.
 func ListSessions(workDir string) ([]Session, error) {
 	entries, err := os.ReadDir(sessionsDir())
 	if errors.Is(err, os.ErrNotExist) {
@@ -152,20 +171,57 @@ func ListSessions(workDir string) ([]Session, error) {
 		if !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(sessionsDir(), e.Name()))
-		if err != nil {
-			continue
-		}
-		var s Session
-		if json.Unmarshal(b, &s) != nil {
+		s, err := readHeader(filepath.Join(sessionsDir(), e.Name()))
+		if err != nil || s.ID == "" {
 			continue
 		}
 		if workDir != "" && s.WorkDir != workDir {
 			continue
 		}
-		s.Messages = nil
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	return out, nil
+}
+
+// readHeader reads a session file as far as its messages. Save writes the
+// header fields first, so that is all of them but the totals.
+func readHeader(path string) (Session, error) {
+	var s Session
+	f, err := os.Open(path)
+	if err != nil {
+		return s, err
+	}
+	defer f.Close()
+	dec := json.NewDecoder(bufio.NewReader(f))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return s, errors.New("not a session")
+	}
+	fields := map[string]any{
+		"id":         &s.ID,
+		"work_dir":   &s.WorkDir,
+		"model":      &s.Model,
+		"title":      &s.Title,
+		"source":     &s.Source,
+		"created_at": &s.CreatedAt,
+		"updated_at": &s.UpdatedAt,
+	}
+	for dec.More() {
+		t, err := dec.Token()
+		if err != nil {
+			return s, err
+		}
+		key, _ := t.(string)
+		if key == "messages" && s.ID != "" {
+			return s, nil
+		}
+		dst, ok := fields[key]
+		if !ok {
+			dst = new(json.RawMessage)
+		}
+		if err := dec.Decode(dst); err != nil {
+			return s, err
+		}
+	}
+	return s, nil
 }

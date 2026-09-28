@@ -5,6 +5,7 @@ import { tokens } from "../lib/format";
 import { applyTheme } from "../lib/theme";
 import { getState, inputFrom, refreshChat, setState, toast, useStore } from "../lib/store";
 import type { ModelOption, SettingsInput, Theme } from "../lib/types";
+import { PathPicker } from "./PathPicker";
 
 export function Settings() {
   const settings = useStore((s) => s.settings)!;
@@ -13,6 +14,8 @@ export function Settings() {
   const [models, setModels] = useState<ModelOption[] | null>(null);
   const [modelErr, setModelErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const workspace = useStore((s) => s.workspace);
+  const [picking, setPicking] = useState(false);
 
   const set = <K extends keyof SettingsInput>(k: K, v: SettingsInput[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -189,6 +192,65 @@ export function Settings() {
                 aria-checked={form.confirm}
                 onClick={() => set("confirm", !form.confirm)}
               />
+            </div>
+          </div>
+
+          <div className="row">
+            <div className="row-head">
+              <div>
+                <div className="row-title">Workspace</div>
+                <div className="row-hint">
+                  {workspace.path ? (
+                    <>
+                      Projects open from <span className="mono">{workspace.short}</span>.
+                    </>
+                  ) : (
+                    "Projects open from your home folder."
+                  )}
+                </div>
+              </div>
+              {!picking && (
+                <button className="btn" onClick={() => setPicking(true)}>
+                  Change
+                </button>
+              )}
+            </div>
+            {picking && (
+              <div className="row-picker">
+                <PathPicker
+                  base=""
+                  mode="workspace"
+                  placeholder="type the folder"
+                  initial={workspace.short ? workspace.short + "/" : ""}
+                  onPick={async (path) => {
+                    try {
+                      const ws = await api.setWorkspace(path);
+                      setState(() => ({ workspace: ws }));
+                      setPicking(false);
+                    } catch (e) {
+                      toast(e);
+                    }
+                  }}
+                  onCancel={() => setPicking(false)}
+                  aside={
+                    <button className="btn quiet" onClick={() => setPicking(false)}>
+                      Cancel
+                    </button>
+                  }
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="row">
+            <div className="row-head">
+              <div>
+                <div className="row-title">Chats from other agents</div>
+                <div className="row-hint">Bring over chats and projects from Claude Code, Codex, and OpenCode.</div>
+              </div>
+              <button className="btn" onClick={() => setState(() => ({ settingsOpen: false, importOpen: true }))}>
+                Import…
+              </button>
             </div>
           </div>
 
