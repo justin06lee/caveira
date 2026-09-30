@@ -820,6 +820,9 @@ func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 		m.totals = ev.Totals
 		m.context = ev.ContextTokens
 
+	case agent.ModelEvent:
+		m.push(&item{kind: itemNotice, text: ev.Note})
+
 	case agent.CompactEvent:
 		m.push(&item{kind: itemDivider, text: fmt.Sprintf("context compacted · %d messages, %s tokens → a handoff note", ev.BeforeMessages, formatTokens(ev.BeforeTokens))})
 

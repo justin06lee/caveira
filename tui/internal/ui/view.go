@@ -385,7 +385,10 @@ func (m *Model) footerInfo(room, below int) (info string, ok bool) {
 		s    string
 		keep int // lower goes first
 	}
-	model := th.Muted.Render(m.agent.Model)
+	// A turn can move to another model (a local one that did not fit),
+	// so the name and window are read the safe way.
+	name, window := m.agent.ModelInfo()
+	model := th.Muted.Render(name)
 	if m.dev {
 		model = devBadge() + " " + model
 	}
@@ -393,13 +396,13 @@ func (m *Model) footerInfo(room, below int) (info string, ok bool) {
 	if m.cfg.Confirm {
 		parts = append(parts, part{th.Warn.Render("confirm"), keepConfirm})
 	}
-	if m.context > 0 && m.agent.ContextWindow > 0 {
-		parts = append(parts, part{contextMeter(float64(m.context) / float64(m.agent.ContextWindow)), keepMeter})
+	if m.context > 0 && window > 0 {
+		parts = append(parts, part{contextMeter(float64(m.context) / float64(window)), keepMeter})
 	}
 	if n := m.totals.InputTokens + m.totals.OutputTokens; n > 0 {
 		parts = append(parts, part{th.Faint.Render(formatTokens(n) + " tokens"), keepTokens})
 	}
-	if m.totals.Requests > 0 && config.Spec(m.agent.Model).InputPerM > 0 {
+	if m.totals.Requests > 0 && config.Spec(name).InputPerM > 0 {
 		// Local and unknown models have no price; $0.00 would be a guess.
 		parts = append(parts, part{th.Faint.Render(formatCost(m.totals.CostUSD)), keepSpend})
 	}
