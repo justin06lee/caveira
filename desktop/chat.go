@@ -94,6 +94,9 @@ type ChatEvent struct {
 	Title       string     `json:"title,omitempty"`
 	Interrupted bool       `json:"interrupted,omitempty"`
 	Stats       *TurnStats `json:"stats,omitempty"`
+	// Model and Window, on a "model" event, are what the chat moved to.
+	Model  string `json:"model,omitempty"`
+	Window int    `json:"window,omitempty"`
 }
 
 // TurnStats closes a turn: how long, how many tools, what it cost.
@@ -160,7 +163,27 @@ func (a *App) build(dir string) (ag *agent.Agent, onLocal bool, gen int, problem
 	}
 	system := prompt.Build(prompt.Options{WorkDir: dir, Model: cfg.Model, Desktop: true})
 	ag = agent.New(llm.New(cfg.BaseURL, cfg.APIKey), cfg, dir, system)
+	if p.Local {
+		ag.Refit = a.refitter(cfg.BaseURL)
+	}
 	return ag, p.Local, gen, problem
+}
+
+// refitter steps a local model that does not fit in memory down to one
+// that does (see core/local), and starts new chats there too.
+func (a *App) refitter(baseURL string) func(context.Context, string, int, error) (agent.Switch, bool) {
+	refit := local.Refitter(baseURL)
+	return func(ctx context.Context, model string, window int, err error) (agent.Switch, bool) {
+		s, ok := refit(ctx, model, window, err)
+		if ok {
+			a.mu.Lock()
+			if a.picked != nil && a.picked.model == model {
+				a.picked.model, a.picked.window = s.Model, s.Window
+			}
+			a.mu.Unlock()
+		}
+		return s, ok
+	}
 }
 
 // applyLocal points cfg at the local model, asking the server only when
@@ -475,9 +498,10 @@ func (c *chat) view() ChatView {
 	for i, it := range c.items {
 		items[i] = copyItem(it)
 	}
+	model, window := c.ag.ModelInfo()
 	v := ChatView{
 		ID: c.id, Dir: c.dir, Title: c.title,
-		Model: c.ag.Model, Effort: c.ag.Effort, Local: c.local, Window: c.ag.ContextWindow,
+		Model: model, Effort: c.ag.Effort, Local: c.local, Window: window,
 		Context: c.context, Cost: c.cost, Running: c.cancel != nil, Items: items,
 	}
 	if c.problem == noKeyProblem {
@@ -637,6 +661,12 @@ func (c *chat) apply(ev agent.Event) []ChatEvent {
 	case agent.CompactEvent:
 		c.context = 0
 		return []ChatEvent{c.push(Item{Kind: "notice", Tone: "info", Text: "Earlier messages were summarized to make room."})}
+
+	case agent.ModelEvent:
+		return []ChatEvent{
+			c.push(Item{Kind: "notice", Tone: "info", Text: ev.Note}),
+			{Chat: c.id, Type: "model", Model: ev.Model, Window: ev.Window},
+		}
 
 	case agent.ErrorEvent:
 		return []ChatEvent{c.push(Item{Kind: "notice", Tone: "error", Text: ev.Err.Error()})}

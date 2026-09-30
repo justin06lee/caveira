@@ -74,6 +74,14 @@ type CompactEvent struct {
 	Summary        string
 }
 
+// ModelEvent says the turn moved to another model or window, and why:
+// a local model that did not fit in memory, say.
+type ModelEvent struct {
+	Model  string
+	Window int
+	Note   string
+}
+
 // ErrorEvent is a failure the turn could not recover from.
 type ErrorEvent struct{ Err error }
 
@@ -81,6 +89,7 @@ type ErrorEvent struct{ Err error }
 type DoneEvent struct{ Interrupted bool }
 
 func (TextEvent) isEvent()          {}
+func (ModelEvent) isEvent()         {}
 func (ReasoningEvent) isEvent()     {}
 func (AssistantDoneEvent) isEvent() {}
 func (ToolStartEvent) isEvent()     {}

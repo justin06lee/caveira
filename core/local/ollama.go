@@ -32,15 +32,25 @@ const (
 func IsCopy(model string) bool { return strings.HasPrefix(model, copyPrefix) }
 
 // ollamaPrepare creates or refreshes the caveira/ copy of model and
-// returns its name and window. ok is false when the server is not Ollama
-// or would not make the copy; the caller then runs the model as it is.
+// returns its name and window: Window or the server's, whichever is
+// bigger, unless a smaller one is all that fitted (see fit.go). ok is
+// false when the server is not Ollama or would not make the copy; the
+// caller then runs the model as it is.
 func ollamaPrepare(ctx context.Context, baseURL, model string) (name string, window int, ok bool) {
 	base := strings.TrimPrefix(model, copyPrefix)
+	window = max(Window, ollamaContext(ctx, baseURL, base))
+	if w, ok := fitted(baseURL, base); ok && w > 0 {
+		window = min(window, w)
+	}
+	return ollamaPrepareWindow(ctx, baseURL, base, window)
+}
+
+// ollamaPrepareWindow makes the caveira/ copy of base with this window.
+func ollamaPrepareWindow(ctx context.Context, baseURL, base string, window int) (name string, w int, ok bool) {
 	info, ok := ollamaShow(ctx, baseURL, base)
 	if !ok {
 		return "", 0, false
 	}
-	window = max(Window, ollamaContext(ctx, baseURL, base))
 	body := map[string]any{
 		"model":      copyPrefix + base,
 		"from":       base,

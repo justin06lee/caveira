@@ -24,6 +24,7 @@ import (
 	"github.com/justin06lee/caveira/core/agent"
 	"github.com/justin06lee/caveira/core/config"
 	"github.com/justin06lee/caveira/core/llm"
+	"github.com/justin06lee/caveira/core/local"
 	"github.com/justin06lee/caveira/core/prompt"
 	"github.com/justin06lee/caveira/tui/internal/ui"
 )
@@ -174,6 +175,9 @@ func run() error {
 		var listModels func(context.Context) ([]ui.ModelChoice, error)
 		if dev {
 			listModels = devModelList(cfg.BaseURL)
+			// A local model too big for this machine steps down instead
+			// of failing the turn.
+			ag.Refit = local.Refitter(cfg.BaseURL)
 		}
 
 		var resumed *agent.Session
@@ -281,6 +285,8 @@ func runPrint(ag *agent.Agent, input string) error {
 			ev.Reply <- agent.Allow
 		case agent.CompactEvent:
 			fmt.Fprintf(os.Stderr, "── context compacted (%d messages) ──\n", ev.BeforeMessages)
+		case agent.ModelEvent:
+			fmt.Fprintln(os.Stderr, "──", ev.Note, "──")
 		case agent.ErrorEvent:
 			failed = ev.Err
 			fmt.Fprintln(os.Stderr, "✗", ev.Err)

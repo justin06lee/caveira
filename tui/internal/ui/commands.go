@@ -153,7 +153,8 @@ func (m *Model) slash(text string) tea.Cmd {
 		}
 		m.agent.SetModel(args[0], m.cfg.ContextWindow)
 		m.cfg.Model = args[0]
-		m.push(&item{kind: itemNotice, text: fmt.Sprintf("switched to %s · %s context", args[0], formatTokens(m.agent.ContextWindow))})
+		_, window := m.agent.ModelInfo()
+		m.push(&item{kind: itemNotice, text: fmt.Sprintf("switched to %s · %s context", args[0], formatTokens(window))})
 
 	case "/effort", "/e":
 		if m.running {
@@ -212,7 +213,8 @@ func (m *Model) slash(text string) tea.Cmd {
 
 func (m *Model) costPanel() *item {
 	t := m.totals
-	spec := config.Spec(m.agent.Model)
+	model, window := m.agent.ModelInfo()
+	spec := config.Spec(model)
 	cost := formatCost(t.CostUSD)
 	if spec.InputPerM == 0 {
 		cost = "not tracked (no price known for this model)"
@@ -223,8 +225,8 @@ func (m *Model) costPanel() *item {
 		{"output", formatTokens(t.OutputTokens) + " tokens"},
 		{"spend", cost},
 	}
-	if m.context > 0 && m.agent.ContextWindow > 0 {
-		rows = append(rows, [2]string{"context", fmt.Sprintf("%s of %s (%.0f%%)", formatTokens(m.context), formatTokens(m.agent.ContextWindow), 100*float64(m.context)/float64(m.agent.ContextWindow))})
+	if m.context > 0 && window > 0 {
+		rows = append(rows, [2]string{"context", fmt.Sprintf("%s of %s (%.0f%%)", formatTokens(m.context), formatTokens(window), 100*float64(m.context)/float64(window))})
 	}
 	return &item{kind: itemPanel, title: "Usage", rows: rows}
 }

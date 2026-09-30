@@ -66,7 +66,7 @@ func Apply(cfg *config.Settings, model, baseURL string) error {
 		return fmt.Errorf("nothing is answering at %s. Start Ollama with `ollama serve`, "+
 			"or point CAVEIRA_DEV_BASE_URL at another OpenAI-compatible server", cfg.BaseURL)
 	}
-	picked, err := PickModel(models, firstNonEmpty(model, os.Getenv("CAVEIRA_DEV_MODEL")))
+	picked, err := pickModel(models, firstNonEmpty(model, os.Getenv("CAVEIRA_DEV_MODEL")), func(m string) bool { return doesNotFit(cfg.BaseURL, m) })
 	cfg.Model = picked
 	if err != nil {
 		return err
@@ -83,6 +83,12 @@ func Apply(cfg *config.Settings, model, baseURL string) error {
 // PickModel is the named model if there is one, else the first of
 // Preferred installed, else whatever the server has.
 func PickModel(models []llm.ModelInfo, want string) (string, error) {
+	return pickModel(models, want, nil)
+}
+
+// pickModel is PickModel passing over, when it chooses, the models
+// tooBig says did not fit in memory.
+func pickModel(models []llm.ModelInfo, want string, tooBig func(string) bool) (string, error) {
 	have := map[string]bool{}
 	for _, m := range models {
 		have[m.ID] = true
@@ -94,7 +100,7 @@ func PickModel(models []llm.ModelInfo, want string) (string, error) {
 		return want, nil
 	}
 	for _, m := range Preferred {
-		if have[m] {
+		if have[m] && (tooBig == nil || !tooBig(m)) {
 			return m, nil
 		}
 	}
@@ -144,6 +150,8 @@ func Choices(ctx context.Context, baseURL string) ([]Choice, error) {
 				c.NoEffort = !slices.Contains(info.Capabilities, "thinking")
 				if !slices.Contains(info.Capabilities, "tools") {
 					c.Unusable = "cannot call tools"
+				} else if doesNotFit(baseURL, mi.ID) {
+					c.Unusable = "does not fit in memory"
 				} else if name, window, ok := ollamaPrepare(ctx, baseURL, mi.ID); ok {
 					c.ID, c.Context = name, window
 				}

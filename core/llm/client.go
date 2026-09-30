@@ -56,8 +56,28 @@ func (e *APIError) Error() string {
 }
 
 // Retryable reports whether the same request may succeed if sent again.
+// A model that did not fit in memory will not fit the next time either.
 func (e *APIError) Retryable() bool {
-	return e.Status == http.StatusTooManyRequests || e.Status >= 500
+	return (e.Status == http.StatusTooManyRequests || e.Status >= 500) && !OutOfMemory(e)
+}
+
+// OutOfMemory reports whether err is a local model failing to load for
+// want of memory: Ollama's own check, or CUDA, Metal or Vulkan refusing
+// the buffers.
+func OutOfMemory(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	for _, m := range []string{
+		"out of memory", "outofdevicememory", "requires more system memory",
+		"failed to allocate", "unable to allocate", "insufficient memory", "not enough memory",
+	} {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // Stream sends a streaming chat completion, calls fn for every delta as it

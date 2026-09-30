@@ -290,7 +290,8 @@ func (m *Model) renderHomeInfo(lines []string, f homeFrame) {
 	}
 	inner := m.inner()
 	if m.agent != nil {
-		left := th.Muted.Render(m.agent.Model)
+		name, _ := m.agent.ModelInfo()
+		left := th.Muted.Render(name)
 		if m.dev {
 			left = devBadge() + " " + left
 		}

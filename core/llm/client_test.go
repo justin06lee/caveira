@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -92,5 +93,33 @@ func TestStreamFatalError(t *testing.T) {
 	_, err := New(srv.URL, "bad").Stream(context.Background(), Request{Model: "m"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "Invalid API key") || !strings.Contains(err.Error(), "check your API key") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestOutOfMemory(t *testing.T) {
+	for _, err := range []error{
+		&APIError{Status: 500, Message: "llama-server process has terminated: exit status 1: cudaMalloc failed: out of memory"},
+		errors.New("model requires more system memory (5.1 GiB) than is available (3.2 GiB)"),
+		errors.New("ggml_vulkan: vk::Device::allocateMemory: ErrorOutOfDeviceMemory"),
+	} {
+		if !OutOfMemory(err) {
+			t.Errorf("not seen as out of memory: %v", err)
+		}
+	}
+	for _, err := range []error{nil, errors.New("connection refused"), errors.New("model 'x' not found")} {
+		if OutOfMemory(err) {
+			t.Errorf("seen as out of memory: %v", err)
+		}
+	}
+}
+
+// An out-of-memory 500 is not sent again: the model will not fit the
+// second time either.
+func TestOutOfMemoryIsNotRetried(t *testing.T) {
+	if (&APIError{Status: 500, Message: "cudaMalloc failed: out of memory"}).Retryable() {
+		t.Fatal("out of memory retried")
+	}
+	if !(&APIError{Status: 503, Message: "busy"}).Retryable() {
+		t.Fatal("503 not retried")
 	}
 }
