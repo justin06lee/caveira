@@ -1,4 +1,5 @@
 import { Folder, GitBranch, PanelLeft, TriangleAlert } from "lucide-react";
+import { shortcut } from "../lib/platform";
 import { setState, useStore, type Chat } from "../lib/store";
 import { Composer } from "./Composer";
 import { KeyCard } from "./KeyCard";
@@ -20,7 +21,7 @@ export function ChatPane() {
         ) : (
           <button
             className="icon-btn no-drag"
-            title="Show sidebar (⌘\)"
+            title={`Show sidebar (${shortcut("\\")})`}
             onClick={() => setState(() => ({ sidebar: true }))}
           >
             <PanelLeft size={16} />

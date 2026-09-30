@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Check, ChevronRight, Minus } from "lucide-react";
 import { api, errorText, onImport } from "../lib/bridge";
 import { ago } from "../lib/format";
+import { thisComputer } from "../lib/platform";
 import { refreshHeaders, refreshProjects } from "../lib/store";
 import type { ImportApp, ImportProgress, ImportResult } from "../lib/types";
 
@@ -90,7 +91,7 @@ export function ImportPanel({ onDone, skipLabel, onBusy }: Props) {
         <div className="import-note shimmer">Looking for chats from Claude Code, Codex, and OpenCode…</div>
       ) : apps.length === 0 ? (
         <div className="import-note">
-          {error || "There are no chats from Claude Code, Codex, or OpenCode on this Mac."}
+          {error || `There are no chats from Claude Code, Codex, or OpenCode on ${thisComputer}.`}
         </div>
       ) : result ? (
         <div className="import-done">

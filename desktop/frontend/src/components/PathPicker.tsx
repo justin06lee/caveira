@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { api, errorText } from "../lib/bridge";
+import { hiddenShortcut, mac } from "../lib/platform";
 import type { Entry, Listing } from "../lib/types";
 
 // PathPicker is a folder's contents under a box to type a path in, the way
@@ -217,7 +218,11 @@ export function PathPicker({ base, mode, placeholder, initial = "", onPick, onCr
   };
 
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.metaKey && e.shiftKey && (e.code === "Period" || e.key === "." || e.key === ">")) {
+    if (
+      mac
+        ? e.metaKey && e.shiftKey && (e.code === "Period" || e.key === "." || e.key === ">")
+        : e.ctrlKey && !e.shiftKey && !e.altKey && e.key === "h"
+    ) {
       e.preventDefault();
       setHidden((h) => !h);
       return;
@@ -294,7 +299,7 @@ export function PathPicker({ base, mode, placeholder, initial = "", onPick, onCr
         <button
           type="button"
           className={`icon-btn pick-eye${hidden ? " on" : ""}`}
-          title={hidden ? "Hide hidden files (⌘⇧.)" : "Show hidden files (⌘⇧.)"}
+          title={`${hidden ? "Hide" : "Show"} hidden files (${hiddenShortcut})`}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setHidden(!hidden)}
         >

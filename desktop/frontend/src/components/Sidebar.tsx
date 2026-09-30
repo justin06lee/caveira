@@ -15,6 +15,7 @@ import {
 import { api } from "../lib/bridge";
 import { ago } from "../lib/format";
 import { useDismiss } from "../lib/hooks";
+import { revealLabel, shortcut } from "../lib/platform";
 import {
   deleteChat,
   forgetProject,
@@ -86,7 +87,7 @@ export function Sidebar({ hidden }: { hidden: boolean }) {
       <div className="side-top drag">
         <button
           className="icon-btn no-drag"
-          title="Hide sidebar (⌘\)"
+          title={`Hide sidebar (${shortcut("\\")})`}
           onClick={() => setState(() => ({ sidebar: false }))}
         >
           <PanelLeft size={16} />
@@ -101,14 +102,14 @@ export function Sidebar({ hidden }: { hidden: boolean }) {
       <button className="new-chat" onClick={() => newChat()}>
         <SquarePen size={15} />
         New chat
-        <kbd>⌘N</kbd>
+        <kbd>{shortcut("N")}</kbd>
       </button>
 
       <div className="side-label">
         <span>Projects</span>
         <button
           className="icon-btn"
-          title="Open a project (⌘O)"
+          title={`Open a project (${shortcut("O")})`}
           onClick={() => setState(() => ({ pickerOpen: true }))}
         >
           <FolderPlus size={14} />
@@ -296,7 +297,7 @@ function FolderMenu(props: { project: Project; at: { x: number; y: number }; onC
         }}
       >
         <FolderSearch size={15} className="muted-icon" />
-        <span className="grow">Show in Finder</span>
+        <span className="grow">{revealLabel}</span>
       </button>
       <div className="menu-sep" />
       <button

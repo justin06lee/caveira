@@ -6,12 +6,15 @@ import (
 	"context"
 	"embed"
 	"log"
+	"os"
+	goruntime "runtime"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/linux"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
@@ -29,6 +32,13 @@ func main() {
 	// where go, bun, and the rest live. Loaded while the window opens.
 	go loadShellEnv()
 
+	// WebKitGTK's DMA-BUF renderer paints a blank window under Xvfb and on
+	// NVIDIA's drivers, Jetson included; the shared-memory path works
+	// everywhere.
+	if goruntime.GOOS == "linux" && os.Getenv("WEBKIT_DISABLE_DMABUF_RENDERER") == "" {
+		os.Setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+	}
+
 	app := NewApp(version)
 
 	appMenu := menu.NewMenu()
@@ -44,6 +54,12 @@ func main() {
 	view := appMenu.AddSubmenu("View")
 	view.AddText("Toggle Sidebar", keys.CmdOrCtrl("\\"), func(*menu.CallbackData) { app.emit("menu", "toggle-sidebar") })
 	appMenu.Append(menu.WindowMenu())
+	// On Linux the menu would be a GTK menu bar across the top of the
+	// window; the page takes the same shortcuts instead (App.tsx), and
+	// Import is in Settings.
+	if goruntime.GOOS != "darwin" {
+		appMenu = nil
+	}
 
 	err := wails.Run(&options.App{
 		Title:     "caveira",
@@ -71,6 +87,14 @@ func main() {
 				Message: "A coding agent for abliterated models.\n" + version,
 				Icon:    icon,
 			},
+		},
+		Linux: &linux.Options{
+			Icon: icon,
+			// The window's WM_CLASS, which GNOME matches to caveira.desktop.
+			ProgramName: "caveira",
+			// What Wails picks when Linux options are left out: compositing
+			// on the GPU leaves the window blank on some NVIDIA setups.
+			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,
 		},
 	})
 	if err != nil {

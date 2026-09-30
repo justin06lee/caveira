@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -149,9 +150,18 @@ func (a *App) ForgetProject(dir string) error {
 	return a.prefs.save()
 }
 
-// Reveal shows a folder in the Finder.
+// Reveal shows a folder in the Finder, or the file manager on Linux.
 func (a *App) Reveal(dir string) error {
-	return exec.Command("open", dir).Start()
+	opener := "open"
+	if goruntime.GOOS != "darwin" {
+		opener = "xdg-open"
+	}
+	cmd := exec.Command(opener, dir)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go cmd.Wait()
+	return nil
 }
 
 // SettingsView is the settings screen's state.

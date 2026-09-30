@@ -27,7 +27,7 @@ export interface State {
   version: string;
   settings: SettingsView | null;
   projects: Project[];
-  // project is where the open chat is, and where ⌘N starts one.
+  // project is where the open chat is, and where ⌘N (Ctrl+N) starts one.
   project: Project | null;
   // headers is every project's saved chats, newest first; the sidebar
   // sorts them into its folders by dir.

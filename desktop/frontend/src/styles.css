@@ -182,14 +182,17 @@ button {
 /* sidebar */
 
 /* The top strip lines up with the traffic lights, which macOS centres
-   16px down from the top of the window. */
+   16px down from the top of the window. Linux keeps its title bar. */
 .side-top {
   height: 32px;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 0 10px 0 78px;
+  padding: 0 10px;
+}
+:root[data-platform="mac"] .side-top {
+  padding-left: 78px;
 }
 
 .icon-btn {
@@ -543,7 +546,7 @@ kbd {
   gap: 8px;
   padding: 0 14px;
 }
-.header.inset {
+:root[data-platform="mac"] .header.inset {
   padding-left: 78px;
 }
 .header-title {

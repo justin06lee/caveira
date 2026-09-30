@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
 import { onMenu } from "./lib/bridge";
+import { menuAction } from "./lib/platform";
 import { applyTheme } from "./lib/theme";
 import { boot, getState, listen, newChat, setState, toast, useStore } from "./lib/store";
 import { Sidebar } from "./components/Sidebar";
@@ -24,7 +25,7 @@ export function App() {
 
   useEffect(() => {
     const stopEvents = listen();
-    const stopMenu = onMenu((action) => {
+    const run = (action: string) => {
       // The first run finishes before the menu does anything.
       if (!getState().onboarded) return;
       switch (action) {
@@ -44,11 +45,22 @@ export function App() {
           setState((s) => ({ sidebar: !s.sidebar }));
           break;
       }
-    });
+    };
+    const stopMenu = onMenu(run);
+    // Linux has no menu, so the page takes its shortcuts.
+    const onKey = (e: KeyboardEvent) => {
+      const action = menuAction(e);
+      if (action) {
+        e.preventDefault();
+        run(action);
+      }
+    };
+    window.addEventListener("keydown", onKey);
     boot().catch(toast);
     return () => {
       stopEvents();
       stopMenu();
+      window.removeEventListener("keydown", onKey);
     };
   }, []);
 

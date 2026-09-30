@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=caveira
+GenericName=Coding Agent
+Comment=A coding agent for abliterated models
+Exec=@BIN@
+Icon=caveira
+Terminal=false
+Categories=Development;
+Keywords=AI;agent;code;LLM;
+StartupWMClass=caveira
+StartupNotify=true

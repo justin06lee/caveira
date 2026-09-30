@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"sort"
 	"strings"
 )
@@ -64,8 +65,12 @@ func (a *App) ListDir(base, rel string) (Listing, error) {
 
 // guarded says whether looking inside dir/name would have macOS ask the
 // user for access: the home folders it protects, and every volume. Listing
-// the home folder should not set off three permission prompts.
+// the home folder should not set off three permission prompts. Linux has
+// no such prompts.
 func guarded(dir, name string) bool {
+	if goruntime.GOOS != "darwin" {
+		return false
+	}
 	if dir == "/Volumes" {
 		return true
 	}
