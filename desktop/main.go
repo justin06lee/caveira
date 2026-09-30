@@ -88,10 +88,11 @@ func main() {
 				Icon:    icon,
 			},
 		},
+		// The window's WM_CLASS is the binary's name, caveira-desktop once
+		// installed, which the launcher's StartupWMClass names: GTK has set
+		// the program name before Wails' ProgramName could change it.
 		Linux: &linux.Options{
 			Icon: icon,
-			// The window's WM_CLASS, which GNOME matches to caveira.desktop.
-			ProgramName: "caveira",
 			// What Wails picks when Linux options are left out: compositing
 			// on the GPU leaves the window blank on some NVIDIA setups.
 			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,

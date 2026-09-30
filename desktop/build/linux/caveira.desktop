@@ -8,5 +8,5 @@ Icon=caveira
 Terminal=false
 Categories=Development;
 Keywords=AI;agent;code;LLM;
-StartupWMClass=caveira
+StartupWMClass=caveira-desktop
 StartupNotify=true
