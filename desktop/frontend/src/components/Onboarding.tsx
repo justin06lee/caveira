@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/bridge";
+import { thisComputer } from "../lib/platform";
 import { getState, setState, toast } from "../lib/store";
 import type { Workspace } from "../lib/types";
 import { ImportPanel } from "./ImportPanel";
@@ -45,7 +46,7 @@ export function Onboarding() {
               <Logo size={40} />
               <h1>Bring your chats along</h1>
               <p className="sub">
-                caveira can copy the chats and projects other coding agents left on this Mac, so you can carry on with
+                caveira can copy the chats and projects other coding agents left on {thisComputer}, so you can carry on with
                 them here. The originals stay where they are.
               </p>
               <ImportPanel skipLabel="Skip" onDone={() => setStep("workspace")} />

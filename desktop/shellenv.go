@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -12,7 +13,9 @@ import (
 
 // An app opened from the Finder or the Dock inherits launchd's environment:
 // PATH is /usr/bin:/bin:/usr/sbin:/sbin and nothing from the user's shell
-// profile is there. The agent's bash tool would not find go, bun, node, or
+// profile is there. One opened from GNOME's app grid has the session's
+// environment, which has ~/.profile but not ~/.bashrc, where bun, cargo
+// and the like put themselves. The agent's bash tool would not find go, bun, node, or
 // anything else installed through Homebrew, and an API key exported in
 // .zshrc would not be seen. So the app asks the user's login shell for its
 // environment once at startup, the way editors do, and takes PATH and
@@ -51,6 +54,9 @@ func shellEnv(timeout time.Duration) map[string]string {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/zsh"
+		if runtime.GOOS != "darwin" {
+			shell = "/bin/bash"
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

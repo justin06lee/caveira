@@ -19,7 +19,8 @@ It comes as a terminal client and a desktop app, which share one agent and one s
 
 ```sh
 make                                   # builds and installs `caveira` (and `cav`) into ~/.local/bin
-                                       # and caveira.app into /Applications, then opens the app
+                                       # and the app (caveira.app in /Applications on macOS,
+                                       # caveira-desktop plus a launcher on Linux), then opens it
 echo 'ABLITERATION_API_KEY=ak_…' > .env.local   # or export it, or put it in ~/.caveira/config.json
 cd your/project && caveira
 ```
@@ -51,4 +52,15 @@ Conversations are saved after every turn under `~/.caveira/sessions/`, and when 
 - `desktop/` is the desktop app, in Go with Wails v2 and a React and TypeScript frontend built with bun. See [desktop/README.md](desktop/README.md).
 - `assets/` holds the app icon: a softly rounded, pure-black skull eye socket on an off-white (`#F8F7F2`) squircle.
 
-`make` builds both clients, installs `caveira` with a `cav` link beside it and `caveira.app`, and opens the app; `make update` quits the app, swaps in fresh builds, and opens it again; `make test` runs the Go tests of all three modules. Set `BINDIR` to install the terminal client somewhere other than `~/.local/bin`, and `APPDIR` for the app.
+`make` builds both clients, installs `caveira` with a `cav` link beside it and the app, and opens the app; `make update` quits the app, swaps in fresh builds, and opens it again; `make test` runs the Go tests of all three modules. Set `BINDIR` to install the terminal client somewhere other than `~/.local/bin`, and `APPDIR` for the macOS app.
+
+## Linux
+
+caveira builds and runs on Linux too (tested on Ubuntu 24.04, arm64, under GNOME). You need Go (the modules ask for 1.27; an older `go` fetches it), [bun](https://bun.sh), and the headers Wails builds the app against:
+
+```sh
+sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev \
+                 sqlite3 xclip            # sqlite3 reads OpenCode's chats; xclip (or wl-clipboard) is the terminal client's copy
+```
+
+`make` then installs `caveira` and `cav` into `~/.local/bin`, the app as `~/.local/bin/caveira-desktop`, its launcher as `~/.local/share/applications/caveira.desktop` and its icon under `~/.local/share/icons`, so it shows in the app grid, and opens it. `git pull && make` keeps it current; `make update` quits the running app first. With WebKitGTK 4.1 present the build links it (Ubuntu 24.04 has no 4.0), and the app turns off WebKit's DMA-BUF renderer, which leaves the window blank on NVIDIA drivers and under Xvfb. The window keeps the system's title bar and has no menu bar: Ctrl+N, Ctrl+O, Ctrl+, and Ctrl+\ do what the Mac menu's ⌘ shortcuts do, and Import is in Settings.
