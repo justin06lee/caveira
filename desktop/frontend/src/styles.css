@@ -1373,6 +1373,22 @@ kbd {
 .chip-anchor {
   position: relative;
 }
+/* Bypassing every permission is the one setting worth a colour. */
+.perm-chip.bypass,
+.perm-chip.bypass:hover:not(:disabled) {
+  color: var(--red);
+}
+.perm-menu {
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 290px;
+  padding: 6px;
+  border-radius: 14px;
+}
+.perm-menu .menu-item {
+  padding: 8px 10px;
+  border-radius: 9px;
+}
 .effort-menu {
   bottom: calc(100% + 8px);
   left: 0;

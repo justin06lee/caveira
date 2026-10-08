@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, Check, ChevronDown, Gauge, Square } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Gauge, ShieldCheck, ShieldOff, Square } from "lucide-react";
 import { api } from "../lib/bridge";
 import { cost, tokens } from "../lib/format";
 import { useDismiss } from "../lib/hooks";
@@ -54,6 +54,9 @@ export function Composer({ chat }: { chat: Chat }) {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             submit();
+          } else if (e.key === "Tab" && e.shiftKey) {
+            e.preventDefault();
+            setPermissions(chat, !chat.ask);
           } else if (e.key === "Escape" && chat.running) {
             e.preventDefault();
             api.stop(chat.id);
@@ -63,6 +66,7 @@ export function Composer({ chat }: { chat: Chat }) {
       <div className="composer-bar">
         <ModelChip chat={chat} />
         <EffortChip chat={chat} />
+        <PermissionChip chat={chat} />
         <Meter chat={chat} />
         {chat.running ? (
           <button className="send" title="Stop (esc)" onClick={() => api.stop(chat.id)}>
@@ -242,6 +246,74 @@ function EffortChip({ chat }: { chat: Chat }) {
             >
               <span className="grow">{effortNames[e] ?? e}</span>
               {e === chat.effort && <Check size={15} className="check" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// setPermissions has the chat ask first or bypass every permission, from
+// now on in this chat and in new ones.
+async function setPermissions(chat: Chat, ask: boolean): Promise<void> {
+  try {
+    const v = await api.setPermissions(chat.id, ask);
+    patchChat(chat.id, (c) => ({ ...c, ask: v.ask }));
+    setState((s) => (s.settings ? { settings: { ...s.settings, confirm: v.ask } } : {}));
+  } catch (e) {
+    toast(e);
+  }
+}
+
+const permissionModes = [
+  { ask: true, name: "Ask permissions", hint: "Asks before commands and edits" },
+  { ask: false, name: "Bypass permissions", hint: "Runs everything without asking" },
+];
+
+// PermissionChip says whether the chat asks before commands and edits or
+// bypasses every permission, and switches it, even mid-turn: bypassing
+// lets through whatever is already waiting. Shift+Tab in the composer
+// flips it too.
+function PermissionChip({ chat }: { chat: Chat }) {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  const ref = useDismiss<HTMLDivElement>(open, close);
+  const mode = permissionModes.find((m) => m.ask === chat.ask)!;
+
+  return (
+    <div ref={ref} className="chip-anchor">
+      <button
+        className={`chip perm-chip${chat.ask ? "" : " bypass"}${open ? " open" : ""}`}
+        title="Permissions (⇧Tab)"
+        onClick={() => setOpen(!open)}
+      >
+        {chat.ask ? <ShieldCheck size={13} /> : <ShieldOff size={13} />}
+        <span>{mode.name}</span>
+        <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="menu perm-menu">
+          <div className="menu-group">Permissions</div>
+          {permissionModes.map((m) => (
+            <button
+              key={m.name}
+              className="menu-item"
+              onClick={() => {
+                close();
+                if (m.ask !== chat.ask) setPermissions(chat, m.ask);
+              }}
+            >
+              {m.ask ? (
+                <ShieldCheck size={15} className="muted-icon" />
+              ) : (
+                <ShieldOff size={15} className="muted-icon" />
+              )}
+              <span className="grow">
+                {m.name}
+                <span className="sub">{m.hint}</span>
+              </span>
+              {m.ask === chat.ask && <Check size={15} className="check" />}
             </button>
           ))}
         </div>

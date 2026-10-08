@@ -140,6 +140,9 @@ export interface ChatView {
   context: number;
   cost: number;
   running: boolean;
+  // ask says writes and commands wait for approval; otherwise every
+  // permission is bypassed.
+  ask: boolean;
   items: Item[];
   problem?: string;
   needsKey?: boolean;

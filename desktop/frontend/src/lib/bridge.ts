@@ -65,6 +65,7 @@ export const api = {
   setModel: (id: string, model: string, window: number, effort: string) =>
     call<ChatView>("SetModel", id, model, window, effort),
   subscribe: (plan: string, chatId: string) => call<string>("Subscribe", plan, chatId),
+  setPermissions: (id: string, ask: boolean) => call<ChatView>("SetPermissions", id, ask),
 };
 
 export function onChatEvent(cb: (e: ChatEvent) => void): () => void {

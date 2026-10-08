@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/justin06lee/caveira/core/agent"
+	"github.com/justin06lee/caveira/core/config"
 	"github.com/justin06lee/caveira/core/llm"
 )
 
@@ -297,5 +298,48 @@ func TestProposedShowsWhatAnEditWillDo(t *testing.T) {
 	}
 	if got := proposed("bash", json.RawMessage(`{"command":"ls"}`)); got != "" {
 		t.Fatalf("bash: %q", got)
+	}
+}
+
+// Bypassing permissions mid-turn lets the command already waiting run,
+// and the choice is what new chats start with.
+func TestBypassAnswersWhatIsWaiting(t *testing.T) {
+	srv := fakeModel(t,
+		sse("", "call_1", "bash", `{"command":"ls"}`),
+		sse("Done.", "", "", ""),
+	)
+	a, dir := testApp(t, srv)
+	t.Setenv("CAVEIRA_CONFIRM", "1")
+
+	v, err := a.NewChat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.Ask {
+		t.Fatal("confirm is on, but the chat does not ask")
+	}
+	if _, err := a.Send(v.ID, "list the files"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, a, v.ID, func(v ChatView) bool {
+		n := len(v.Items)
+		return n > 1 && v.Items[n-1].Tool != nil && v.Items[n-1].Tool.Status == "approval"
+	})
+	if v, err = a.SetPermissions(v.ID, false); err != nil || v.Ask {
+		t.Fatalf("bypass: ask %v, %v", v.Ask, err)
+	}
+	v = waitIdle(t, a, v.ID, func(v ChatView) bool { return !v.Running })
+	if got := kinds(v.Items); got != "user tool:Run:done assistant" {
+		t.Fatalf("items %q", got)
+	}
+	file, _ := config.ReadFile()
+	if file.Confirm {
+		t.Fatal("bypassing was not kept for new chats")
+	}
+	if v, _ = a.SetPermissions(v.ID, true); !v.Ask {
+		t.Fatal("asking again did not take")
+	}
+	if file, _ = config.ReadFile(); !file.Confirm {
+		t.Fatal("asking was not kept for new chats")
 	}
 }

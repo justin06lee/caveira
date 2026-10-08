@@ -34,7 +34,8 @@ type Agent struct {
 	MaxTok  int
 	Tools   *tools.Registry
 	WorkDir string
-	// Confirm makes write and execute tools wait for approval.
+	// Confirm makes write and execute tools wait for approval. Set it
+	// with SetConfirm once a turn may be running.
 	Confirm bool
 	// ContextWindow is the model's context size in tokens; compaction kicks
 	// in as the conversation approaches it.
@@ -51,8 +52,8 @@ type Agent struct {
 
 	Session *Session
 
-	// mu guards always, and Model and ContextWindow against a window that
-	// reads them (ModelInfo) while a turn switches them.
+	// mu guards always and Confirm, and Model and ContextWindow against a
+	// window that reads them (ModelInfo) while a turn switches them.
 	mu     sync.Mutex
 	always map[string]bool
 }
@@ -87,6 +88,28 @@ func (a *Agent) SetModel(model string, window int) {
 	a.mu.Lock()
 	a.Model, a.ContextWindow = model, window
 	a.mu.Unlock()
+}
+
+// SetConfirm turns asking before writes and commands on or off, and is
+// safe to call while a turn runs: the next tool call goes by it.
+func (a *Agent) SetConfirm(on bool) {
+	a.mu.Lock()
+	a.Confirm = on
+	a.mu.Unlock()
+}
+
+// Confirming says whether writes and commands wait for approval.
+func (a *Agent) Confirming() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.Confirm
+}
+
+// asks says whether a call to the tool name waits for approval.
+func (a *Agent) asks(name string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.Confirm && !a.always[name]
 }
 
 // ModelInfo is the model and context window, safe to call while a turn
@@ -243,7 +266,7 @@ func (a *Agent) runTool(ctx context.Context, call llm.ToolCall, emit func(Event)
 	emit(ToolStartEvent{ID: call.ID, Name: name, Preview: preview, Kind: kind, Args: args})
 	start := time.Now()
 
-	if known && a.Confirm && kind != tools.KindRead && !a.always[name] {
+	if known && kind != tools.KindRead && a.asks(name) {
 		ch := make(chan Decision, 1)
 		emit(ApprovalEvent{ID: call.ID, Name: name, Preview: preview, Kind: kind, Reply: ch})
 		var d Decision
