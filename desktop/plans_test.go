@@ -93,7 +93,7 @@ func TestModelsAreTheCatalogOnAbliteration(t *testing.T) {
 	for _, m := range models {
 		names = append(names, m.Name+"|"+m.Plan)
 	}
-	want := []string{"abliterated-model|", "GLM-5.2|Lightweight", "GLM-5.3|Lightweight"}
+	want := []string{"Qwen3.5|", "GLM-5.2|Lightweight", "GLM-5.3|Lightweight"}
 	if len(names) != len(want) {
 		t.Fatalf("models %q", names)
 	}

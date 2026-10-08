@@ -94,9 +94,6 @@ type ChatEvent struct {
 	Title       string     `json:"title,omitempty"`
 	Interrupted bool       `json:"interrupted,omitempty"`
 	Stats       *TurnStats `json:"stats,omitempty"`
-	// Model and Window, on a "model" event, are what the chat moved to.
-	Model  string `json:"model,omitempty"`
-	Window int    `json:"window,omitempty"`
 }
 
 // TurnStats closes a turn: how long, how many tools, what it cost.
@@ -651,12 +648,6 @@ func (c *chat) apply(ev agent.Event) []ChatEvent {
 	case agent.CompactEvent:
 		c.context = 0
 		return []ChatEvent{c.push(Item{Kind: "notice", Tone: "info", Text: "Earlier messages were summarized to make room."})}
-
-	case agent.ModelEvent:
-		return []ChatEvent{
-			c.push(Item{Kind: "notice", Tone: "info", Text: ev.Note}),
-			{Chat: c.id, Type: "model", Model: ev.Model, Window: ev.Window},
-		}
 
 	case agent.ErrorEvent:
 		return []ChatEvent{c.push(Item{Kind: "notice", Tone: "error", Text: ev.Err.Error()})}

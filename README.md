@@ -33,7 +33,7 @@ caveira talks to [abliteration.ai](https://abliteration.ai) out of the box, thro
 caveira --base-url http://localhost:11434/v1 --model llama3.2:latest
 ```
 
-Run `caveira`, or `cav` for short. It opens on the pixel skull, dissolving in while everything loads, with the prompt centred under it; the first message slides the prompt to the bottom and the conversation takes over. Type what you want. `esc` interrupts, `/help` lists the commands, `caveira -c` continues the last session for the directory, `caveira -p "…"` runs a task without the interface and prints the result, and `caveira --dev` runs against a model on your machine (Ollama) instead of the API, for working on caveira itself. The full reference, including configuration, is in [tui/README.md](tui/README.md).
+Run `caveira`, or `cav` for short. It opens on the pixel skull, dissolving in while everything loads, with the prompt centred under it; the first message slides the prompt to the bottom and the conversation takes over. Type what you want. `esc` interrupts, `/help` lists the commands, `caveira -c` continues the last session for the directory, and `caveira -p "…"` runs a task without the interface and prints the result. The full reference, including configuration, is in [tui/README.md](tui/README.md).
 
 The desktop app is the same agent in a quiet window: projects and their chats in a sidebar, the conversation with its tool calls as single lines that open to show output and diffs, approvals as cards in the transcript, and a composer that switches model and effort. It reads the same settings and sessions as the terminal client, so a chat started in one continues in the other. On first launch it offers to bring over your chats and projects from Claude Code, Codex, and OpenCode, and projects open from a type-to-filter folder picker with tab completion. See [desktop/README.md](desktop/README.md).
 
@@ -47,7 +47,7 @@ Conversations are saved after every turn under `~/.caveira/sessions/`, and when 
 
 ## Layout
 
-- `core/` is the agent itself, shared by both clients: the OpenAI-compatible client (`llm`), the tools, the system prompt, the turn loop and sessions (`agent`), settings (`config`), local models through Ollama (`local`), and reading other agents' chats into caveira sessions (`importer`).
+- `core/` is the agent itself, shared by both clients: the OpenAI-compatible client (`llm`), the tools, the system prompt, the turn loop and sessions (`agent`), settings (`config`), and reading other agents' chats into caveira sessions (`importer`).
 - `tui/` is the terminal client, in Go with Bubble Tea v2. See [tui/README.md](tui/README.md).
 - `desktop/` is the desktop app, in Go with Wails v2 and a React and TypeScript frontend built with bun. See [desktop/README.md](desktop/README.md).
 - `assets/` holds the app icon: a softly rounded, pure-black skull eye socket on an off-white (`#F8F7F2`) squircle.

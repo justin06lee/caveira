@@ -181,7 +181,7 @@ func (m *Model) applyPicker() (tea.Model, tea.Cmd) {
 	}
 	if c.ID != m.agent.Model {
 		window := c.Context
-		if !m.dev && m.cfg.ContextWindow > 0 {
+		if m.cfg.ContextWindow > 0 {
 			window = m.cfg.ContextWindow
 		}
 		m.agent.SetModel(c.ID, window)

@@ -10,7 +10,6 @@ You describe a task; caveira reads and searches the project, edits files, runs c
 caveira                          # interactive session in the current directory
 caveira "add a --json flag"      # same, with the first message already sent
 caveira -p "explain main.go"     # one-shot: run the task, print the reply, exit
-caveira --dev                    # same interface, on a local model instead of the API
 caveira -c                       # continue the latest session for this directory
 ```
 
@@ -40,18 +39,7 @@ caveira needs an API key unless the endpoint is on localhost. It looks, in order
 
 The default endpoint is `https://api.abliteration.ai/v1` and the default model is `abliterated-model` (256K context, multimodal). `abliterated-model-large-v2` is the stronger, text-only 1M-context model for harder work; switch in the `/model` picker, with `/model abliterated-model-large-v2`, or by setting `CAVEIRA_MODEL`. Reasoning effort is one of `none minimal low medium high xhigh max`; unset leaves it to the model's default. `/effort <level>` sets it directly. Switches made in a session last for that session.
 
-Against a local model, for working on caveira without spending on the API:
-
-```sh
-caveira --dev                        # Ollama on localhost:11434, a small installed model
-caveira --dev -m llama3.2:latest     # a specific one
-```
-
-`--dev` points caveira at `http://localhost:11434/v1` (or `CAVEIRA_DEV_BASE_URL`), leaves the API key and reasoning effort out, and uses the model from `-m`, `CAVEIRA_DEV_MODEL`, or the first installed of `qwen3:4b`, `qwen3:1.7b`, `qwen2.5:3b`, `qwen2.5:7b`, `llama3.1:8b`, `llama3.2`, `llama3.2:1b`. It says so up front if nothing is listening or the model is not pulled, and the screen carries a DEV badge wherever the model is named.
-
-On Ollama, the model runs as a `caveira/` copy of itself (`caveira/llama3.2:latest`, say), which Ollama makes from the same weights, so it costs no disk. Two things about Ollama make that necessary. It runs models with a 4K context unless its own settings say otherwise, and cuts longer conversations from the front, system prompt first, while caveira's prompt and tools take about 3K; the endpoint caveira talks to ignores a context size in the request. And Llama 3's chat template tells the model to answer every message with a tool call, so llama3.2 ran a command when told hello. The copy gets a 16K window (or the server's, if bigger), temperature 0.3, and for Llama 3 models a template that offers the tools but leaves calling one to the model. If the copy cannot be made, the model runs as it is and the session card warns when its window is that small. A model that does not fit in memory with that window fails when Ollama loads it (qwen3:4b does on an 8 GB Jetson, whose GPU shares memory with the desktop), and Ollama's own estimate does not see it coming; caveira then halves the window, down to 8K, and after that moves to the next smaller model it prefers that is installed, says so in the conversation, and carries on. What fitted is kept for the rest of the session, so new chats start there. The `/model` picker lists what Ollama has installed, offers the models that can call tools as their copies, and marks the ones that cannot. When a model writes a call out as text instead of making it, caveira repairs it and runs it as the call. Small models still make mistakes; Qwen's are fewer than Llama's.
-
-Any other local server still works with `--base-url` and `--model`.
+A local server works too, with `--base-url` and `--model`.
 
 Project instructions are read from `CAVEIRA.md`, `AGENTS.md`, or `CLAUDE.md` (the first found in each directory from the repository root down to the working directory) and appended to the system prompt. `caveira --show-system-prompt` prints the prompt it would use here.
 
@@ -74,7 +62,7 @@ From the repo root, `make` builds and installs `caveira`, with a `cav` link besi
 
 ## Layout
 
-- `main.go` — flags, configuration, and the one-shot `-p` mode; `dev.go` — `--dev`, on top of `core/local`.
+- `main.go` — flags, configuration, and the one-shot `-p` mode.
 - `internal/ui` — the Bubble Tea screens: the home screen with its intro (`home.go`), and the session with its transcript (`items.go`), status line, input, footer, approval card (`view.go`), and command palette (`commands.go`); `theme.go` holds the palette for dark, light, and low-colour terminals.
 - `internal/art` — the 11×11 pixel skull mascot (`mascot.go`), rendered as half-block cells in colour or in one colour; `go run ./internal/art/preview` prints it.
 
@@ -85,5 +73,4 @@ The agent itself is not in here: it is the `core` module at the repository root,
 - `core/prompt` — the system prompt: stance, working method, tool guidance, environment, project instructions.
 - `core/agent` — the loop: stream a reply, run the tools it asks for, feed results back; approvals, compaction, sessions.
 - `core/config` — settings resolution and what is known about each model.
-- `core/local` — running on a model on this machine: picking an installed Ollama model and making its `caveira/` copy.
 - `designs/` — TUI screens drawn as terminal cell art.

@@ -51,27 +51,11 @@ type Agent struct {
 
 	Session *Session
 
-	// Refit, when set, is asked about a request that failed. It may name
-	// a model and window that will work instead, as a local model does
-	// when it does not fit in memory; the request is then sent again.
-	Refit func(ctx context.Context, model string, window int, err error) (Switch, bool)
-
 	// mu guards always, and Model and ContextWindow against a window that
 	// reads them (ModelInfo) while a turn switches them.
 	mu     sync.Mutex
 	always map[string]bool
 }
-
-// Switch is a model and window to carry on with, and why.
-type Switch struct {
-	Model  string
-	Window int
-	Note   string
-}
-
-// maxRefits bounds how many times one turn moves to another model or
-// window before it gives up and shows the error.
-const maxRefits = 4
 
 // New builds an agent for one working directory.
 func New(client *llm.Client, cfg config.Settings, workDir, system string) *Agent {
@@ -149,7 +133,6 @@ func (a *Agent) Run(ctx context.Context, input string, emit func(Event)) {
 		steps = 200
 	}
 	retriedContext := false
-	refits := 0
 
 	for step := 0; step < steps; step++ {
 		if a.shouldCompact() {
@@ -179,14 +162,6 @@ func (a *Agent) Run(ctx context.Context, input string, emit func(Event)) {
 			return
 		}
 		if err != nil {
-			if a.Refit != nil && refits < maxRefits {
-				if s, ok := a.Refit(ctx, a.Model, a.ContextWindow, err); ok {
-					refits++
-					a.SetModel(s.Model, s.Window)
-					emit(ModelEvent{Model: s.Model, Window: s.Window, Note: s.Note})
-					continue
-				}
-			}
 			if isContextOverflow(err) && !retriedContext && len(a.Messages) > 2 {
 				retriedContext = true
 				if cerr := a.Compact(ctx, emit); cerr == nil {

@@ -24,7 +24,6 @@ import (
 	"github.com/justin06lee/caveira/core/agent"
 	"github.com/justin06lee/caveira/core/config"
 	"github.com/justin06lee/caveira/core/llm"
-	"github.com/justin06lee/caveira/core/local"
 	"github.com/justin06lee/caveira/core/prompt"
 	"github.com/justin06lee/caveira/tui/internal/ui"
 )
@@ -56,7 +55,6 @@ func run() error {
 		showHelp   bool
 		showPrompt bool
 		listSess   bool
-		dev        bool
 	)
 	fs.BoolVar(&printMode, "p", false, "")
 	fs.BoolVar(&printMode, "print", false, "")
@@ -76,7 +74,6 @@ func run() error {
 	fs.BoolVar(&showHelp, "help", false, "")
 	fs.BoolVar(&showPrompt, "show-system-prompt", false, "")
 	fs.BoolVar(&listSess, "sessions", false, "")
-	fs.BoolVar(&dev, "dev", false, "")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "caveira:", err)
 		fmt.Fprint(os.Stderr, usage)
@@ -131,20 +128,15 @@ func run() error {
 	// and the session to continue. The TUI runs it behind its intro.
 	load := func() (ui.Options, error) {
 		cfg, cfgErr := config.Load(workDir)
-		var devErr error
-		if dev {
-			devErr = applyDev(&cfg, model, baseURL)
-		} else {
-			if model != "" {
-				cfg.Model = model
-			}
-			if baseURL != "" {
-				cfg.BaseURL = strings.TrimRight(baseURL, "/")
-			}
-			if apiKey != "" {
-				cfg.APIKey = apiKey
-				cfg.KeySource = "flag"
-			}
+		if model != "" {
+			cfg.Model = model
+		}
+		if baseURL != "" {
+			cfg.BaseURL = strings.TrimRight(baseURL, "/")
+		}
+		if apiKey != "" {
+			cfg.APIKey = apiKey
+			cfg.KeySource = "flag"
 		}
 		if effort != "" {
 			cfg.ReasoningEffort = effort
@@ -164,21 +156,11 @@ func run() error {
 		}
 		if cfg.APIKey == "" && !isLocal(cfg.BaseURL) {
 			fatal = errors.New("no API key. Put ABLITERATION_API_KEY in your environment or in a .env.local in the project, " +
-				"or add \"api_key\" to " + config.Path() + ". To try caveira on a local model instead, run it with --dev")
-		}
-		if devErr != nil {
-			fatal = devErr
+				"or add \"api_key\" to " + config.Path())
 		}
 
 		client := llm.New(cfg.BaseURL, cfg.APIKey)
 		ag := agent.New(client, cfg, workDir, system)
-		var listModels func(context.Context) ([]ui.ModelChoice, error)
-		if dev {
-			listModels = devModelList(cfg.BaseURL)
-			// A local model too big for this machine steps down instead
-			// of failing the turn.
-			ag.Refit = local.Refitter(cfg.BaseURL)
-		}
 
 		var resumed *agent.Session
 		switch {
@@ -203,16 +185,14 @@ func run() error {
 			client.Headers["x-abliteration-session-id"] = ag.NewSession().ID
 		}
 		return ui.Options{
-			Agent:      ag,
-			Settings:   cfg,
-			WorkDir:    workDir,
-			Branch:     gitBranch(workDir),
-			Dev:        dev,
-			ListModels: listModels,
-			Version:    version,
-			Initial:    initial,
-			Resumed:    resumed,
-			Fatal:      fatal,
+			Agent:    ag,
+			Settings: cfg,
+			WorkDir:  workDir,
+			Branch:   gitBranch(workDir),
+			Version:  version,
+			Initial:  initial,
+			Resumed:  resumed,
+			Fatal:    fatal,
 		}, nil
 	}
 
@@ -285,8 +265,6 @@ func runPrint(ag *agent.Agent, input string) error {
 			ev.Reply <- agent.Allow
 		case agent.CompactEvent:
 			fmt.Fprintf(os.Stderr, "── context compacted (%d messages) ──\n", ev.BeforeMessages)
-		case agent.ModelEvent:
-			fmt.Fprintln(os.Stderr, "──", ev.Note, "──")
 		case agent.ErrorEvent:
 			failed = ev.Err
 			fmt.Fprintln(os.Stderr, "✗", ev.Err)
@@ -337,9 +315,6 @@ flags
       --base-url <url>   OpenAI-compatible endpoint (default https://api.abliteration.ai/v1)
       --api-key <key>    API key (prefer the environment or a .env.local)
   -C, --cwd <dir>        work in this directory instead of the current one
-      --dev              use a model on this machine instead of the API: Ollama at
-                         localhost:11434, or CAVEIRA_DEV_BASE_URL; the model is -m,
-                         CAVEIRA_DEV_MODEL, or a small installed one (qwen3:4b first)
       --confirm          ask before running commands or changing files
   -c, --continue         continue the latest session for this directory
       --resume <id>      continue a specific session
@@ -355,3 +330,12 @@ configuration
   ~/.caveira/config.json (api_key, base_url, model, reasoning_effort, confirm).
   Project instructions are read from CAVEIRA.md, AGENTS.md, or CLAUDE.md.
 `
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}

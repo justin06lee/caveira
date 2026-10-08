@@ -46,7 +46,6 @@ export interface Plan {
   name: string;
   // price is US dollars a month.
   price: number;
-  tagline: string;
   features: string[];
   popular?: boolean;
   // large says it runs the large models.
@@ -163,7 +162,7 @@ export interface TurnStats {
 
 export interface ChatEvent {
   chat: string;
-  type: "item" | "delta" | "remove" | "usage" | "model" | "start" | "done";
+  type: "item" | "delta" | "remove" | "usage" | "start" | "done";
   item?: Item;
   id?: string;
   text?: string;
@@ -173,9 +172,6 @@ export interface ChatEvent {
   title?: string;
   interrupted?: boolean;
   stats?: TurnStats;
-  // model and window, on a "model" event, are what the chat moved to.
-  model?: string;
-  window?: number;
 }
 
 export interface ModelOption {

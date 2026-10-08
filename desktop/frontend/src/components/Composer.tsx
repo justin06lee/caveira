@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, Check, ChevronDown, Square } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Gauge, Square } from "lucide-react";
 import { api } from "../lib/bridge";
 import { cost, tokens } from "../lib/format";
 import { useDismiss } from "../lib/hooks";
@@ -62,6 +62,7 @@ export function Composer({ chat }: { chat: Chat }) {
       />
       <div className="composer-bar">
         <ModelChip chat={chat} />
+        <EffortChip chat={chat} />
         <Meter chat={chat} />
         {chat.running ? (
           <button className="send" title="Stop (esc)" onClick={() => api.stop(chat.id)}>
@@ -110,16 +111,10 @@ function Meter({ chat }: { chat: Chat }) {
   );
 }
 
-// ModelChip is the model under the composer, and the menu that switches
-// it: the models caveira offers on abliteration.ai, each beside its
-// makers' logos, then the reasoning effort.
-function ModelChip({ chat }: { chat: Chat }) {
-  const [open, setOpen] = useState(false);
-  const catalog = useStore((s) => s.catalog);
-  const close = useCallback(() => setOpen(false), []);
-  const ref = useDismiss<HTMLDivElement>(open, close);
-
-  const choose = async (m: ModelOption, effort: string) => {
+// useSetModel switches the chat's model and effort, which become the
+// defaults for new chats too.
+function useSetModel(chat: Chat) {
+  return async (m: ModelOption, effort: string) => {
     try {
       const v = await api.setModel(chat.id, m.id, m.context, m.noEffort ? "" : effort);
       patchChat(chat.id, (c) => ({ ...c, ...v, items: v.items ?? c.items, turns: c.turns }));
@@ -128,9 +123,19 @@ function ModelChip({ chat }: { chat: Chat }) {
       toast(e);
     }
   };
+}
+
+// ModelChip is the model under the composer, and the menu that switches
+// it: the models caveira offers on abliteration.ai, each beside its
+// makers' logos.
+function ModelChip({ chat }: { chat: Chat }) {
+  const [open, setOpen] = useState(false);
+  const catalog = useStore((s) => s.catalog);
+  const close = useCallback(() => setOpen(false), []);
+  const ref = useDismiss<HTMLDivElement>(open, close);
+  const choose = useSetModel(chat);
 
   const current = catalog.find((m) => m.id === chat.model);
-  const efforts = useStore((s) => s.settings?.efforts) ?? fallbackEfforts;
   const name = current?.name ?? chat.model;
 
   const groups: { label: string; models: ModelOption[] }[] = [];
@@ -150,7 +155,6 @@ function ModelChip({ chat }: { chat: Chat }) {
       >
         <ModelLogos logos={current?.logos} height={11} />
         <span>{name}</span>
-        {chat.effort && <span style={{ color: "var(--faint)" }}>· {chat.effort}</span>}
         <ChevronDown size={12} />
       </button>
       {open && (
@@ -179,23 +183,67 @@ function ModelChip({ chat }: { chat: Chat }) {
             </div>
           ))}
           {!catalog.length && <div className="side-empty">Loading…</div>}
-          {!current?.noEffort && (
-            <>
-              <div className="menu-sep" />
-              <div className="menu-group">Reasoning effort</div>
-              <div className="efforts">
-                {["", ...efforts].map((e) => (
-                  <button
-                    key={e || "default"}
-                    className={`effort${chat.effort === e ? " on" : ""}`}
-                    onClick={() => choose(current ?? { id: chat.model, name, context: chat.window, note: "" }, e)}
-                  >
-                    {e || "default"}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// effortNames is how each reasoning level reads on screen; "" leaves it
+// to the model.
+const effortNames: Record<string, string> = {
+  "": "Default",
+  none: "None",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};
+
+// EffortChip is the reasoning effort beside the model, with its own menu.
+// A model that has no levels shows none.
+function EffortChip({ chat }: { chat: Chat }) {
+  const [open, setOpen] = useState(false);
+  const catalog = useStore((s) => s.catalog);
+  const efforts = useStore((s) => s.settings?.efforts) ?? fallbackEfforts;
+  const close = useCallback(() => setOpen(false), []);
+  const ref = useDismiss<HTMLDivElement>(open, close);
+  const choose = useSetModel(chat);
+
+  const current = catalog.find((m) => m.id === chat.model);
+  if (current?.noEffort) return null;
+  const model = current ?? { id: chat.model, name: chat.model, context: chat.window, note: "" };
+
+  return (
+    <div ref={ref} className="chip-anchor">
+      <button
+        className={`chip effort-chip${open ? " open" : ""}`}
+        disabled={chat.running}
+        title="Reasoning effort"
+        onClick={() => setOpen(!open)}
+      >
+        <Gauge size={13} />
+        <span>{effortNames[chat.effort] ?? chat.effort}</span>
+        <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="menu effort-menu">
+          <div className="menu-group">Reasoning effort</div>
+          {["", ...efforts].map((e) => (
+            <button
+              key={e || "default"}
+              className="menu-item"
+              onClick={() => {
+                close();
+                if (e !== chat.effort) choose(model, e);
+              }}
+            >
+              <span className="grow">{effortNames[e] ?? e}</span>
+              {e === chat.effort && <Check size={15} className="check" />}
+            </button>
+          ))}
         </div>
       )}
     </div>

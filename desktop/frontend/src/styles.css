@@ -1370,26 +1370,19 @@ kbd {
 .model-item .model-logos {
   min-width: 43px;
 }
-.efforts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px 6px 6px;
+.chip-anchor {
+  position: relative;
 }
-.effort {
-  font-size: 12px;
-  padding: 3px 8px;
-  border-radius: 7px;
-  color: var(--muted);
-  border: 1px solid var(--border);
+.effort-menu {
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 190px;
+  padding: 6px;
+  border-radius: 14px;
 }
-.effort:hover {
-  color: var(--text);
-}
-.effort.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-fg);
+.effort-menu .menu-item {
+  padding: 7px 10px;
+  border-radius: 9px;
 }
 
 .banner {
@@ -2258,7 +2251,7 @@ select.field {
 .plans-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: auto auto auto auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   gap: 0 12px;
 }
 .plan-card {
@@ -2270,10 +2263,11 @@ select.field {
   background: var(--surface);
   transition: opacity 0.15s;
 }
-/* Every card in the grid spans the same six rows, so their lists line up. */
+/* Every card in the grid spans the same four rows, so their buttons line
+   up. */
 .plans-grid .plan-card {
   display: grid;
-  grid-row: span 6;
+  grid-row: span 4;
   grid-template-rows: subgrid;
 }
 .plan-card.popular {
@@ -2315,7 +2309,10 @@ select.field {
   display: flex;
   align-items: baseline;
   gap: 4px;
-  margin: 0 0 12px;
+  margin: 0 0 16px;
+}
+.plan-card.wide .plan-price {
+  margin: 0;
 }
 .plan-price b {
   font-size: 28px;
@@ -2324,26 +2321,6 @@ select.field {
 }
 .plan-price span {
   font-size: 13px;
-  color: var(--faint);
-}
-.plan-tagline {
-  margin: 0 0 12px;
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--muted);
-}
-.plan-marks {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 16px;
-  margin-bottom: 16px;
-  color: var(--text);
-}
-.plan-card.wide .plan-marks {
-  margin-bottom: 0;
-}
-.plan-plus {
   color: var(--faint);
 }
 .plan-features {

@@ -292,9 +292,6 @@ func (m *Model) renderHomeInfo(lines []string, f homeFrame) {
 	if m.agent != nil {
 		name, _ := m.agent.ModelInfo()
 		left := th.Muted.Render(name)
-		if m.dev {
-			left = devBadge() + " " + left
-		}
 		left += th.Faint.Render(" · " + effortName(m.agent.Effort) + " effort")
 		if m.cfg.Confirm {
 			left += th.Faint.Render(" · ") + th.Warn.Render("confirm")
@@ -338,7 +335,7 @@ func (m *Model) pushHeader() {
 	if len(m.items) > 0 && m.items[0].kind == itemHeader {
 		return
 	}
-	h := &headerInfo{version: m.version, dir: m.workDir, branch: m.branch, confirm: m.cfg.Confirm, dev: m.dev}
+	h := &headerInfo{version: m.version, dir: m.workDir, branch: m.branch, confirm: m.cfg.Confirm}
 	if m.agent != nil {
 		h.model, h.effort, h.context = m.agent.Model, m.agent.Effort, m.agent.ContextWindow
 	}

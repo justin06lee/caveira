@@ -267,14 +267,12 @@ func (a *App) Models() ([]ModelOption, error) {
 
 func price(usd float64) string { return strconv.FormatFloat(usd, 'f', -1, 64) }
 
-
 func unlessDefault(v, def string) string {
 	if v == def {
 		return ""
 	}
 	return v
 }
-
 
 func isLocal(baseURL string) bool {
 	u, err := url.Parse(baseURL)
