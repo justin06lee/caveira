@@ -115,8 +115,11 @@ export function Settings() {
             <div className="row">
               <div className="row-head">
                 <div>
-                  <div className="row-title">Ask before commands and edits</div>
-                  <div className="row-hint">Otherwise caveira works on its own until the task is done.</div>
+                  <div className="row-title">Ask permissions in new chats</div>
+                  <div className="row-hint">
+                    Otherwise new chats bypass every permission and work on their own until the task is done. Each chat
+                    switches with the picker under its composer, or ⇧Tab.
+                  </div>
                 </div>
                 <button
                   className={`switch${form.confirm ? " on" : ""}`}

@@ -58,7 +58,10 @@ type ChatView struct {
 	Context int     `json:"context"`
 	Cost    float64 `json:"cost"`
 	Running bool    `json:"running"`
-	Items   []Item  `json:"items"`
+	// Ask says writes and commands wait for approval; otherwise every
+	// permission is bypassed.
+	Ask   bool   `json:"ask"`
+	Items []Item `json:"items"`
 	// Problem is why this chat cannot run right now; NeedsKey says the
 	// problem is a missing API key.
 	Problem  string `json:"problem,omitempty"`
@@ -468,6 +471,45 @@ func (a *App) SetModel(id, model string, window int, effort string) (ChatView, e
 	return c.view(), err
 }
 
+// SetPermissions has a chat ask before writes and commands, or bypass
+// every permission, and makes that the default for new chats. It works
+// mid-turn: the next tool call goes by it, and bypassing answers any
+// approval already waiting with Allow.
+func (a *App) SetPermissions(id string, ask bool) (ChatView, error) {
+	a.mu.Lock()
+	c, ok := a.chats[id]
+	if !ok {
+		a.mu.Unlock()
+		return ChatView{}, errors.New("that chat is not open")
+	}
+	c.ag.SetConfirm(ask)
+	var waiting []string
+	if !ask {
+		for call := range c.replies {
+			waiting = append(waiting, call)
+		}
+	}
+	a.mu.Unlock()
+	for _, call := range waiting {
+		a.Answer(id, call, "allow")
+	}
+
+	err := saveConfirm(ask)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return c.view(), err
+}
+
+// saveConfirm makes asking first, or not, the default in config.json.
+func saveConfirm(ask bool) error {
+	file, err := config.ReadFile()
+	if err != nil {
+		return err
+	}
+	file.Confirm = ask
+	return config.Save(file)
+}
+
 // saveModel makes model and effort the defaults in config.json.
 func saveModel(model, effort string) error {
 	file, err := config.ReadFile()
@@ -489,7 +531,7 @@ func (c *chat) view() ChatView {
 	v := ChatView{
 		ID: c.id, Dir: c.dir, Title: c.title,
 		Model: model, Effort: c.ag.Effort, Window: window,
-		Context: c.context, Cost: c.cost, Running: c.cancel != nil, Items: items,
+		Context: c.context, Cost: c.cost, Running: c.cancel != nil, Ask: c.ag.Confirming(), Items: items,
 	}
 	if c.problem == noKeyProblem {
 		v.NeedsKey = true
