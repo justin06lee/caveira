@@ -30,8 +30,6 @@ type Options struct {
 	WorkDir  string
 	// Branch is the git branch checked out in WorkDir, if any.
 	Branch string
-	// Dev marks a session on a local model (caveira --dev).
-	Dev bool
 	// ListModels fills the /model picker. Nil asks the agent's endpoint.
 	ListModels func(context.Context) ([]ModelChoice, error)
 	Version    string
@@ -64,7 +62,6 @@ type Model struct {
 	workDir string
 	branch  string
 	version string
-	dev     bool
 
 	width, height int
 	vp            viewport.Model
@@ -214,7 +211,6 @@ func (m *Model) Apply(o Options) {
 	m.cfg = o.Settings
 	m.workDir = o.WorkDir
 	m.branch = o.Branch
-	m.dev = o.Dev
 	m.listModels = o.ListModels
 	if o.Version != "" {
 		m.version = o.Version
@@ -819,9 +815,6 @@ func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 	case agent.UsageEvent:
 		m.totals = ev.Totals
 		m.context = ev.ContextTokens
-
-	case agent.ModelEvent:
-		m.push(&item{kind: itemNotice, text: ev.Note})
 
 	case agent.CompactEvent:
 		m.push(&item{kind: itemDivider, text: fmt.Sprintf("context compacted · %d messages, %s tokens → a handoff note", ev.BeforeMessages, formatTokens(ev.BeforeTokens))})

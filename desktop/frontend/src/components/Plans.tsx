@@ -1,7 +1,6 @@
-import { Check, Plus, TrendingUp } from "lucide-react";
+import { Check, TrendingUp } from "lucide-react";
 import { subscribe, useStore } from "../lib/store";
 import type { Plan } from "../lib/types";
-import { BrandMark } from "./ModelLogos";
 
 // Plans is the weight classes, laid out as Toji's pricing page lays out
 // its own: Free across the top, the three middle weights side by side,
@@ -70,23 +69,6 @@ function Price({ plan }: { plan: Plan }) {
   );
 }
 
-// Marks is what the plan runs on: abliteration.ai's models, and with a
-// paid plan, the GLM ones from Z.ai on top.
-function Marks({ plan }: { plan: Plan }) {
-  return (
-    <div className="plan-marks">
-      {plan.large ? (
-        <>
-          <Plus size={10} strokeWidth={1.5} className="plan-plus" />
-          <BrandMark id="zai" height={13} />
-        </>
-      ) : (
-        <BrandMark id="abliteration" height={13} />
-      )}
-    </div>
-  );
-}
-
 function Features({ plan }: { plan: Plan }) {
   return (
     <ul className="plan-features">
@@ -130,32 +112,28 @@ function Action({ plan, current, runs, held, subscribed, locked }: CardState) {
   );
 }
 
-// PlanCard is a column of the grid. Every card spans the same six rows
-// (name, price, tagline, marks, features, button), so a short tagline
-// cannot pull one card's list out of line with its neighbours'.
+// PlanCard is a column of the grid. Every card spans the same four rows
+// (name, price, features, button), so a short list cannot pull one
+// card's button out of line with its neighbours'.
 function PlanCard(s: CardState) {
   return (
     <div className={`plan-card${s.plan.popular ? " popular" : ""}${s.runs ? "" : " short"}`}>
       <Name plan={s.plan} />
       <Price plan={s.plan} />
-      <p className="plan-tagline">{s.plan.tagline}</p>
-      <Marks plan={s.plan} />
       <Features plan={s.plan} />
       <Action {...s} />
     </div>
   );
 }
 
-// WideCard is a plan across the whole width: name, price and tagline,
-// what it comes with, the button.
+// WideCard is a plan across the whole width: name and price, what it
+// comes with, the button.
 function WideCard(s: CardState) {
   return (
     <div className={`plan-card wide${s.runs ? "" : " short"}`}>
       <div>
         <Name plan={s.plan} />
         <Price plan={s.plan} />
-        <p className="plan-tagline">{s.plan.tagline}</p>
-        <Marks plan={s.plan} />
       </div>
       <Features plan={s.plan} />
       <Action {...s} />

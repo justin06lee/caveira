@@ -440,8 +440,6 @@ function fold(c: Chat, e: ChatEvent): Chat {
       return { ...c, items: c.items.filter((x) => x.id !== e.id) };
     case "usage":
       return { ...c, context: e.context ?? c.context, cost: e.cost ?? c.cost };
-    case "model":
-      return { ...c, model: e.model ?? c.model, window: e.window ?? c.window };
     case "start":
       return {
         ...c,

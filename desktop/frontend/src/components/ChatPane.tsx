@@ -56,14 +56,14 @@ export function ChatPane() {
               </>
             )}
           </p>
-          {(chat.problem || chat.needsKey) && <Problem chat={chat} />}
+          {chat.problem && <Problem chat={chat} />}
           <Composer chat={chat} />
         </div>
       ) : (
         <>
           <Transcript chat={chat} />
           <div className="dock">
-            {(chat.problem || chat.needsKey) && <Problem chat={chat} />}
+            {chat.problem && <Problem chat={chat} />}
             <Composer chat={chat} />
           </div>
         </>
@@ -80,16 +80,10 @@ function Problem({ chat }: { chat: Chat }) {
   return (
     <div className="banner" style={{ width: "100%", maxWidth: 740 }}>
       <TriangleAlert size={15} style={{ color: "var(--amber)", flex: "none" }} />
-      <span className="grow">
-        {chat.needsKey
-          ? "caveira can’t reach abliteration.ai yet: there is no key for it on this machine."
-          : chat.problem}
-      </span>
-      {!chat.needsKey && (
-        <button className="btn" onClick={() => setState(() => ({ settingsOpen: true }))}>
-          Settings
-        </button>
-      )}
+      <span className="grow">{chat.problem}</span>
+      <button className="btn" onClick={() => setState(() => ({ settingsOpen: true }))}>
+        Settings
+      </button>
     </div>
   );
 }

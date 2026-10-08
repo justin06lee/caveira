@@ -401,32 +401,6 @@ func TestUserMessageIsABubbleOnTheRight(t *testing.T) {
 	}
 }
 
-// A --dev session says so everywhere the model is named, so a local model
-// is never mistaken for the API.
-func TestDevSessionIsBadged(t *testing.T) {
-	m := testModel(t, 110, 40)
-	m.dev = true
-	home, _ := m.renderHome(0)
-	if !strings.Contains(plain(home), "DEV abliterated-model") {
-		t.Fatal("home info row missing the DEV badge")
-	}
-	s := session(t, 110, 80)
-	s.dev = true
-	s.agent.ContextWindow = 4096 // Ollama's default
-	s.items = s.items[1:]        // drop the card built without dev
-	s.pushHeader()
-	s.layout()
-	frame := s.View().Content
-	dump(t, "session-dev", frame)
-	p := plain(frame)
-	if !strings.Contains(p, "DEV local model") || !strings.Contains(p, "DEV abliterated-model") {
-		t.Fatal("session card or footer missing the DEV badge")
-	}
-	if !strings.Contains(p, "4.1k context · OLLAMA_CONTEXT_LENGTH=32768") {
-		t.Fatal("session card does not warn about Ollama's small window")
-	}
-}
-
 // shift+enter adds lines past the box's height (the text scrolls inside
 // it), and wherever the cursor goes the character under it is the one the
 // textarea says it is on: the mark column stays two cells wide on every row.

@@ -20,8 +20,7 @@ type Plan struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Price int    `json:"price"` // US dollars a month
-	// Tagline is the plan in a sentence; Features is what it comes with.
-	Tagline  string   `json:"tagline"`
+	// Features is what it comes with.
 	Features []string `json:"features"`
 	// Popular marks the plan the plans page points to.
 	Popular bool `json:"popular,omitempty"`
@@ -29,22 +28,20 @@ type Plan struct {
 	Large bool `json:"large"`
 }
 
+// Usage counts from Free, and goes up with the price the way the labs'
+// plans do (Claude's $100 and $200 Max are 5x and 20x its $20 Pro):
+// every $10 is one Free's worth, so $200 is 20x.
 var plans = []Plan{
 	{ID: "free", Name: "Free", Price: 0,
-		Tagline:  "Try caveira on abliterated-model. Nothing to pay.",
-		Features: []string{"abliterated-model, 256K context", "A small usage limit", "Every tool: read, edit, run, search", "Your chats from Claude Code, Codex, and OpenCode"}},
+		Features: []string{"Abliterated Qwen3.5, 256K token context", "A small usage limit"}},
 	{ID: "lightweight", Name: "Lightweight", Price: 20, Popular: true, Large: true,
-		Tagline:  "The GLM models, for real work.",
-		Features: []string{"GLM-5.2 and GLM-5.3, 1M context", "More usage", "Everything in Free"}},
+		Features: []string{"Abliterated GLM-5.2, 1M token context", "Abliterated GLM-5.3, 1M token context", "2x usage"}},
 	{ID: "middleweight", Name: "Middleweight", Price: 50, Large: true,
-		Tagline:  "For working with caveira most days.",
-		Features: []string{"Everything in Lightweight", "Even more usage"}},
+		Features: []string{"Everything in Lightweight", "5x usage"}},
 	{ID: "heavyweight", Name: "Heavyweight", Price: 100, Large: true,
-		Tagline:  "For using the agent all day.",
-		Features: []string{"Everything in Middleweight", "Heavy usage"}},
+		Features: []string{"Everything in Middleweight", "10x usage"}},
 	{ID: "champion", Name: "Champion", Price: 200, Large: true,
-		Tagline:  "Heavyweight, with the most room.",
-		Features: []string{"Everything in Heavyweight", "The most usage"}},
+		Features: []string{"Everything in Heavyweight", "20x usage"}},
 }
 
 func planByID(id string) (Plan, bool) {
@@ -64,9 +61,10 @@ type catalogModel struct {
 }
 
 // catalog is the models the desktop app runs, all on abliteration.ai, in
-// the order the picker shows them. The large ones are GLM under the hood.
+// the order the picker shows them, by the open model each is abliterated
+// from: Qwen3.5, and GLM for the large ones.
 var catalog = []catalogModel{
-	{id: "abliterated-model", name: "abliterated-model", logos: []string{"abliteration"}},
+	{id: "abliterated-model", name: "Qwen3.5", logos: []string{"abliteration", "qwen"}},
 	{id: "abliterated-model-large", name: "GLM-5.2", logos: []string{"abliteration", "zai"}, large: true},
 	{id: "abliterated-model-large-v2", name: "GLM-5.3", logos: []string{"abliteration", "zai"}, large: true},
 }

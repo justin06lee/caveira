@@ -385,13 +385,8 @@ func (m *Model) footerInfo(room, below int) (info string, ok bool) {
 		s    string
 		keep int // lower goes first
 	}
-	// A turn can move to another model (a local one that did not fit),
-	// so the name and window are read the safe way.
 	name, window := m.agent.ModelInfo()
 	model := th.Muted.Render(name)
-	if m.dev {
-		model = devBadge() + " " + model
-	}
 	parts := []part{{model, keepModel}, {th.Faint.Render(effortName(m.agent.Effort) + " effort"), keepEffort}}
 	if m.cfg.Confirm {
 		parts = append(parts, part{th.Warn.Render("confirm"), keepConfirm})
@@ -426,12 +421,6 @@ func (m *Model) footerInfo(room, below int) (info string, ok bool) {
 		parts = append(parts[:low], parts[low+1:]...)
 	}
 	return join(), lipgloss.Width(join()) <= room
-}
-
-// devBadge marks a session running on a local model, so it is never
-// mistaken for the real thing.
-func devBadge() string {
-	return lipgloss.NewStyle().Foreground(th.warn).Bold(true).Render("DEV")
 }
 
 // contextMeter is a small bar of how full the context window is.
