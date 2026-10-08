@@ -2,7 +2,6 @@ import { Folder, GitBranch, PanelLeft, TriangleAlert } from "lucide-react";
 import { shortcut } from "../lib/platform";
 import { setState, useStore, type Chat } from "../lib/store";
 import { Composer } from "./Composer";
-import { KeyCard } from "./KeyCard";
 import { greeting } from "../lib/rebel";
 import { Mark } from "./Logo";
 import { Transcript } from "./Transcript";
@@ -48,27 +47,17 @@ export function ChatPane() {
       ) : chat.items.length === 0 ? (
         <div className="hero">
           <Mark size={HERO_MARK} />
-          {chat.needsKey ? (
-            <>
-              <h1>Add your API key</h1>
-              <p className="sub">caveira runs on abliteration.ai, or on a model on this machine.</p>
-              <KeyCard />
-            </>
-          ) : (
-            <>
-              <h1>{greeting(chat.id)}</h1>
-              <p className="sub">
-                <Folder size={13} /> {project?.name}
-                {project?.branch && (
-                  <>
-                    <GitBranch size={13} style={{ marginLeft: 6 }} /> {project.branch}
-                  </>
-                )}
-              </p>
-              {chat.problem && <Problem chat={chat} />}
-              <Composer chat={chat} />
-            </>
-          )}
+          <h1>{greeting(chat.id)}</h1>
+          <p className="sub">
+            <Folder size={13} /> {project?.name}
+            {project?.branch && (
+              <>
+                <GitBranch size={13} style={{ marginLeft: 6 }} /> {project.branch}
+              </>
+            )}
+          </p>
+          {(chat.problem || chat.needsKey) && <Problem chat={chat} />}
+          <Composer chat={chat} />
         </div>
       ) : (
         <>
@@ -91,10 +80,16 @@ function Problem({ chat }: { chat: Chat }) {
   return (
     <div className="banner" style={{ width: "100%", maxWidth: 740 }}>
       <TriangleAlert size={15} style={{ color: "var(--amber)", flex: "none" }} />
-      <span className="grow">{chat.needsKey ? "There is no API key yet, so nothing can be sent." : chat.problem}</span>
-      <button className="btn" onClick={() => setState(() => ({ settingsOpen: true }))}>
-        Settings
-      </button>
+      <span className="grow">
+        {chat.needsKey
+          ? "caveira can’t reach abliteration.ai yet: there is no key for it on this machine."
+          : chat.problem}
+      </span>
+      {!chat.needsKey && (
+        <button className="btn" onClick={() => setState(() => ({ settingsOpen: true }))}>
+          Settings
+        </button>
+      )}
     </div>
   );
 }

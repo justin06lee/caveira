@@ -20,19 +20,31 @@ type Plan struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Price int    `json:"price"` // US dollars a month
-	// Usage ranks how much the plan allows, 1 to 5, for its meter.
-	Usage int `json:"usage"`
+	// Tagline is the plan in a sentence; Features is what it comes with.
+	Tagline  string   `json:"tagline"`
+	Features []string `json:"features"`
+	// Popular marks the plan the plans page points to.
+	Popular bool `json:"popular,omitempty"`
 	// Large says it runs the large models, not only abliterated-model.
-	Large bool     `json:"large"`
-	Lines []string `json:"lines"`
+	Large bool `json:"large"`
 }
 
 var plans = []Plan{
-	{ID: "free", Name: "Free", Price: 0, Usage: 1, Lines: []string{"Small models", "A small usage limit"}},
-	{ID: "lightweight", Name: "Lightweight", Price: 20, Usage: 2, Large: true, Lines: []string{"Larger models", "More usage"}},
-	{ID: "middleweight", Name: "Middleweight", Price: 50, Usage: 3, Large: true, Lines: []string{"Larger models", "Even more usage"}},
-	{ID: "heavyweight", Name: "Heavyweight", Price: 100, Usage: 4, Large: true, Lines: []string{"Larger models", "Heavy usage"}},
-	{ID: "champion", Name: "Champion", Price: 200, Usage: 5, Large: true, Lines: []string{"Larger models", "The most usage"}},
+	{ID: "free", Name: "Free", Price: 0,
+		Tagline:  "Try caveira on abliterated-model. Nothing to pay.",
+		Features: []string{"abliterated-model, 256K context", "A small usage limit", "Every tool: read, edit, run, search", "Your chats from Claude Code, Codex, and OpenCode"}},
+	{ID: "lightweight", Name: "Lightweight", Price: 20, Popular: true, Large: true,
+		Tagline:  "The GLM models, for real work.",
+		Features: []string{"GLM-5.2 and GLM-5.3, 1M context", "More usage", "Everything in Free"}},
+	{ID: "middleweight", Name: "Middleweight", Price: 50, Large: true,
+		Tagline:  "For working with caveira most days.",
+		Features: []string{"Everything in Lightweight", "Even more usage"}},
+	{ID: "heavyweight", Name: "Heavyweight", Price: 100, Large: true,
+		Tagline:  "For using the agent all day.",
+		Features: []string{"Everything in Middleweight", "Heavy usage"}},
+	{ID: "champion", Name: "Champion", Price: 200, Large: true,
+		Tagline:  "Heavyweight, with the most room.",
+		Features: []string{"Everything in Heavyweight", "The most usage"}},
 }
 
 func planByID(id string) (Plan, bool) {
@@ -46,17 +58,17 @@ func planByID(id string) (Plan, bool) {
 
 // catalogModel is a model caveira offers on abliteration.ai.
 type catalogModel struct {
-	id, name, group string
-	logos           []string
-	large           bool
+	id, name string
+	logos    []string
+	large    bool
 }
 
-// catalog is the models offered on abliteration.ai, in the order the
-// picker shows them. The large ones are GLM under the hood.
+// catalog is the models the desktop app runs, all on abliteration.ai, in
+// the order the picker shows them. The large ones are GLM under the hood.
 var catalog = []catalogModel{
-	{id: "abliterated-model", name: "abliterated-model", group: "abliteration.ai", logos: []string{"abliteration"}},
-	{id: "abliterated-model-large", name: "GLM-5.2", group: "abliteration.ai × Z.ai", logos: []string{"abliteration", "zai"}, large: true},
-	{id: "abliterated-model-large-v2", name: "GLM-5.3", group: "abliteration.ai × Z.ai", logos: []string{"abliteration", "zai"}, large: true},
+	{id: "abliterated-model", name: "abliterated-model", logos: []string{"abliteration"}},
+	{id: "abliterated-model-large", name: "GLM-5.2", logos: []string{"abliteration", "zai"}, large: true},
+	{id: "abliterated-model-large-v2", name: "GLM-5.3", logos: []string{"abliteration", "zai"}, large: true},
 }
 
 func catalogEntry(id string) (catalogModel, bool) {
@@ -79,14 +91,11 @@ func largePlan() Plan {
 }
 
 // allows says whether plan can run model, and if not, why not as the name
-// of the model it cannot. A local model runs on any plan.
-func allows(plan, model string, onLocal bool) (ok bool, locked string) {
+// of the model it cannot.
+func allows(plan, model string) (ok bool, locked string) {
 	p, subscribed := planByID(plan)
 	if !subscribed {
 		return false, ""
-	}
-	if onLocal {
-		return true, ""
 	}
 	if m, known := catalogEntry(model); known && m.large && !p.Large {
 		return false, m.name
@@ -146,7 +155,7 @@ func (a *App) release(id string) {
 		return
 	}
 	model, _ := c.ag.ModelInfo()
-	if ok, _ := allows(a.prefs.Plan, model, c.local); !ok {
+	if ok, _ := allows(a.prefs.Plan, model); !ok {
 		a.mu.Unlock()
 		return
 	}
@@ -189,7 +198,7 @@ func catalogOptions() []ModelOption {
 	out := make([]ModelOption, 0, len(catalog))
 	for _, m := range catalog {
 		o := ModelOption{
-			ID: m.id, Name: m.name, Group: m.group, Logos: m.logos,
+			ID: m.id, Name: m.name, Group: "abliteration.ai", Logos: m.logos,
 			Context: config.Spec(m.id).ContextWindow,
 		}
 		if m.large {

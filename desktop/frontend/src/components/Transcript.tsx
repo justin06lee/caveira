@@ -7,6 +7,7 @@ import type { Item } from "../lib/types";
 import { Mark } from "./Logo";
 import { Markdown } from "./Markdown";
 import { Plans } from "./Plans";
+import { SkullLoader } from "./SkullLoader";
 import { ToolItem } from "./ToolItem";
 
 // Transcript keeps to the bottom while you are there, and stays put when
@@ -137,23 +138,21 @@ function Thinking({ text, live }: { text: string; live: boolean }) {
   );
 }
 
-const spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-// Working is the terminal client's status line: a spinner, a rebel verb
-// for this stretch of work, and how long the turn has run. Each stretch
-// (the model thinking, or going back to work on a tool's result) mounts
-// it afresh, with a new verb.
+// Working is the terminal client's status line, in the window: the skull
+// in dots for its spinner, a rebel verb for this stretch of work, and how
+// long the turn has run. Each stretch (the model thinking, or going back
+// to work on a tool's result) mounts it afresh, with a new verb.
 function Working({ started }: { started?: number }) {
   const [verb] = useState(pickVerb);
-  const [frame, setFrame] = useState(0);
+  const [, tick] = useState(0);
   useEffect(() => {
-    const t = window.setInterval(() => setFrame((f) => f + 1), 80);
+    const t = window.setInterval(() => tick((n) => n + 1), 1000);
     return () => window.clearInterval(t);
   }, []);
   const ms = started ? Math.max(1000, Date.now() - started) : 0;
   return (
     <div className="working" aria-label="Working">
-      <span className="working-spin">{spinner[frame % spinner.length]}</span>
+      <SkullLoader />
       <span className="shimmer">{verb}…</span>
       {ms > 0 && <span className="working-time">{duration(Math.floor(ms / 1000) * 1000)}</span>}
     </div>

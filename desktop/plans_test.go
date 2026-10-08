@@ -64,7 +64,7 @@ func TestFreeHoldsTheLargeModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.SetModel(v.ID, "abliterated-model-large-v2", 0, "", false); err != nil {
+	if _, err := a.SetModel(v.ID, "abliterated-model-large-v2", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	if started, err := a.Send(v.ID, "hi"); err != nil || started {
@@ -85,7 +85,7 @@ func TestFreeHoldsTheLargeModels(t *testing.T) {
 
 func TestModelsAreTheCatalogOnAbliteration(t *testing.T) {
 	a, _ := testApp(t, nil)
-	models, err := a.Models(false)
+	models, err := a.Models()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,13 +113,13 @@ func TestSwitchingModelsSendsWhatWasHeld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.SetModel(v.ID, "abliterated-model-large", 0, "", false); err != nil {
+	if _, err := a.SetModel(v.ID, "abliterated-model-large", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	if started, _ := a.Send(v.ID, "hi"); started {
 		t.Fatal("GLM-5.2 ran on Free")
 	}
-	if _, err := a.SetModel(v.ID, "abliterated-model", 0, "", false); err != nil {
+	if _, err := a.SetModel(v.ID, "abliterated-model", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	v = waitIdle(t, a, v.ID, func(v ChatView) bool { return !v.Running && len(v.Items) == 2 })

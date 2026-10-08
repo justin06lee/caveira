@@ -16,7 +16,6 @@ import (
 	"github.com/justin06lee/caveira/core/config"
 	"github.com/justin06lee/caveira/core/importer"
 	"github.com/justin06lee/caveira/core/llm"
-	"github.com/justin06lee/caveira/core/local"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -35,19 +34,8 @@ type App struct {
 	// sink, when set, takes events instead of the Wails runtime: the
 	// browser harness in harness_test.go.
 	sink func(name string, data any)
-	// picked is the last local model set up, so every new chat does not
-	// ask the server again.
-	picked *localPick
 	// found is what the last look for other agents' chats found.
 	found []importer.Chat
-}
-
-// localPick is what local.Apply settled on for one set of settings.
-type localPick struct {
-	key     string
-	baseURL string
-	model   string
-	window  int
 }
 
 func NewApp(version string) *App {
@@ -171,25 +159,17 @@ func (a *App) Reveal(dir string) error {
 	return nil
 }
 
-// SettingsView is the settings screen's state.
+// SettingsView is the settings screen's state. The app runs only on
+// abliteration.ai, and the key is not the user's to set: it comes from
+// the environment, a .env file, or config.json, where caveira's plans
+// will put it.
 type SettingsView struct {
-	Local bool `json:"local"`
-	// APIKey is a hint at the key in use ("ak_…3f2a"), never the key.
-	APIKey string `json:"apiKey"`
-	// KeySource is where that key came from: config.json, environment,
-	// .env.local, and so on. Only a key from config.json can be changed
-	// here; the others win over it.
-	KeySource    string   `json:"keySource"`
-	BaseURL      string   `json:"baseUrl"`
-	Model        string   `json:"model"`
-	Effort       string   `json:"effort"`
-	Confirm      bool     `json:"confirm"`
-	LocalBaseURL string   `json:"localBaseUrl"`
-	LocalModel   string   `json:"localModel"`
-	Theme        string   `json:"theme"`
-	Efforts      []string `json:"efforts"`
-	// Ready is false when a chat could not run: no key for a remote
-	// endpoint. Local problems only show when a chat starts.
+	Model   string   `json:"model"`
+	Effort  string   `json:"effort"`
+	Confirm bool     `json:"confirm"`
+	Theme   string   `json:"theme"`
+	Efforts []string `json:"efforts"`
+	// Ready is false when a chat could not run: there is no key.
 	Ready bool `json:"ready"`
 }
 
@@ -200,53 +180,31 @@ func (a *App) Settings() SettingsView {
 	p := a.prefs
 	a.mu.Unlock()
 	return SettingsView{
-		Local:        p.Local,
-		APIKey:       keyHint(cfg.APIKey),
-		KeySource:    cfg.KeySource,
-		BaseURL:      cfg.BaseURL,
-		Model:        cfg.Model,
-		Effort:       cfg.ReasoningEffort,
-		Confirm:      cfg.Confirm,
-		LocalBaseURL: firstNonEmpty(p.LocalBaseURL, local.DefaultBaseURL),
-		LocalModel:   p.LocalModel,
-		Theme:        p.Theme,
-		Efforts:      config.Efforts,
-		Ready:        p.Local || cfg.APIKey != "" || isLocal(cfg.BaseURL),
+		Model:   cfg.Model,
+		Effort:  cfg.ReasoningEffort,
+		Confirm: cfg.Confirm,
+		Theme:   p.Theme,
+		Efforts: config.Efforts,
+		Ready:   cfg.APIKey != "" || isLocal(cfg.BaseURL),
 	}
 }
 
-// SettingsInput is a change from the settings screen. A nil APIKey
-// leaves the stored key alone; an empty one removes it.
+// SettingsInput is a change from the settings screen.
 type SettingsInput struct {
-	Local        bool    `json:"local"`
-	APIKey       *string `json:"apiKey"`
-	BaseURL      string  `json:"baseUrl"`
-	Model        string  `json:"model"`
-	Effort       string  `json:"effort"`
-	Confirm      bool    `json:"confirm"`
-	LocalBaseURL string  `json:"localBaseUrl"`
-	LocalModel   string  `json:"localModel"`
-	Theme        string  `json:"theme"`
+	Model   string `json:"model"`
+	Effort  string `json:"effort"`
+	Confirm bool   `json:"confirm"`
+	Theme   string `json:"theme"`
 }
 
 func (a *App) SaveSettings(in SettingsInput) (SettingsView, error) {
 	if in.Effort != "" && !config.ValidEffort(in.Effort) {
 		return a.Settings(), fmt.Errorf("reasoning effort must be one of %s", strings.Join(config.Efforts, ", "))
 	}
-	if u := strings.TrimSpace(in.BaseURL); u != "" {
-		if _, err := url.ParseRequestURI(u); err != nil {
-			return a.Settings(), fmt.Errorf("%q is not a URL", u)
-		}
-	}
-
 	file, err := config.ReadFile()
 	if err != nil {
 		return a.Settings(), err
 	}
-	if in.APIKey != nil {
-		file.APIKey = strings.TrimSpace(*in.APIKey)
-	}
-	file.BaseURL = unlessDefault(strings.TrimRight(strings.TrimSpace(in.BaseURL), "/"), config.DefaultBaseURL)
 	file.Model = unlessDefault(strings.TrimSpace(in.Model), config.DefaultModel)
 	file.ReasoningEffort = in.Effort
 	file.Confirm = in.Confirm
@@ -255,9 +213,6 @@ func (a *App) SaveSettings(in SettingsInput) (SettingsView, error) {
 	}
 
 	a.mu.Lock()
-	a.prefs.Local = in.Local
-	a.prefs.LocalBaseURL = unlessDefault(strings.TrimRight(strings.TrimSpace(in.LocalBaseURL), "/"), local.DefaultBaseURL)
-	a.prefs.LocalModel = strings.TrimSpace(in.LocalModel)
 	if in.Theme != "" {
 		a.prefs.Theme = in.Theme
 	}
@@ -283,31 +238,12 @@ type ModelOption struct {
 	Plan string `json:"plan,omitempty"`
 }
 
-// Models lists what the endpoint serves: the local server's models when
-// localMode is set; on abliteration.ai, the models caveira offers there;
-// otherwise what the endpoint lists, with prices where caveira knows
-// them.
-func (a *App) Models(localMode bool) ([]ModelOption, error) {
+// Models lists the models caveira offers on abliteration.ai. An endpoint
+// set in the environment instead (a test server, say) is asked what it
+// serves, with prices where caveira knows them.
+func (a *App) Models() ([]ModelOption, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	if localMode {
-		a.mu.Lock()
-		base := firstNonEmpty(a.prefs.LocalBaseURL, local.DefaultBaseURL)
-		a.mu.Unlock()
-		choices, err := local.Choices(ctx, base)
-		if err != nil {
-			return nil, fmt.Errorf("nothing is answering at %s. Start Ollama with `ollama serve`", base)
-		}
-		out := make([]ModelOption, len(choices))
-		for i, c := range choices {
-			out[i] = ModelOption{
-				ID: c.ID, Name: strings.TrimPrefix(c.ID, "caveira/"), Context: c.Context,
-				Note: c.Note, Unusable: c.Unusable, NoEffort: c.NoEffort,
-			}
-		}
-		return out, nil
-	}
-
 	home, _ := os.UserHomeDir()
 	cfg, _ := config.Load(home)
 	if isCatalog(cfg.BaseURL) {
@@ -331,15 +267,6 @@ func (a *App) Models(localMode bool) ([]ModelOption, error) {
 
 func price(usd float64) string { return strconv.FormatFloat(usd, 'f', -1, 64) }
 
-func keyHint(key string) string {
-	if key == "" {
-		return ""
-	}
-	if len(key) <= 10 {
-		return "…" + key[len(key)-2:]
-	}
-	return key[:3] + "…" + key[len(key)-4:]
-}
 
 func unlessDefault(v, def string) string {
 	if v == def {
@@ -348,14 +275,6 @@ func unlessDefault(v, def string) string {
 	return v
 }
 
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
-}
 
 func isLocal(baseURL string) bool {
 	u, err := url.Parse(baseURL)
