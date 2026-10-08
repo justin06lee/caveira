@@ -1,9 +1,12 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowDown, ChevronRight, CircleAlert, Info } from "lucide-react";
 import { cost, duration, plural } from "../lib/format";
-import type { Chat } from "../lib/store";
+import { pickVerb } from "../lib/rebel";
+import { useStore, type Chat } from "../lib/store";
 import type { Item } from "../lib/types";
+import { Mark } from "./Logo";
 import { Markdown } from "./Markdown";
+import { Plans } from "./Plans";
 import { ToolItem } from "./ToolItem";
 
 // Transcript keeps to the bottom while you are there, and stays put when
@@ -66,13 +69,7 @@ export function Transcript({ chat }: { chat: Chat }) {
                 ))}
             </div>
           ))}
-          {busy && (
-            <div className="working" aria-label="Working">
-              <span />
-              <span />
-              <span />
-            </div>
-          )}
+          {busy && <Working started={chat.started} />}
         </div>
       </div>
       {away && (
@@ -105,6 +102,8 @@ function ItemView({ item, chatId }: { item: Item; chatId: string }) {
       return <Assistant item={item} />;
     case "tool":
       return <ToolItem item={item} chatId={chatId} />;
+    case "paywall":
+      return <Paywall item={item} />;
     case "notice":
       return (
         <div className={`notice item${item.tone === "error" ? " error" : ""}`}>
@@ -134,6 +133,54 @@ function Thinking({ text, live }: { text: string; live: boolean }) {
         <span className={live ? "shimmer" : ""}>{live ? "Thinking" : "Thought"}</span>
       </button>
       {open && <div className="thinking-body">{text.trim()}</div>}
+    </div>
+  );
+}
+
+const spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+// Working is the terminal client's status line: a spinner, a rebel verb
+// for this stretch of work, and how long the turn has run. Each stretch
+// (the model thinking, or going back to work on a tool's result) mounts
+// it afresh, with a new verb.
+function Working({ started }: { started?: number }) {
+  const [verb] = useState(pickVerb);
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => setFrame((f) => f + 1), 80);
+    return () => window.clearInterval(t);
+  }, []);
+  const ms = started ? Math.max(1000, Date.now() - started) : 0;
+  return (
+    <div className="working" aria-label="Working">
+      <span className="working-spin">{spinner[frame % spinner.length]}</span>
+      <span className="shimmer">{verb}…</span>
+      {ms > 0 && <span className="working-time">{duration(Math.floor(ms / 1000) * 1000)}</span>}
+    </div>
+  );
+}
+
+// Paywall holds the messages above it until there is a plan that runs
+// them.
+function Paywall({ item }: { item: Item }) {
+  const plans = useStore((s) => s.plans);
+  const smallest = plans.find((p) => p.large)?.name ?? "a paid plan";
+  return (
+    <div className="paywall item">
+      <div className="paywall-head">
+        <Mark size={26} />
+        <div>
+          <div className="paywall-title">
+            {item.text ? `${item.text} fights in a heavier class` : "Join the resistance"}
+          </div>
+          <div className="paywall-sub">
+            {item.text
+              ? `It comes with ${smallest} and up. Pick a plan and your message goes through, or switch models below.`
+              : "caveira runs on a plan. Pick one and your message goes through."}
+          </div>
+        </div>
+      </div>
+      <Plans locked={item.text || undefined} held />
     </div>
   );
 }

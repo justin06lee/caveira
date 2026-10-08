@@ -71,8 +71,9 @@ export function App() {
   return (
     <div className="app">
       {onboarded && <Sidebar hidden={!sidebar || !project} />}
-      <main className="main">{!onboarded ? <Onboarding /> : project ? <ChatPane /> : <Welcome />}</main>
-      {settingsOpen && <Settings />}
+      <main className="main">
+        {!onboarded ? <Onboarding /> : settingsOpen ? <Settings /> : project ? <ChatPane /> : <Welcome />}
+      </main>
       {pickerOpen && <OpenProject />}
       {importOpen && <ImportSheet />}
       {message && (

@@ -57,12 +57,14 @@ export const api = {
   openChat: (id: string) => call<ChatView>("OpenChat", id),
   chats: (dir: string) => call<ChatHeader[] | null>("Chats", dir),
   deleteChat: (id: string) => call<void>("DeleteChat", id),
-  send: (id: string, text: string) => call<void>("Send", id, text),
+  // send says whether a turn started; without a plan it is held.
+  send: (id: string, text: string) => call<boolean>("Send", id, text),
   stop: (id: string) => call<void>("Stop", id),
   answer: (id: string, callId: string, decision: "allow" | "always" | "deny") =>
     call<void>("Answer", id, callId, decision),
-  setModel: (id: string, model: string, window: number, effort: string) =>
-    call<ChatView>("SetModel", id, model, window, effort),
+  setModel: (id: string, model: string, window: number, effort: string, local: boolean) =>
+    call<ChatView>("SetModel", id, model, window, effort, local),
+  subscribe: (plan: string, chatId: string) => call<string>("Subscribe", plan, chatId),
 };
 
 export function onChatEvent(cb: (e: ChatEvent) => void): () => void {

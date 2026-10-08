@@ -25,6 +25,8 @@ type prefs struct {
 	// Onboarded is set once the first-run steps (import, workspace) are
 	// done or skipped.
 	Onboarded bool `json:"onboarded,omitempty"`
+	// Plan is the caveira plan picked, "" for none (see plans.go).
+	Plan string `json:"plan,omitempty"`
 	// EmptyImports are chats an import found nothing in, by the id they
 	// would have had, so the next look does not offer them again.
 	EmptyImports []string `json:"empty_imports,omitempty"`

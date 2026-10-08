@@ -47,6 +47,21 @@ export interface Boot {
   projects: Project[];
   workspace: Workspace;
   onboarded: boolean;
+  // plan is the plan this install is on, "" for none.
+  plan: string;
+  plans: Plan[];
+}
+
+export interface Plan {
+  id: string;
+  name: string;
+  // price is US dollars a month.
+  price: number;
+  // usage ranks how much it allows, 1 to 5.
+  usage: number;
+  // large says it runs the large models.
+  large: boolean;
+  lines: string[];
 }
 
 // The folder picker.
@@ -117,7 +132,9 @@ export interface ToolView {
 
 export interface Item {
   id: string;
-  kind: "user" | "assistant" | "tool" | "notice";
+  // A paywall holds the messages above it until there is a plan; its
+  // text is the model the plan lacks, if that is why.
+  kind: "user" | "assistant" | "tool" | "notice" | "paywall";
   text?: string;
   reasoning?: string;
   streaming?: boolean;
@@ -158,7 +175,7 @@ export interface TurnStats {
 
 export interface ChatEvent {
   chat: string;
-  type: "item" | "delta" | "remove" | "usage" | "model" | "done";
+  type: "item" | "delta" | "remove" | "usage" | "model" | "start" | "done";
   item?: Item;
   id?: string;
   text?: string;
@@ -175,8 +192,15 @@ export interface ChatEvent {
 
 export interface ModelOption {
   id: string;
+  // name is what it is called on screen, under the heading group, beside
+  // the logos of who makes it.
+  name: string;
+  group?: string;
+  logos?: string[];
   context: number;
   note: string;
   unusable?: string;
   noEffort?: boolean;
+  // plan is the cheapest plan that runs it, when Free does not.
+  plan?: string;
 }

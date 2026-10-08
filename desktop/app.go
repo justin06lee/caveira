@@ -82,15 +82,22 @@ type Boot struct {
 	Workspace Workspace    `json:"workspace"`
 	// Onboarded is false until the first-run steps are done.
 	Onboarded bool `json:"onboarded"`
+	// Plan is the plan this install is on, "" for none, and Plans what
+	// there is to pick from.
+	Plan  string `json:"plan"`
+	Plans []Plan `json:"plans"`
 }
 
 func (a *App) Boot() Boot {
 	waitShellEnv()
 	a.mu.Lock()
 	dirs := a.prefs.existingProjects()
-	ws, onboarded := a.prefs.Workspace, a.prefs.Onboarded
+	ws, onboarded, plan := a.prefs.Workspace, a.prefs.Onboarded, a.prefs.Plan
 	a.mu.Unlock()
-	return Boot{Version: a.version, Settings: a.Settings(), Projects: projects(dirs), Workspace: workspace(ws), Onboarded: onboarded}
+	return Boot{
+		Version: a.version, Settings: a.Settings(), Projects: projects(dirs), Workspace: workspace(ws),
+		Onboarded: onboarded, Plan: plan, Plans: plans,
+	}
 }
 
 // Projects is the recent projects, for after an import adds some.
@@ -262,17 +269,24 @@ func (a *App) SaveSettings(in SettingsInput) (SettingsView, error) {
 
 // ModelOption is one model the pickers offer.
 type ModelOption struct {
-	ID       string `json:"id"`
-	Context  int    `json:"context"`
-	Note     string `json:"note"`
-	Unusable string `json:"unusable,omitempty"`
-	NoEffort bool   `json:"noEffort,omitempty"`
+	ID string `json:"id"`
+	// Name is what the model is called on screen, under the heading
+	// Group, beside the Logos of who makes it.
+	Name     string   `json:"name"`
+	Group    string   `json:"group,omitempty"`
+	Logos    []string `json:"logos,omitempty"`
+	Context  int      `json:"context"`
+	Note     string   `json:"note"`
+	Unusable string   `json:"unusable,omitempty"`
+	NoEffort bool     `json:"noEffort,omitempty"`
+	// Plan is the cheapest plan that runs it, when Free does not.
+	Plan string `json:"plan,omitempty"`
 }
 
 // Models lists what the endpoint serves: the local server's models when
-// localMode is set, the API's otherwise, with prices where caveira knows
-// them. When abliteration.ai cannot be asked, the models caveira knows
-// about are offered anyway.
+// localMode is set; on abliteration.ai, the models caveira offers there;
+// otherwise what the endpoint lists, with prices where caveira knows
+// them.
 func (a *App) Models(localMode bool) ([]ModelOption, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -286,23 +300,23 @@ func (a *App) Models(localMode bool) ([]ModelOption, error) {
 		}
 		out := make([]ModelOption, len(choices))
 		for i, c := range choices {
-			out[i] = ModelOption{ID: c.ID, Context: c.Context, Note: c.Note, Unusable: c.Unusable, NoEffort: c.NoEffort}
+			out[i] = ModelOption{
+				ID: c.ID, Name: strings.TrimPrefix(c.ID, "caveira/"), Context: c.Context,
+				Note: c.Note, Unusable: c.Unusable, NoEffort: c.NoEffort,
+			}
 		}
 		return out, nil
 	}
 
 	home, _ := os.UserHomeDir()
 	cfg, _ := config.Load(home)
-	models, err := llm.New(cfg.BaseURL, cfg.APIKey).Models(ctx)
-	if err != nil && cfg.BaseURL == config.DefaultBaseURL {
-		models, err = nil, nil
-		for _, id := range config.KnownModels() {
-			models = append(models, llm.ModelInfo{ID: id})
-		}
+	if isCatalog(cfg.BaseURL) {
+		return catalogOptions(), nil
 	}
+	models, err := llm.New(cfg.BaseURL, cfg.APIKey).Models(ctx)
 	out := make([]ModelOption, 0, len(models))
 	for _, mi := range models {
-		o := ModelOption{ID: mi.ID, Context: mi.ContextLength}
+		o := ModelOption{ID: mi.ID, Name: mi.ID, Context: mi.ContextLength}
 		if config.Known(mi.ID) {
 			spec := config.Spec(mi.ID)
 			if o.Context == 0 {
