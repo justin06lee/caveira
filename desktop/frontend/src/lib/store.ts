@@ -53,7 +53,7 @@ export interface State {
   // without one is held under the plans.
   plan: string;
   plans: Plan[];
-  // catalog is the models on offer away from this machine.
+  // catalog is the models on offer, all on abliteration.ai.
   catalog: ModelOption[];
 }
 
@@ -102,17 +102,7 @@ export function useStore<T>(select: (s: State) => T): T {
 
 // inputFrom is a settings change that changes nothing, to start from.
 export function inputFrom(s: SettingsView): SettingsInput {
-  return {
-    local: s.local,
-    apiKey: null,
-    baseUrl: s.baseUrl,
-    model: s.model,
-    effort: s.effort,
-    confirm: s.confirm,
-    localBaseUrl: s.localBaseUrl,
-    localModel: s.localModel,
-    theme: s.theme,
-  };
+  return { model: s.model, effort: s.effort, confirm: s.confirm, theme: s.theme };
 }
 
 let toastTimer: number | undefined;
@@ -198,11 +188,10 @@ export async function makeProject(base: string, rel: string): Promise<void> {
   }
 }
 
-// refreshCatalog reads the models on offer again, after the endpoint may
-// have changed.
+// refreshCatalog reads the models on offer.
 export function refreshCatalog(): void {
   api
-    .models(false)
+    .models()
     .then((m) => setState(() => ({ catalog: m ?? [] })))
     .catch(() => {});
 }

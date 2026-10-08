@@ -8,15 +8,9 @@ export interface Project {
 }
 
 export interface SettingsView {
-  local: boolean;
-  apiKey: string;
-  keySource: string;
-  baseUrl: string;
   model: string;
   effort: string;
   confirm: boolean;
-  localBaseUrl: string;
-  localModel: string;
   theme: Theme;
   efforts: string[];
   ready: boolean;
@@ -25,14 +19,9 @@ export interface SettingsView {
 export type Theme = "system" | "light" | "dark";
 
 export interface SettingsInput {
-  local: boolean;
-  apiKey: string | null;
-  baseUrl: string;
   model: string;
   effort: string;
   confirm: boolean;
-  localBaseUrl: string;
-  localModel: string;
   theme: Theme;
 }
 
@@ -57,11 +46,11 @@ export interface Plan {
   name: string;
   // price is US dollars a month.
   price: number;
-  // usage ranks how much it allows, 1 to 5.
-  usage: number;
+  tagline: string;
+  features: string[];
+  popular?: boolean;
   // large says it runs the large models.
   large: boolean;
-  lines: string[];
 }
 
 // The folder picker.
@@ -148,7 +137,6 @@ export interface ChatView {
   title: string;
   model: string;
   effort: string;
-  local: boolean;
   window: number;
   context: number;
   cost: number;

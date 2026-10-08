@@ -52,7 +52,7 @@ export const api = {
   importChats: (picks: ImportPick[]) => call<ImportResult>("Import", picks),
   settings: () => call<SettingsView>("Settings"),
   saveSettings: (s: SettingsInput) => call<SettingsView>("SaveSettings", s),
-  models: (local: boolean) => call<ModelOption[] | null>("Models", local),
+  models: () => call<ModelOption[] | null>("Models"),
   newChat: (dir: string) => call<ChatView>("NewChat", dir),
   openChat: (id: string) => call<ChatView>("OpenChat", id),
   chats: (dir: string) => call<ChatHeader[] | null>("Chats", dir),
@@ -62,8 +62,8 @@ export const api = {
   stop: (id: string) => call<void>("Stop", id),
   answer: (id: string, callId: string, decision: "allow" | "always" | "deny") =>
     call<void>("Answer", id, callId, decision),
-  setModel: (id: string, model: string, window: number, effort: string, local: boolean) =>
-    call<ChatView>("SetModel", id, model, window, effort, local),
+  setModel: (id: string, model: string, window: number, effort: string) =>
+    call<ChatView>("SetModel", id, model, window, effort),
   subscribe: (plan: string, chatId: string) => call<string>("Subscribe", plan, chatId),
 };
 

@@ -23,7 +23,6 @@
   --del-bg: rgba(176, 71, 61, 0.09);
   --shadow: 0 1px 2px rgba(28, 28, 26, 0.04), 0 8px 28px rgba(28, 28, 26, 0.06);
   --logo-edge: rgba(28, 28, 26, 0.14);
-  --logo-ring: transparent;
   --raised: #ffffff;
 
   --hl-keyword: #7a5a9c;
@@ -61,7 +60,6 @@
   --del-bg: rgba(224, 138, 127, 0.09);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.3);
   --logo-edge: transparent;
-  --logo-ring: rgba(236, 235, 229, 0.16);
   --raised: #33332f;
   --hl-keyword: #b9a2d8;
   --hl-string: #a6c9a0;
@@ -476,11 +474,6 @@ button {
   background: var(--active);
   color: var(--text);
 }
-.provider {
-  margin-left: auto;
-  font-size: 11.5px;
-  color: var(--faint);
-}
 
 kbd {
   font: 11px var(--sans);
@@ -588,6 +581,7 @@ kbd {
   flex: 1;
   overflow-y: auto;
   scroll-behavior: auto;
+  container-type: inline-size;
 }
 
 .column {
@@ -1108,16 +1102,89 @@ kbd {
 
 .working {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 14px 0 6px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0 6px;
   font-size: 14px;
   animation: fade 0.2s var(--ease);
 }
-.working-spin {
-  font-family: var(--mono);
-  color: var(--muted);
-  width: 1ch;
+
+/* The skull in dots. Each dot lands with a flare, holds, and goes, at its
+   own moment; the outline and the face's shades hold at their own
+   strength, which flips in the dark the way the terminal's one-colour
+   skull does. */
+.skull {
+  flex: none;
+  display: block;
+  overflow: visible;
+}
+.skull circle {
+  fill: var(--text);
+  opacity: calc(var(--o) * 0.2);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: skull-dot 2.8s var(--ease) infinite both;
+}
+.skull .o {
+  --o: 0.92;
+}
+.skull .f1 {
+  --o: 0.14;
+}
+.skull .f2 {
+  --o: 0.2;
+}
+.skull .f3 {
+  --o: 0.3;
+}
+.skull .f4 {
+  --o: 0.42;
+}
+:root[data-theme="dark"] .skull .o {
+  --o: 0.16;
+}
+:root[data-theme="dark"] .skull .f1 {
+  --o: 0.95;
+}
+:root[data-theme="dark"] .skull .f2 {
+  --o: 0.8;
+}
+:root[data-theme="dark"] .skull .f3 {
+  --o: 0.62;
+}
+:root[data-theme="dark"] .skull .f4 {
+  --o: 0.46;
+}
+/* Between landings each dot stays as a faint ghost, so the skull's shape
+   always reads. */
+@keyframes skull-dot {
+  0% {
+    opacity: calc(var(--o) * 0.2);
+    transform: scale(0.6);
+  }
+  7% {
+    opacity: 1;
+    transform: scale(1.4);
+  }
+  16% {
+    opacity: var(--o);
+    transform: scale(1);
+  }
+  70% {
+    opacity: var(--o);
+    transform: scale(1);
+  }
+  82%,
+  100% {
+    opacity: calc(var(--o) * 0.2);
+    transform: scale(0.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skull circle {
+    animation: none;
+    opacity: var(--o);
+  }
 }
 .working-time {
   font-size: 12.5px;
@@ -1291,28 +1358,17 @@ kbd {
   font-size: 11px;
   color: var(--faint);
 }
+/* The makers' marks, without their tiles, in the text colour. */
 .brand-logo {
   display: block;
-  width: 17px;
-  height: 17px;
-  border-radius: 4px;
-  box-shadow: 0 0 0 1px var(--logo-ring);
-}
-.model-chip .brand-logo {
-  width: 14px;
-  height: 14px;
-  border-radius: 3.5px;
-}
-.model-chip .model-logos {
-  gap: 3px;
-}
-.plan-tag {
   flex: none;
-  font-size: 11px;
-  color: var(--muted);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  padding: 1px 6px;
+  fill: currentColor;
+  color: var(--text);
+}
+/* In the menu the marks take the width of the widest pair, so the names
+   line up. */
+.model-item .model-logos {
+  min-width: 43px;
 }
 .efforts {
   display: flex;
@@ -1429,30 +1485,6 @@ kbd {
   text-overflow: ellipsis;
 }
 
-.key-card {
-  width: 100%;
-  max-width: 460px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-  padding: 18px;
-}
-.key-card p {
-  margin: 0 0 12px;
-  color: var(--muted);
-  font-size: 13.5px;
-  line-height: 1.55;
-}
-.key-row {
-  display: flex;
-  gap: 8px;
-}
-.key-alt {
-  margin-top: 14px;
-  font-size: 13px;
-  color: var(--faint);
-}
 .link {
   color: var(--text);
   text-decoration: underline;
@@ -2190,15 +2222,11 @@ select.field {
   }
 }
 
-/* plans: the weight classes, in a chat that is holding a message and in
-   settings */
+/* plans: the weight classes, laid out the way Toji's pricing page is,
+   in caveira's colours. Shown under a held message and atop settings. */
 
 .paywall {
-  margin: 6px 0 12px;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: var(--surface);
+  margin: 8px 0 14px;
 }
 .paywall-head {
   display: flex;
@@ -2217,130 +2245,181 @@ select.field {
   line-height: 1.45;
   color: var(--muted);
 }
+/* The plans spread wider than the column they sit in, up to the window,
+   centred on it. */
 .plans {
+  --wide: min(860px, 100cqw - 48px);
+  width: max(100%, var(--wide));
+  margin-left: calc((100% - max(100%, var(--wide))) / 2);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
-.plans-row {
+.plans-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-rows: auto auto auto auto 1fr auto;
+  gap: 0 12px;
 }
-.plan {
+.plan-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 14px 14px 12px;
+  padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--bg);
-  transition: border-color 0.15s, opacity 0.15s;
+  border-radius: 16px;
+  background: var(--surface);
+  transition: opacity 0.15s;
 }
-.plan.wide {
-  flex-direction: row;
+/* Every card in the grid spans the same six rows, so their lists line up. */
+.plans-grid .plan-card {
+  display: grid;
+  grid-row: span 6;
+  grid-template-rows: subgrid;
+}
+.plan-card.popular {
+  border-color: color-mix(in srgb, var(--text) 28%, transparent);
+}
+.plan-card.short {
+  opacity: 0.5;
+}
+.plan-card.wide {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr) auto;
   align-items: center;
-  gap: 14px;
-  padding: 11px 11px 11px 16px;
-}
-.plan.current {
-  border-color: var(--text);
-}
-.plan.short {
-  opacity: 0.45;
+  gap: 24px;
 }
 .plan-name {
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.plan-name h3 {
+  margin: 0;
+  font-size: 15px;
   font-weight: 600;
 }
-.plan.wide .plan-name {
-  width: 104px;
-  flex: none;
+.plan-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--active);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 .plan-price {
-  white-space: nowrap;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 0 0 12px;
 }
 .plan-price b {
-  font-size: 22px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
 }
 .plan-price span {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--faint);
 }
-.plan.wide .plan-price b {
-  font-size: 15px;
-  letter-spacing: 0;
-}
-.plan-lines {
-  margin: 4px 0 0;
-  padding: 0;
-  list-style: none;
-  font-size: 12.5px;
+.plan-tagline {
+  margin: 0 0 12px;
+  font-size: 13px;
   line-height: 1.55;
   color: var(--muted);
 }
-.plan.wide .plan-lines {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-}
-.plan-foot {
+.plan-marks {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  margin-top: auto;
-  padding-top: 14px;
+  height: 16px;
+  margin-bottom: 16px;
+  color: var(--text);
+}
+.plan-card.wide .plan-marks {
+  margin-bottom: 0;
+}
+.plan-plus {
+  color: var(--faint);
+}
+.plan-features {
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.plan-card.wide .plan-features {
+  margin: 0;
+}
+.plan-features li {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.plan-features svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--faint);
 }
 .plan-btn {
-  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border-strong);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  transition: background 0.12s, opacity 0.12s;
 }
-.usage {
-  flex: none;
+.plan-btn:hover:not(:disabled) {
+  background: var(--hover);
 }
-.usage rect {
-  fill: var(--border-strong);
-}
-.usage rect.on {
-  fill: var(--text);
-}
-/* Champion is the one in the inverse colours. */
-.plan.champion {
+.plan-btn.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-fg);
 }
-.plan.champion .plan-lines,
-.plan.champion .plan-price span {
-  color: color-mix(in srgb, var(--accent-fg) 62%, transparent);
+.plan-btn.primary:hover:not(:disabled) {
+  background: var(--accent);
+  opacity: 0.85;
 }
-.plan.champion .usage rect {
-  fill: color-mix(in srgb, var(--accent-fg) 24%, transparent);
+.plan-btn.quiet {
+  border-color: var(--border);
+  color: var(--faint);
 }
-.plan.champion .usage rect.on {
-  fill: var(--accent-fg);
+.plan-card.wide .plan-btn {
+  width: auto;
+  min-width: 150px;
 }
-.plan.champion.current {
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--accent);
-}
-.btn.on-dark {
-  background: var(--accent-fg);
-  border-color: var(--accent-fg);
-  color: var(--accent);
-}
-.btn.on-dark:hover:not(:disabled) {
-  background: var(--accent-fg);
-  opacity: 0.88;
+.plans-note {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--faint);
 }
 
 /* settings: a page in place of the chat */
 
+/* As wide as the plans at its top; the fields keep a reading width. */
 .settings-column {
-  max-width: 740px;
+  max-width: 924px;
   margin: 0 auto;
   padding: 10px 32px 40px;
+}
+.settings-column .field {
+  max-width: 440px;
 }
 .settings-column h1 {
   margin: 6px 0 20px;
@@ -2368,7 +2447,7 @@ select.field {
   border-top: 1px solid var(--border);
 }
 .settings-foot-inner {
-  max-width: 676px;
+  max-width: 860px;
   margin: 0 auto;
   display: flex;
   align-items: center;

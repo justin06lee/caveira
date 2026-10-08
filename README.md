@@ -25,7 +25,7 @@ echo 'ABLITERATION_API_KEY=ak_…' > .env.local   # or export it, or put it in ~
 cd your/project && caveira
 ```
 
-In the app, open a folder and type; the first launch asks for the key there, or offers a model on this machine instead.
+In the app, open a folder and type. The app runs on abliteration.ai alone and takes the same key from the same places; it has no field to type one into, since caveira's plans will supply it. A chat there runs on a plan, picked from the app's own plans page.
 
 caveira talks to [abliteration.ai](https://abliteration.ai) out of the box, through its OpenAI-compatible endpoint. Any other endpoint that speaks the same protocol works too; a local Ollama is one flag away:
 

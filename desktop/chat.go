@@ -12,7 +12,6 @@ import (
 	"github.com/justin06lee/caveira/core/agent"
 	"github.com/justin06lee/caveira/core/config"
 	"github.com/justin06lee/caveira/core/llm"
-	"github.com/justin06lee/caveira/core/local"
 	"github.com/justin06lee/caveira/core/prompt"
 )
 
@@ -55,7 +54,6 @@ type ChatView struct {
 	Title   string  `json:"title"`
 	Model   string  `json:"model"`
 	Effort  string  `json:"effort"`
-	Local   bool    `json:"local"`
 	Window  int     `json:"window"`
 	Context int     `json:"context"`
 	Cost    float64 `json:"cost"`
@@ -118,7 +116,6 @@ type chat struct {
 	title   string
 	ag      *agent.Agent
 	gen     int
-	local   bool
 	problem string
 
 	items   []Item
@@ -147,20 +144,16 @@ func newChat(id, dir string, ag *agent.Agent) *chat {
 
 // build makes an agent for dir from the current settings. problem, when
 // set, is why it cannot run; the agent can still show an old chat.
-func (a *App) build(dir string) (ag *agent.Agent, onLocal bool, gen int, problem string) {
+func (a *App) build(dir string) (ag *agent.Agent, gen int, problem string) {
 	waitShellEnv()
 	cfg, err := config.Load(dir)
 	a.mu.Lock()
-	p, gen := a.prefs, a.gen
+	gen = a.gen
 	a.mu.Unlock()
 	if err != nil {
 		problem = err.Error()
 	}
-	if p.Local {
-		if err := a.applyLocal(&cfg, p, gen); err != nil {
-			problem = err.Error()
-		}
-	} else if cfg.APIKey == "" && !isLocal(cfg.BaseURL) {
+	if cfg.APIKey == "" && !isLocal(cfg.BaseURL) {
 		problem = noKeyProblem
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
@@ -168,48 +161,7 @@ func (a *App) build(dir string) (ag *agent.Agent, onLocal bool, gen int, problem
 	}
 	system := prompt.Build(prompt.Options{WorkDir: dir, Model: cfg.Model, Desktop: true})
 	ag = agent.New(llm.New(cfg.BaseURL, cfg.APIKey), cfg, dir, system)
-	if p.Local {
-		ag.Refit = a.refitter(cfg.BaseURL)
-	}
-	return ag, p.Local, gen, problem
-}
-
-// refitter steps a local model that does not fit in memory down to one
-// that does (see core/local), and starts new chats there too.
-func (a *App) refitter(baseURL string) func(context.Context, string, int, error) (agent.Switch, bool) {
-	refit := local.Refitter(baseURL)
-	return func(ctx context.Context, model string, window int, err error) (agent.Switch, bool) {
-		s, ok := refit(ctx, model, window, err)
-		if ok {
-			a.mu.Lock()
-			if a.picked != nil && a.picked.model == model {
-				a.picked.model, a.picked.window = s.Model, s.Window
-			}
-			a.mu.Unlock()
-		}
-		return s, ok
-	}
-}
-
-// applyLocal points cfg at the local model, asking the server only when
-// the settings changed since it last did.
-func (a *App) applyLocal(cfg *config.Settings, p prefs, gen int) error {
-	key := fmt.Sprint(gen, "|", p.LocalBaseURL, "|", p.LocalModel)
-	a.mu.Lock()
-	lp := a.picked
-	a.mu.Unlock()
-	if lp != nil && lp.key == key {
-		cfg.BaseURL, cfg.Model, cfg.ContextWindow = lp.baseURL, lp.model, lp.window
-		cfg.APIKey, cfg.KeySource, cfg.ReasoningEffort = "", "local", ""
-		return nil
-	}
-	if err := local.Apply(cfg, p.LocalModel, p.LocalBaseURL); err != nil {
-		return err
-	}
-	a.mu.Lock()
-	a.picked = &localPick{key: key, baseURL: cfg.BaseURL, model: cfg.Model, window: cfg.ContextWindow}
-	a.mu.Unlock()
-	return nil
+	return ag, gen, problem
 }
 
 // NewChat starts a chat in dir. An empty chat already open there is
@@ -228,11 +180,11 @@ func (a *App) NewChat(dir string) (ChatView, error) {
 	}
 	a.mu.Unlock()
 
-	ag, onLocal, gen, problem := a.build(dir)
+	ag, gen, problem := a.build(dir)
 	s := ag.NewSession()
 	ag.Client.Headers["x-abliteration-session-id"] = s.ID
 	c := newChat(s.ID, dir, ag)
-	c.local, c.gen, c.problem = onLocal, gen, problem
+	c.gen, c.problem = gen, problem
 	c.cost = ag.Totals.CostUSD
 
 	a.mu.Lock()
@@ -262,11 +214,11 @@ func (a *App) OpenChat(id string) (ChatView, error) {
 	if err != nil {
 		return ChatView{}, fmt.Errorf("cannot open that chat: %w", err)
 	}
-	ag, onLocal, gen, problem := a.build(s.WorkDir)
+	ag, gen, problem := a.build(s.WorkDir)
 	ag.Attach(s)
 	ag.Client.Headers["x-abliteration-session-id"] = s.ID
 	c := newChat(s.ID, s.WorkDir, ag)
-	c.title, c.local, c.gen, c.problem = s.Title, onLocal, gen, problem
+	c.title, c.gen, c.problem = s.Title, gen, problem
 	c.cost = s.Totals.CostUSD
 	if s.Source != "" {
 		c.push(Item{Kind: "notice", Tone: "info", Text: "Imported from " + s.Source + "."})
@@ -347,12 +299,12 @@ func (a *App) Send(id, text string) (bool, error) {
 		p := c.problem
 		a.mu.Unlock()
 		if p == noKeyProblem {
-			return false, errors.New("add an API key in Settings, or switch to a local model")
+			return false, errors.New("caveira cannot reach abliteration.ai: there is no key for it on this machine")
 		}
 		return false, errors.New(p)
 	}
 	model, _ := c.ag.ModelInfo()
-	if ok, locked := allows(a.prefs.Plan, model, c.local); !ok {
+	if ok, locked := allows(a.prefs.Plan, model); !ok {
 		out := c.hold(text, locked)
 		a.mu.Unlock()
 		for _, e := range out {
@@ -390,7 +342,7 @@ func (c *chat) begin() context.Context {
 // rebuild gives an idle chat an agent made from the current settings,
 // keeping its conversation.
 func (a *App) rebuild(c *chat) {
-	ag, onLocal, gen, problem := a.build(c.dir)
+	ag, gen, problem := a.build(c.dir)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if c.cancel != nil {
@@ -401,7 +353,7 @@ func (a *App) rebuild(c *chat) {
 	if ag.Session != nil {
 		ag.Client.Headers["x-abliteration-session-id"] = ag.Session.ID
 	}
-	c.ag, c.local, c.gen, c.problem = ag, onLocal, gen, problem
+	c.ag, c.gen, c.problem = ag, gen, problem
 }
 
 func (a *App) turn(ctx context.Context, c *chat, ag *agent.Agent, text string) {
@@ -490,10 +442,9 @@ func (a *App) Answer(id, callID, decision string) {
 }
 
 // SetModel switches a chat's model and makes it the default for new ones.
-// onLocal says the model is on this machine; one on the other side from
-// the chat's moves the chat there, and new chats with it. A message held
-// for a model the plan lacks goes once the plan runs the new one.
-func (a *App) SetModel(id, model string, window int, effort string, onLocal bool) (ChatView, error) {
+// A message held for a model the plan lacks goes once the plan runs the
+// new one.
+func (a *App) SetModel(id, model string, window int, effort string) (ChatView, error) {
 	if effort != "" && !config.ValidEffort(effort) {
 		return ChatView{}, fmt.Errorf("unknown reasoning effort %q", effort)
 	}
@@ -508,40 +459,12 @@ func (a *App) SetModel(id, model string, window int, effort string, onLocal bool
 		a.mu.Unlock()
 		return v, errors.New("wait for this turn to finish before switching models")
 	}
-
-	if onLocal != c.local {
-		a.prefs.Local = onLocal
-		if onLocal {
-			a.prefs.LocalModel = model
-		}
-		err := a.prefs.save()
-		a.gen++
-		a.mu.Unlock()
-		if err == nil && !onLocal {
-			err = saveModel(model, effort)
-		}
-		a.rebuild(c)
-		a.release(id)
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		return c.view(), err
-	}
-
-	if c.local {
-		effort = ""
-	}
 	c.ag.SetModel(model, window)
 	c.ag.Effort = effort
 	c.ag.System = prompt.Build(prompt.Options{WorkDir: c.dir, Model: model, Desktop: true})
-
-	var err error
-	if c.local {
-		a.prefs.LocalModel = model
-		err = a.prefs.save()
-	} else {
-		err = saveModel(model, effort)
-	}
 	a.mu.Unlock()
+
+	err := saveModel(model, effort)
 	a.release(id)
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -568,7 +491,7 @@ func (c *chat) view() ChatView {
 	model, window := c.ag.ModelInfo()
 	v := ChatView{
 		ID: c.id, Dir: c.dir, Title: c.title,
-		Model: model, Effort: c.ag.Effort, Local: c.local, Window: window,
+		Model: model, Effort: c.ag.Effort, Window: window,
 		Context: c.context, Cost: c.cost, Running: c.cancel != nil, Items: items,
 	}
 	if c.problem == noKeyProblem {

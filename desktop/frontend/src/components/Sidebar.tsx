@@ -42,7 +42,6 @@ export function Sidebar({ hidden }: { hidden: boolean }) {
   const here = useStore((s) => s.project?.path);
   const draftKey = useStore(draftsOf);
   const live = useStore(liveKey);
-  const local = useStore((s) => s.settings?.local);
   const settingsOpen = useStore((s) => s.settingsOpen);
   const [, tick] = useState(0);
 
@@ -139,7 +138,6 @@ export function Sidebar({ hidden }: { hidden: boolean }) {
         >
           <Settings2 size={15} />
           Settings
-          <span className="provider">{local ? "local model" : ""}</span>
         </button>
       </div>
     </aside>

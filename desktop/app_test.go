@@ -230,7 +230,8 @@ func TestApprovalWaitsForAnAnswer(t *testing.T) {
 	}
 }
 
-// Without a key for a remote endpoint, the chat says so instead of running.
+// Without a key the chat says so instead of running; the key is not one
+// the window can set, but one in the environment is picked up.
 func TestNoKeyIsAProblemNotACrash(t *testing.T) {
 	a, dir := testApp(t, nil)
 	v, err := a.NewChat(dir)
@@ -240,23 +241,22 @@ func TestNoKeyIsAProblemNotACrash(t *testing.T) {
 	if !v.NeedsKey {
 		t.Fatalf("want NeedsKey: %+v", v)
 	}
-	if _, err := a.Send(v.ID, "hi"); err == nil || !strings.Contains(err.Error(), "API key") {
+	if _, err := a.Send(v.ID, "hi"); err == nil || !strings.Contains(err.Error(), "no key") {
 		t.Fatalf("send without a key: %v", err)
 	}
 	if a.Settings().Ready {
 		t.Fatal("settings say ready without a key")
 	}
 
-	key := "ak_test_1234567890"
-	s, err := a.SaveSettings(SettingsInput{APIKey: &key})
-	if err != nil {
+	t.Setenv("CAVEIRA_API_KEY", "ak_test_1234567890")
+	if !a.Settings().Ready {
+		t.Fatal("a key in the environment was not seen")
+	}
+	if _, err := a.SaveSettings(SettingsInput{Model: "abliterated-model-large", Confirm: true}); err != nil {
 		t.Fatal(err)
 	}
-	if !s.Ready || s.APIKey != "ak_…7890" || s.KeySource != "config.json" {
-		t.Fatalf("after saving a key: %+v", s)
-	}
 	b, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".caveira", "config.json"))
-	if !strings.Contains(string(b), key) || strings.Contains(string(b), "base_url") {
+	if strings.Contains(string(b), "ak_test") || strings.Contains(string(b), "base_url") || !strings.Contains(string(b), "abliterated-model-large") {
 		t.Fatalf("config.json: %s", b)
 	}
 }

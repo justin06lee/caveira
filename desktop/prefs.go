@@ -9,17 +9,13 @@ import (
 )
 
 // prefs is what only the desktop app keeps, in ~/.caveira/desktop.json.
-// The API key, endpoint, model, effort, and confirm setting live in
-// config.json, which the terminal client reads too.
+// The model, effort, and confirm setting live in config.json, which the
+// terminal client reads too.
 type prefs struct {
 	// Projects are folders opened before, most recent first.
 	Projects []string `json:"projects,omitempty"`
 	// Theme is "system", "light", or "dark".
 	Theme string `json:"theme,omitempty"`
-	// Local runs on a model on this machine instead of the API.
-	Local        bool   `json:"local,omitempty"`
-	LocalBaseURL string `json:"local_base_url,omitempty"`
-	LocalModel   string `json:"local_model,omitempty"`
 	// Workspace is the folder the project picker opens in.
 	Workspace string `json:"workspace,omitempty"`
 	// Onboarded is set once the first-run steps (import, workspace) are

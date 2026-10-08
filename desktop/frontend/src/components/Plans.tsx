@@ -1,11 +1,13 @@
-import { Check } from "lucide-react";
+import { Check, Plus, TrendingUp } from "lucide-react";
 import { subscribe, useStore } from "../lib/store";
 import type { Plan } from "../lib/types";
+import { BrandMark } from "./ModelLogos";
 
-// Plans is the weight classes to pick from: Free across the top, the
-// three middle ones side by side, Champion across the bottom. The one
-// this install is on is marked. locked, in a chat, is the model the plan
-// lacks; a plan without it cannot be picked there.
+// Plans is the weight classes, laid out as Toji's pricing page lays out
+// its own: Free across the top, the three middle weights side by side,
+// Champion across the bottom. locked, in a chat, is the model the plan
+// lacks; a plan without it cannot be picked there. held says a message
+// is waiting on the pick.
 export function Plans({ locked, held }: { locked?: string; held?: boolean }) {
   const plans = useStore((s) => s.plans);
   const current = useStore((s) => s.plan);
@@ -14,108 +16,149 @@ export function Plans({ locked, held }: { locked?: string; held?: boolean }) {
   const top = plans[plans.length - 1];
   const middle = plans.filter((p) => p !== free && p !== top);
 
-  const props = (p: Plan) => ({
+  const state = (p: Plan): CardState => ({
     plan: p,
     current: p.id === current,
     runs: !locked || p.large,
     held: Boolean(held),
     subscribed: Boolean(current),
+    locked,
   });
 
   return (
     <div className="plans">
-      {free && <PlanCard {...props(free)} wide />}
-      <div className="plans-row">
+      {free && <WideCard {...state(free)} />}
+      <div className="plans-grid">
         {middle.map((p) => (
-          <PlanCard key={p.id} {...props(p)} />
+          <PlanCard key={p.id} {...state(p)} />
         ))}
       </div>
-      {top !== free && <PlanCard {...props(top)} wide champion />}
+      {top !== free && <WideCard {...state(top)} />}
+      <p className="plans-note">Billing isn&rsquo;t live yet, so no plan charges anything for now.</p>
     </div>
   );
 }
 
-function PlanCard({
-  plan,
-  current,
-  runs,
-  held,
-  subscribed,
-  wide,
-  champion,
-}: {
+interface CardState {
   plan: Plan;
   current: boolean;
   runs: boolean;
   held: boolean;
   subscribed: boolean;
-  wide?: boolean;
-  champion?: boolean;
-}) {
-  // A plan already on that can run what is held sends it.
-  const label = current ? (held && runs ? "Send it" : "Current") : plan.price || subscribed ? "Choose" : "Start free";
-  const button = (
-    <button
-      className={`btn plan-btn${champion ? " on-dark" : plan.price ? " primary" : ""}`}
-      disabled={!runs || (current && !held)}
-      onClick={() => subscribe(plan.id)}
-    >
-      {current && !held && <Check size={13} />}
-      {label}
-    </button>
-  );
-  const price = (
-    <div className="plan-price">
-      {plan.price ? (
-        <>
-          <b>${plan.price}</b>
-          <span> / month</span>
-        </>
-      ) : (
-        <b>Free</b>
-      )}
-    </div>
-  );
+  locked?: string;
+}
 
+function Name({ plan }: { plan: Plan }) {
   return (
-    <div
-      className={`plan${wide ? " wide" : ""}${champion ? " champion" : ""}${current ? " current" : ""}${runs ? "" : " short"}`}
-    >
-      {wide ? (
-        <>
-          <div className="plan-name">{plan.name}</div>
-          <div className="plan-lines grow">{plan.lines.join(" · ")}</div>
-          <Usage n={plan.usage} />
-          {price}
-          {button}
-        </>
-      ) : (
-        <>
-          <div className="plan-name">{plan.name}</div>
-          {price}
-          <ul className="plan-lines">
-            {plan.lines.map((l) => (
-              <li key={l}>{l}</li>
-            ))}
-          </ul>
-          <div className="plan-foot">
-            <Usage n={plan.usage} />
-            {button}
-          </div>
-        </>
+    <div className="plan-name">
+      <h3>{plan.name}</h3>
+      {plan.popular && (
+        <span className="plan-pill">
+          <TrendingUp size={10} /> Popular
+        </span>
       )}
     </div>
   );
 }
 
-// Usage is how much a plan allows, as five bars of rising height.
-function Usage({ n }: { n: number }) {
+function Price({ plan }: { plan: Plan }) {
   return (
-    <svg className="usage" width="29" height="14" viewBox="0 0 29 14" aria-label={`Usage ${n} of 5`}>
-      {[0, 1, 2, 3, 4].map((i) => {
-        const h = 4 + i * 2.5;
-        return <rect key={i} x={i * 6} y={14 - h} width="4" height={h} rx="1" className={i < n ? "on" : ""} />;
-      })}
-    </svg>
+    <p className="plan-price">
+      <b>${plan.price}</b>
+      {plan.price > 0 && <span>/month</span>}
+    </p>
+  );
+}
+
+// Marks is what the plan runs on: abliteration.ai's models, and with a
+// paid plan, the GLM ones from Z.ai on top.
+function Marks({ plan }: { plan: Plan }) {
+  return (
+    <div className="plan-marks">
+      {plan.large ? (
+        <>
+          <Plus size={10} strokeWidth={1.5} className="plan-plus" />
+          <BrandMark id="zai" height={13} />
+        </>
+      ) : (
+        <BrandMark id="abliteration" height={13} />
+      )}
+    </div>
+  );
+}
+
+function Features({ plan }: { plan: Plan }) {
+  return (
+    <ul className="plan-features">
+      {plan.features.map((f) => (
+        <li key={f}>
+          <Check size={14} />
+          <span>{f}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Action({ plan, current, runs, held, subscribed, locked }: CardState) {
+  // The plan already on, when it can run what is held, sends it.
+  if (current && held && runs) {
+    return (
+      <button className="plan-btn primary" onClick={() => subscribe(plan.id)}>
+        Send it
+      </button>
+    );
+  }
+  if (current) {
+    return (
+      <button className="plan-btn quiet" disabled>
+        <Check size={14} /> Current plan
+      </button>
+    );
+  }
+  if (!runs) {
+    return (
+      <button className="plan-btn quiet" disabled>
+        No {locked}
+      </button>
+    );
+  }
+  return (
+    <button className={`plan-btn${plan.popular ? " primary" : ""}`} onClick={() => subscribe(plan.id)}>
+      {plan.price ? `Choose ${plan.name}` : subscribed ? "Switch to Free" : "Start free"}
+    </button>
+  );
+}
+
+// PlanCard is a column of the grid. Every card spans the same six rows
+// (name, price, tagline, marks, features, button), so a short tagline
+// cannot pull one card's list out of line with its neighbours'.
+function PlanCard(s: CardState) {
+  return (
+    <div className={`plan-card${s.plan.popular ? " popular" : ""}${s.runs ? "" : " short"}`}>
+      <Name plan={s.plan} />
+      <Price plan={s.plan} />
+      <p className="plan-tagline">{s.plan.tagline}</p>
+      <Marks plan={s.plan} />
+      <Features plan={s.plan} />
+      <Action {...s} />
+    </div>
+  );
+}
+
+// WideCard is a plan across the whole width: name, price and tagline,
+// what it comes with, the button.
+function WideCard(s: CardState) {
+  return (
+    <div className={`plan-card wide${s.runs ? "" : " short"}`}>
+      <div>
+        <Name plan={s.plan} />
+        <Price plan={s.plan} />
+        <p className="plan-tagline">{s.plan.tagline}</p>
+        <Marks plan={s.plan} />
+      </div>
+      <Features plan={s.plan} />
+      <Action {...s} />
+    </div>
   );
 }
