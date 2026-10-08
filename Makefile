@@ -19,30 +19,59 @@ DATADIR     ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)
 WAILS_TAGS  := $(shell pkg-config --exists webkit2gtk-4.1 2>/dev/null && echo -tags webkit2_41)
 
 ifeq ($(UNAME),Darwin)
-INSTALLED := $(APPDIR)/$(APP)
-else
-INSTALLED := $(BINDIR)/$(DESKTOP_BIN)
+# actool, which compiles the Dock icon, comes with Xcode. The Xcode in use
+# is tried first, then any other Spotlight knows of (one on another
+# volume, say). It is run directly rather than through xcrun, which also
+# wants the Xcode license agreed with sudo.
+XCODE_DEV := $(shell { xcode-select -p 2>/dev/null; 	mdfind "kMDItemCFBundleIdentifier == 'com.apple.dt.Xcode'" 2>/dev/null | sed 's|$$|/Contents/Developer|'; } | 	while IFS= read -r d; do if [ -x "$$d/usr/bin/actool" ]; then echo "$$d"; break; fi; done)
 endif
 
-.PHONY: all build install update test tui desktop install-tui install-desktop quit-desktop reset-permissions launch
+MODULES := core tui desktop
 
-# The golden path: build the terminal client and the desktop app, install
-# `caveira` and `cav` on PATH and the app (caveira.app in /Applications on
-# macOS, caveira-desktop and its launcher on Linux), and open the app.
-# Safe to run again at any time.
-all: build install launch
+# The steps of an update run in order, even under make -j.
+.NOTPARALLEL:
 
-build: tui desktop
+.PHONY: all build install update test deps tui desktop place place-tui place-desktop strays quit-desktop reset-permissions launch
 
-install: install-tui install-desktop
+# The golden path, and the update: everything new, everywhere caveira is
+# on this machine, then the app opened. Safe to run again at any time.
+all: update
 
-# caveira has no daemons. The terminal binary is removed before it is
-# replaced, so sessions already running keep their inode and carry on; the
-# app is quit, deleted, rebuilt, and opened again.
-update: quit-desktop
-	rm -f $(BINDIR)/$(BINARY) $(BINDIR)/$(ALIAS) tui/bin/$(BINARY)
-	rm -rf $(INSTALLED) desktop/build/bin
-	$(MAKE) all
+# Build both clients, leaving what is installed alone.
+build: deps tui desktop
+
+# Build, then put `caveira` and `cav` on PATH and the app in place
+# (caveira.app in /Applications on macOS, caveira-desktop and its launcher
+# on Linux), without opening it.
+install: build
+	@$(MAKE) --no-print-directory place
+
+# Everything is built before anything installed is touched, so a build
+# that fails leaves the old caveira working. Then the app is quit, the old
+# copies are deleted, the new ones go in, and the app is opened again.
+# caveira has no daemons; a terminal session already running keeps its old
+# binary and carries on.
+update: build
+	@$(MAKE) --no-print-directory place launch
+
+# Go's module cache is read-only, but a cleaner that sweeps folders by
+# name can still empty part of it, and then a build fails on a package the
+# cache claims to have. go mod verify finds such a module, and it is
+# unpacked again from the download it came from. Go's build cache keeps an
+# index of each module's folders, made while it was broken, so that goes
+# too.
+deps:
+	@for m in $(MODULES); do \
+		(cd $$m && go mod download) || exit 1; \
+		(cd $$m && go mod verify 2>&1) | \
+		sed -n 's/^\([^ ]*\) \([^ ]*\): dir has been modified (\(.*\))$$/\1@\2 \3/p' | \
+		while read -r mod dir; do \
+			echo "repairing $$mod in the Go module cache"; \
+			chmod -R u+w "$$dir" && rm -rf "$$dir" && (cd $$m && go mod download $$mod) && go clean -cache || exit 1; \
+		done || exit 1; \
+	done
+
+place: quit-desktop reset-permissions place-tui place-desktop strays
 
 test:
 	cd core && go vet ./... && go test ./...
@@ -52,37 +81,56 @@ test:
 tui:
 	cd tui && go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) .
 
-# `cav` is a link to `caveira`, so either name starts it.
-install-tui: tui
+# `cav` is a link to `caveira`, so either name starts it. The old binary is
+# removed rather than written over, so a session running it keeps its file.
+place-tui:
 	mkdir -p $(BINDIR)
+	rm -f $(BINDIR)/$(BINARY) $(BINDIR)/$(ALIAS)
 	install -m 0755 tui/bin/$(BINARY) $(BINDIR)/$(BINARY)
 	ln -sf $(BINARY) $(BINDIR)/$(ALIAS)
+
+# Copies of caveira elsewhere on PATH, like an old `go install` in
+# ~/go/bin, become links to the one just installed, so whichever comes
+# first on PATH runs this build. Only Go binaries built from caveira's
+# repository are touched.
+strays:
+	@for f in $$(which -a $(BINARY) $(ALIAS) 2>/dev/null | sort -u); do \
+		case "$$f" in $(BINDIR)/*) continue;; esac; \
+		[ "$$(readlink "$$f")" = "$(BINDIR)/$(BINARY)" ] && continue; \
+		go version -m "$$f" 2>/dev/null | grep -q 'github.com/justin06lee/caveira' || continue; \
+		if ln -sf "$(BINDIR)/$(BINARY)" "$$f" 2>/dev/null; then echo "$$f now runs this build"; \
+		else echo "$$f is an old caveira that could not be replaced" >&2; fi; \
+	done
 
 ifeq ($(UNAME),Darwin)
 
 # Wails builds the frontend with bun, compiles, and packages the .app.
 # macOS 26 shades a classic .icns with glass in the Dock, so the app also
 # carries an Icon Composer icon with glass, highlight and shadow turned off;
-# actool comes with Xcode, and without it the app keeps the classic icon. Its
+# without an Xcode (see XCODE_DEV) the app keeps the classic icon. actool's
 # paths are absolute because it resolves relative ones in a helper process.
 desktop:
 	cd desktop && CGO_CFLAGS=$(MACOS_MIN) CGO_LDFLAGS=$(MACOS_MIN) \
 		$(WAILS) build -clean -skipbindings -ldflags "$(LDFLAGS)"
-	@if xcrun --find actool >/dev/null 2>&1; then \
-		xcrun actool $(CURDIR)/desktop/build/darwin/caveira.icon --app-icon caveira \
+	@if [ -n "$(XCODE_DEV)" ]; then \
+		DEVELOPER_DIR="$(XCODE_DEV)" "$(XCODE_DEV)/usr/bin/actool" $(CURDIR)/desktop/build/darwin/caveira.icon --app-icon caveira \
 			--compile $(CURDIR)/desktop/build/bin/$(APP)/Contents/Resources \
 			--platform macosx --target-device mac --minimum-deployment-target 13.0 \
 			--output-partial-info-plist $(CURDIR)/desktop/build/bin/icon.plist >/dev/null && \
 		rm -f desktop/build/bin/$(APP)/Contents/Resources/caveira.icns && \
 		codesign --force --sign - desktop/build/bin/$(APP); \
-	else echo "actool not found (install Xcode): keeping the classic icon"; fi
+	else echo "no Xcode found: the app keeps the classic icon, which the Dock shades with glass"; fi
 
-install-desktop: desktop quit-desktop reset-permissions
+place-desktop:
 	rm -rf $(APPDIR)/$(APP)
 	ditto desktop/build/bin/$(APP) $(APPDIR)/$(APP)
 
+# The app is asked to quit (it stops its chats on the way out) and waited
+# for: the new one cannot open while the old one still runs.
 quit-desktop:
 	-@osascript -e 'if application id "$(BUNDLE_ID)" is running then tell application id "$(BUNDLE_ID)" to quit' 2>/dev/null
+	@for i in $$(seq 50); do pgrep -f '$(APPDIR)/$(APP)/Contents/MacOS/' >/dev/null || exit 0; sleep 0.2; done; \
+		echo "caveira did not quit; close it and run make update again" >&2; exit 1
 
 # macOS ties folder access (Documents, Desktop, Downloads, external and
 # network volumes) to the app's signature, and every local build is signed
@@ -110,8 +158,9 @@ desktop:
 # flat one from assets/, as an SVG, which GNOME draws at any size. An icon
 # cache is only refreshed where one is already kept: a new one would hide
 # the icons other apps put there later without refreshing it.
-install-desktop: desktop quit-desktop
+place-desktop:
 	mkdir -p $(BINDIR) $(DATADIR)/applications $(DATADIR)/icons/hicolor/scalable/apps
+	rm -f $(BINDIR)/$(DESKTOP_BIN)
 	install -m 0755 desktop/build/bin/$(BINARY) $(BINDIR)/$(DESKTOP_BIN)
 	install -m 0644 assets/caveira-icon.svg $(DATADIR)/icons/hicolor/scalable/apps/caveira.svg
 	sed 's|@BIN@|$(BINDIR)/$(DESKTOP_BIN)|' desktop/build/linux/caveira.desktop > $(DATADIR)/applications/caveira.desktop
@@ -121,6 +170,8 @@ install-desktop: desktop quit-desktop
 # A process name is cut to 15 characters, which caveira-desktop just fits.
 quit-desktop:
 	-@pkill -x $(DESKTOP_BIN) 2>/dev/null; true
+	@for i in $$(seq 50); do pgrep -x $(DESKTOP_BIN) >/dev/null || exit 0; sleep 0.2; done; \
+		echo "caveira did not quit; close it and run make update again" >&2; exit 1
 
 reset-permissions:
 

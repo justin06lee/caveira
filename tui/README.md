@@ -70,7 +70,7 @@ go run .                 # or: go build -o bin/caveira . && ./bin/caveira
 go test ./...            # the interface; the agent's tests are in ../core
 ```
 
-From the repo root, `make` builds and installs `caveira`, with a `cav` link beside it, into `~/.local/bin` (`BINDIR=/usr/local/bin make` to change that), along with the desktop app, and `make update` replaces the installed builds with fresh ones. `make install-tui` does the terminal client alone.
+From the repo root, `make` builds and installs `caveira`, with a `cav` link beside it, into `~/.local/bin` (`BINDIR=/usr/local/bin make` to change that), along with the desktop app; run again (or as `make update`) it replaces every installed copy with a fresh build, and only once the build has worked.
 
 ## Layout
 
