@@ -9,6 +9,8 @@ import type {
   ChatHeader,
   ChatView,
   Item,
+  ModelOption,
+  Plan,
   Project,
   SettingsInput,
   SettingsView,
@@ -20,6 +22,8 @@ export interface Chat extends ChatView {
   // turns closes each finished turn with its stats, after the item that
   // ended it.
   turns: { after: string; stats: TurnStats }[];
+  // started is when the running turn began, as this window saw it.
+  started?: number;
 }
 
 export interface State {
@@ -45,6 +49,12 @@ export interface State {
   workspace: Workspace;
   pickerOpen: boolean;
   importOpen: boolean;
+  // plan is the plan this install is on, "" for none; a chat sent
+  // without one is held under the plans.
+  plan: string;
+  plans: Plan[];
+  // catalog is the models on offer away from this machine.
+  catalog: ModelOption[];
 }
 
 let state: State = {
@@ -64,6 +74,9 @@ let state: State = {
   workspace: { path: "", short: "" },
   pickerOpen: false,
   importOpen: false,
+  plan: "",
+  plans: [],
+  catalog: [],
 };
 
 const listeners = new Set<() => void>();
@@ -161,7 +174,10 @@ export async function boot(): Promise<void> {
     expanded: loadExpanded() ?? [],
     onboarded: b.onboarded,
     workspace: b.workspace,
+    plan: b.plan,
+    plans: b.plans ?? [],
   }));
+  refreshCatalog();
   if (project) await selectProject(project, localStorage.getItem(LAST_CHAT) ?? undefined);
 }
 
@@ -177,6 +193,26 @@ export async function makeProject(base: string, rel: string): Promise<void> {
     const p = await api.makeFolder(base, rel);
     setState(() => ({ pickerOpen: false }));
     await selectProject(p);
+  } catch (e) {
+    toast(e);
+  }
+}
+
+// refreshCatalog reads the models on offer again, after the endpoint may
+// have changed.
+export function refreshCatalog(): void {
+  api
+    .models(false)
+    .then((m) => setState(() => ({ catalog: m ?? [] })))
+    .catch(() => {});
+}
+
+// subscribe puts this install on a plan; what the open chat was holding
+// for one goes if the plan runs it.
+export async function subscribe(plan: string): Promise<void> {
+  try {
+    const p = await api.subscribe(plan, getState().chatId ?? "");
+    setState(() => ({ plan: p }));
   } catch (e) {
     toast(e);
   }
@@ -266,10 +302,13 @@ export async function newChat(dir?: string): Promise<void> {
     if (dir && dir !== getState().project?.path) await enter(dir);
     const p = getState().project;
     if (!p) return;
-    setState(() => ({ chatId: null }));
+    setState(() => ({ chatId: null, settingsOpen: false }));
     const v = await api.newChat(p.path);
     localStorage.setItem(LAST_CHAT, v.id);
-    setState((s) => ({ chatId: v.id, chats: { ...s.chats, [v.id]: withTurns(v, s.chats[v.id]) } }));
+    setState((s) => ({
+      chatId: v.id,
+      chats: { ...s.chats, [v.id]: withTurns(v, s.chats[v.id]) },
+    }));
   } catch (e) {
     toast(e);
   }
@@ -289,10 +328,12 @@ export async function openChat(id: string): Promise<void> {
     api.openProject(owner.path).then(freshen, () => {});
   }
   if (dir) expand(dir);
-  setState(() => ({ chatId: id }));
+  setState(() => ({ chatId: id, settingsOpen: false }));
   try {
     const v = await api.openChat(id);
-    setState((s) => ({ chats: { ...s.chats, [id]: withTurns(v, s.chats[id]) } }));
+    setState((s) => ({
+      chats: { ...s.chats, [id]: withTurns(v, s.chats[id]) },
+    }));
   } catch (e) {
     toast(e);
   }
@@ -327,12 +368,18 @@ export async function deleteChat(id: string): Promise<void> {
   }
 }
 
+// send sends text in the open chat. Without a plan it is held, and shows
+// as sent with the plans under it.
 export async function send(text: string): Promise<boolean> {
   const id = getState().chatId;
   if (!id) return false;
   try {
-    await api.send(id, text);
-    patchChat(id, (c) => ({ ...c, running: true }));
+    if (await api.send(id, text))
+      patchChat(id, (c) => ({
+        ...c,
+        running: true,
+        started: c.started ?? Date.now(),
+      }));
     return true;
   } catch (e) {
     toast(e);
@@ -382,15 +429,22 @@ function fold(c: Chat, e: ChatEvent): Chat {
       const it = e.item!;
       const i = c.items.findIndex((x) => x.id === it.id);
       const items = i < 0 ? [...c.items, it] : c.items.map((x, j) => (j === i ? it : x));
-      return { ...c, items, running: true };
+      // The rest only come while a turn runs; a held message is not one.
+      const quiet = it.kind === "user" || it.kind === "paywall";
+      return { ...c, items, running: quiet ? c.running : true };
     }
     case "delta":
       return {
         ...c,
-        items: c.items.map((x): Item =>
-          x.id === e.id
-            ? { ...x, text: (x.text ?? "") + (e.text ?? ""), reasoning: (x.reasoning ?? "") + (e.reasoning ?? "") }
-            : x,
+        items: c.items.map(
+          (x): Item =>
+            x.id === e.id
+              ? {
+                  ...x,
+                  text: (x.text ?? "") + (e.text ?? ""),
+                  reasoning: (x.reasoning ?? "") + (e.reasoning ?? ""),
+                }
+              : x,
         ),
       };
     case "remove":
@@ -399,12 +453,19 @@ function fold(c: Chat, e: ChatEvent): Chat {
       return { ...c, context: e.context ?? c.context, cost: e.cost ?? c.cost };
     case "model":
       return { ...c, model: e.model ?? c.model, window: e.window ?? c.window };
+    case "start":
+      return {
+        ...c,
+        running: true,
+        started: c.running && c.started ? c.started : Date.now(),
+      };
     case "done": {
       const last = c.items[c.items.length - 1];
       const turns = last && e.stats ? [...c.turns, { after: last.id, stats: e.stats }] : c.turns;
       return {
         ...c,
         running: false,
+        started: undefined,
         title: e.title || c.title,
         items: c.items.map((x) => (x.streaming ? { ...x, streaming: false } : x)),
         turns,

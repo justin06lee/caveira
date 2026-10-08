@@ -3,8 +3,12 @@ import { shortcut } from "../lib/platform";
 import { setState, useStore, type Chat } from "../lib/store";
 import { Composer } from "./Composer";
 import { KeyCard } from "./KeyCard";
-import { Logo } from "./Logo";
+import { greeting } from "../lib/rebel";
+import { Mark } from "./Logo";
 import { Transcript } from "./Transcript";
+
+// HERO_MARK is the eye's width over an empty chat.
+const HERO_MARK = 76;
 
 export function ChatPane() {
   const chat = useStore((s) => (s.chatId ? s.chats[s.chatId] : undefined));
@@ -34,7 +38,7 @@ export function ChatPane() {
       {!chat ? (
         // Holds the empty chat's shape while it loads, so nothing jumps.
         <div className="hero" aria-busy="true">
-          <Logo size={44} />
+          <Mark size={HERO_MARK} />
           <h1 style={{ visibility: "hidden" }}>·</h1>
           <p className="sub" style={{ visibility: "hidden" }}>
             ·
@@ -43,7 +47,7 @@ export function ChatPane() {
         </div>
       ) : chat.items.length === 0 ? (
         <div className="hero">
-          <Logo size={44} />
+          <Mark size={HERO_MARK} />
           {chat.needsKey ? (
             <>
               <h1>Add your API key</h1>
@@ -52,7 +56,7 @@ export function ChatPane() {
             </>
           ) : (
             <>
-              <h1>What are we working on?</h1>
+              <h1>{greeting(chat.id)}</h1>
               <p className="sub">
                 <Folder size={13} /> {project?.name}
                 {project?.branch && (
@@ -87,9 +91,7 @@ function Problem({ chat }: { chat: Chat }) {
   return (
     <div className="banner" style={{ width: "100%", maxWidth: 740 }}>
       <TriangleAlert size={15} style={{ color: "var(--amber)", flex: "none" }} />
-      <span className="grow">
-        {chat.needsKey ? "There is no API key yet, so nothing can be sent." : chat.problem}
-      </span>
+      <span className="grow">{chat.needsKey ? "There is no API key yet, so nothing can be sent." : chat.problem}</span>
       <button className="btn" onClick={() => setState(() => ({ settingsOpen: true }))}>
         Settings
       </button>

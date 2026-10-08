@@ -92,7 +92,9 @@ func testApp(t *testing.T, srv *httptest.Server) (*App, string) {
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hi there\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return NewApp("test"), dir
+	a := NewApp("test")
+	a.prefs.Plan = "free"
+	return a, dir
 }
 
 func waitIdle(t *testing.T, a *App, id string, until func(ChatView) bool) ChatView {
@@ -143,7 +145,7 @@ func TestTurnBuildsTheTranscript(t *testing.T) {
 	if again, _ := a.NewChat(dir); again.ID != v.ID {
 		t.Fatal("a second new chat in the same folder should reuse the empty one")
 	}
-	if err := a.Send(v.ID, "what is in a.txt?"); err != nil {
+	if _, err := a.Send(v.ID, "what is in a.txt?"); err != nil {
 		t.Fatal(err)
 	}
 	v = waitIdle(t, a, v.ID, func(v ChatView) bool { return !v.Running })
@@ -209,13 +211,13 @@ func TestApprovalWaitsForAnAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Send(v.ID, "list the files"); err != nil {
+	if _, err := a.Send(v.ID, "list the files"); err != nil {
 		t.Fatal(err)
 	}
 	v = waitIdle(t, a, v.ID, func(v ChatView) bool {
 		return len(v.Items) > 1 && v.Items[len(v.Items)-1].Tool != nil && v.Items[len(v.Items)-1].Tool.Status == "approval"
 	})
-	if err := a.Send(v.ID, "again"); err == nil {
+	if _, err := a.Send(v.ID, "again"); err == nil {
 		t.Fatal("sent a message while a turn was running")
 	}
 	a.Answer(v.ID, "call_1", "allow")
@@ -238,7 +240,7 @@ func TestNoKeyIsAProblemNotACrash(t *testing.T) {
 	if !v.NeedsKey {
 		t.Fatalf("want NeedsKey: %+v", v)
 	}
-	if err := a.Send(v.ID, "hi"); err == nil || !strings.Contains(err.Error(), "API key") {
+	if _, err := a.Send(v.ID, "hi"); err == nil || !strings.Contains(err.Error(), "API key") {
 		t.Fatalf("send without a key: %v", err)
 	}
 	if a.Settings().Ready {

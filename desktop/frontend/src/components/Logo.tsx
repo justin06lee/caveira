@@ -15,3 +15,19 @@ export function Logo({ size = 28 }: { size?: number }) {
     </svg>
   );
 }
+
+// Mark is the eye socket alone, without its tile, in the text colour: the
+// icon's subject, for the empty chat.
+export function Mark({ size = 64 }: { size?: number }) {
+  return (
+    <svg
+      className="mark"
+      width={size}
+      height={Math.round((size * 568) / 544)}
+      viewBox="240 228 544 568"
+      aria-hidden="true"
+    >
+      <path d={SOCKET} fill="currentColor" />
+    </svg>
+  );
+}

@@ -43,6 +43,7 @@ export function Sidebar({ hidden }: { hidden: boolean }) {
   const draftKey = useStore(draftsOf);
   const live = useStore(liveKey);
   const local = useStore((s) => s.settings?.local);
+  const settingsOpen = useStore((s) => s.settingsOpen);
   const [, tick] = useState(0);
 
   // Relative times stay roughly true.
@@ -132,7 +133,10 @@ export function Sidebar({ hidden }: { hidden: boolean }) {
       </div>
 
       <div className="side-bottom">
-        <button className="settings-btn" onClick={() => setState(() => ({ settingsOpen: true }))}>
+        <button
+          className={`settings-btn${settingsOpen ? " on" : ""}`}
+          onClick={() => setState((s) => ({ settingsOpen: !s.settingsOpen }))}
+        >
           <Settings2 size={15} />
           Settings
           <span className="provider">{local ? "local model" : ""}</span>

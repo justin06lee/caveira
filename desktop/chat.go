@@ -19,7 +19,8 @@ import (
 // Item is one entry in a transcript as the window draws it.
 type Item struct {
 	ID   string `json:"id"`
-	Kind string `json:"kind"` // user, assistant, tool, notice
+	Kind string `json:"kind"` // user, assistant, tool, notice, paywall
+	// Text is the message, or on a paywall the model the plan lacks.
 	Text string `json:"text,omitempty"`
 	// Reasoning is the model's thinking before an assistant reply.
 	Reasoning string    `json:"reasoning,omitempty"`
@@ -81,6 +82,7 @@ type ChatHeader struct {
 //	delta   Text or Reasoning goes on the end of item ID
 //	remove  item ID is gone
 //	usage   Context and Cost are new
+//	start   a turn began
 //	done    the turn ended; Stats says how it went
 type ChatEvent struct {
 	Chat        string     `json:"chat"`
@@ -128,6 +130,9 @@ type chat struct {
 
 	cancel  context.CancelFunc
 	replies map[string]chan<- agent.Decision
+	// held is what was sent while the plan could not run this chat, kept
+	// under the plans until one can.
+	held []string
 }
 
 const noKeyProblem = "needs-key"
@@ -314,16 +319,18 @@ func (a *App) DeleteChat(id string) error {
 	return nil
 }
 
-// Send starts a turn. It returns at once; the turn reports through events.
-func (a *App) Send(id, text string) error {
+// Send starts a turn, and says whether it did: a message the plan cannot
+// run is held under the plans instead. It returns at once; the turn
+// reports through events.
+func (a *App) Send(id, text string) (bool, error) {
 	if text == "" {
-		return nil
+		return false, nil
 	}
 	a.mu.Lock()
 	c, ok := a.chats[id]
 	if !ok {
 		a.mu.Unlock()
-		return errors.New("that chat is not open")
+		return false, errors.New("that chat is not open")
 	}
 	stale := c.cancel == nil && (c.gen != a.gen || c.problem != "")
 	a.mu.Unlock()
@@ -334,26 +341,50 @@ func (a *App) Send(id, text string) error {
 	a.mu.Lock()
 	if c.cancel != nil {
 		a.mu.Unlock()
-		return errors.New("caveira is still working on the last message")
+		return false, errors.New("caveira is still working on the last message")
 	}
 	if c.problem != "" {
 		p := c.problem
 		a.mu.Unlock()
 		if p == noKeyProblem {
-			return errors.New("add an API key in Settings, or switch to a local model")
+			return false, errors.New("add an API key in Settings, or switch to a local model")
 		}
-		return errors.New(p)
+		return false, errors.New(p)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c.cancel = cancel
-	c.replies = map[string]chan<- agent.Decision{}
+	model, _ := c.ag.ModelInfo()
+	if ok, locked := allows(a.prefs.Plan, model, c.local); !ok {
+		out := c.hold(text, locked)
+		a.mu.Unlock()
+		for _, e := range out {
+			a.emit("chat", e)
+		}
+		return false, nil
+	} else if len(c.held) > 0 {
+		// A plan came along since: what was held goes with this.
+		c.held = append(c.held, text)
+		ev := c.push(Item{Kind: "user", Text: text})
+		a.mu.Unlock()
+		a.emit("chat", ev)
+		a.release(id)
+		return true, nil
+	}
+	ctx := c.begin()
 	ev := c.push(Item{Kind: "user", Text: text})
 	ag := c.ag
 	a.mu.Unlock()
 
 	a.emit("chat", ev)
 	go a.turn(ctx, c, ag, text)
-	return nil
+	return true, nil
+}
+
+// begin marks a turn as running and gives it the context Stop cancels.
+// Caller holds App.mu.
+func (c *chat) begin() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	c.cancel = cancel
+	c.replies = map[string]chan<- agent.Decision{}
+	return ctx
 }
 
 // rebuild gives an idle chat an agent made from the current settings,
@@ -374,6 +405,7 @@ func (a *App) rebuild(c *chat) {
 }
 
 func (a *App) turn(ctx context.Context, c *chat, ag *agent.Agent, text string) {
+	a.emit("chat", ChatEvent{Chat: c.id, Type: "start"})
 	start := time.Now()
 	cost := ag.Totals.CostUSD
 	tools := 0
@@ -458,19 +490,43 @@ func (a *App) Answer(id, callID, decision string) {
 }
 
 // SetModel switches a chat's model and makes it the default for new ones.
-func (a *App) SetModel(id, model string, window int, effort string) (ChatView, error) {
+// onLocal says the model is on this machine; one on the other side from
+// the chat's moves the chat there, and new chats with it. A message held
+// for a model the plan lacks goes once the plan runs the new one.
+func (a *App) SetModel(id, model string, window int, effort string, onLocal bool) (ChatView, error) {
 	if effort != "" && !config.ValidEffort(effort) {
 		return ChatView{}, fmt.Errorf("unknown reasoning effort %q", effort)
 	}
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	c, ok := a.chats[id]
 	if !ok {
+		a.mu.Unlock()
 		return ChatView{}, errors.New("that chat is not open")
 	}
 	if c.cancel != nil {
-		return c.view(), errors.New("wait for this turn to finish before switching models")
+		v := c.view()
+		a.mu.Unlock()
+		return v, errors.New("wait for this turn to finish before switching models")
 	}
+
+	if onLocal != c.local {
+		a.prefs.Local = onLocal
+		if onLocal {
+			a.prefs.LocalModel = model
+		}
+		err := a.prefs.save()
+		a.gen++
+		a.mu.Unlock()
+		if err == nil && !onLocal {
+			err = saveModel(model, effort)
+		}
+		a.rebuild(c)
+		a.release(id)
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		return c.view(), err
+	}
+
 	if c.local {
 		effort = ""
 	}
@@ -482,14 +538,25 @@ func (a *App) SetModel(id, model string, window int, effort string) (ChatView, e
 	if c.local {
 		a.prefs.LocalModel = model
 		err = a.prefs.save()
-	} else if file, ferr := config.ReadFile(); ferr != nil {
-		err = ferr
 	} else {
-		file.Model = unlessDefault(model, config.DefaultModel)
-		file.ReasoningEffort = effort
-		err = config.Save(file)
+		err = saveModel(model, effort)
 	}
+	a.mu.Unlock()
+	a.release(id)
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	return c.view(), err
+}
+
+// saveModel makes model and effort the defaults in config.json.
+func saveModel(model, effort string) error {
+	file, err := config.ReadFile()
+	if err != nil {
+		return err
+	}
+	file.Model = unlessDefault(model, config.DefaultModel)
+	file.ReasoningEffort = effort
+	return config.Save(file)
 }
 
 // view is a copy of the chat for the window. Caller holds App.mu.
