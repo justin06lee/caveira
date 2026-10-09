@@ -45,3 +45,20 @@ export function diffStat(diff: string): { add: number; del: number } {
   }
   return { add, del };
 }
+
+// effortName is how a reasoning level reads on screen; "" leaves it to
+// the model.
+export function effortName(e: string): string {
+  return effortNames[e] ?? e;
+}
+
+const effortNames: Record<string, string> = {
+  "": "Default",
+  none: "None",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};

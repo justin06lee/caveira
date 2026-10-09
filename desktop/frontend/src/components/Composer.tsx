@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Check, ChevronDown, Gauge, ShieldCheck, ShieldOff, Square } from "lucide-react";
 import { api } from "../lib/bridge";
-import { cost, tokens } from "../lib/format";
+import { cost, effortName, tokens } from "../lib/format";
 import { useDismiss } from "../lib/hooks";
 import { patchChat, send, setState, toast, useStore, type Chat } from "../lib/store";
 import type { ModelOption } from "../lib/types";
@@ -193,19 +193,6 @@ function ModelChip({ chat }: { chat: Chat }) {
   );
 }
 
-// effortNames is how each reasoning level reads on screen; "" leaves it
-// to the model.
-const effortNames: Record<string, string> = {
-  "": "Default",
-  none: "None",
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-  max: "Max",
-};
-
 // EffortChip is the reasoning effort beside the model, with its own menu.
 // A model that has no levels shows none.
 function EffortChip({ chat }: { chat: Chat }) {
@@ -229,7 +216,7 @@ function EffortChip({ chat }: { chat: Chat }) {
         onClick={() => setOpen(!open)}
       >
         <Gauge size={13} />
-        <span>{effortNames[chat.effort] ?? chat.effort}</span>
+        <span>{effortName(chat.effort)}</span>
         <ChevronDown size={12} />
       </button>
       {open && (
@@ -244,7 +231,7 @@ function EffortChip({ chat }: { chat: Chat }) {
                 if (e !== chat.effort) choose(model, e);
               }}
             >
-              <span className="grow">{effortNames[e] ?? e}</span>
+              <span className="grow">{effortName(e)}</span>
               {e === chat.effort && <Check size={15} className="check" />}
             </button>
           ))}

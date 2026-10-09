@@ -95,6 +95,8 @@ func testApp(t *testing.T, srv *httptest.Server) (*App, string) {
 	}
 	a := NewApp("test")
 	a.prefs.Plan = "free"
+	// Naming would take a scripted reply; names_test.go names chats.
+	a.namer = nil
 	return a, dir
 }
 

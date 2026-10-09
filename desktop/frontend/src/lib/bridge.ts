@@ -66,6 +66,7 @@ export const api = {
     call<ChatView>("SetModel", id, model, window, effort),
   subscribe: (plan: string, chatId: string) => call<string>("Subscribe", plan, chatId),
   setPermissions: (id: string, ask: boolean) => call<ChatView>("SetPermissions", id, ask),
+  titleBarDoubleClick: () => call<void>("TitleBarDoubleClick"),
 };
 
 export function onChatEvent(cb: (e: ChatEvent) => void): () => void {

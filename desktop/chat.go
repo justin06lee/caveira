@@ -85,6 +85,7 @@ type ChatHeader struct {
 //	usage   Context and Cost are new
 //	start   a turn began
 //	done    the turn ended; Stats says how it went
+//	title   the model named the chat Title
 type ChatEvent struct {
 	Chat        string     `json:"chat"`
 	Type        string     `json:"type"`
@@ -117,6 +118,9 @@ type chat struct {
 	ag      *agent.Agent
 	gen     int
 	problem string
+	// naming says the model has been asked for the chat's name; named,
+	// that title is the name it gave.
+	naming, named bool
 
 	items   []Item
 	seq     int
@@ -358,6 +362,7 @@ func (a *App) rebuild(c *chat) {
 
 func (a *App) turn(ctx context.Context, c *chat, ag *agent.Agent, text string) {
 	a.emit("chat", ChatEvent{Chat: c.id, Type: "start"})
+	a.name(c)
 	start := time.Now()
 	cost := ag.Totals.CostUSD
 	tools := 0
@@ -381,6 +386,7 @@ func (a *App) turn(ctx context.Context, c *chat, ag *agent.Agent, text string) {
 	c.cancel, c.replies = nil, nil
 	c.endStream()
 	if ag.Session != nil {
+		c.keepName()
 		c.title = ag.Session.Title
 	}
 	done := ChatEvent{

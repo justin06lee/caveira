@@ -401,13 +401,17 @@ function flush() {
   let finished = false;
   setState((s) => {
     const chats = { ...s.chats };
+    // The model's name for a chat goes in the sidebar as well.
+    const names = new Map<string, string>();
     for (const e of events) {
       const c = chats[e.chat];
       if (!c) continue;
       chats[e.chat] = fold(c, e);
       if (e.type === "done") finished = true;
+      if (e.type === "title" && e.title) names.set(e.chat, e.title);
     }
-    return { chats };
+    if (!names.size) return { chats };
+    return { chats, headers: s.headers.map((h) => (names.has(h.id) ? { ...h, title: names.get(h.id)! } : h)) };
   });
   if (finished) refreshHeaders().catch(() => {});
 }
@@ -446,6 +450,8 @@ function fold(c: Chat, e: ChatEvent): Chat {
         running: true,
         started: c.running && c.started ? c.started : Date.now(),
       };
+    case "title":
+      return { ...c, title: e.title || c.title };
     case "done": {
       const last = c.items[c.items.length - 1];
       const turns = last && e.stats ? [...c.turns, { after: last.id, stats: e.stats }] : c.turns;
