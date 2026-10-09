@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
-import { onMenu } from "./lib/bridge";
+import { api, onMenu } from "./lib/bridge";
 import { menuAction } from "./lib/platform";
 import { applyTheme } from "./lib/theme";
 import { boot, getState, listen, newChat, setState, toast, useStore } from "./lib/store";
@@ -56,11 +56,20 @@ export function App() {
       }
     };
     window.addEventListener("keydown", onKey);
+    // A double-click on the title bar zooms the window, as in any window.
+    // Wails starts no drag on the second click, so it reaches the page.
+    const onDown = (e: MouseEvent) => {
+      if (e.detail !== 2 || e.button !== 0 || !(e.target instanceof Element)) return;
+      if (getComputedStyle(e.target).getPropertyValue("--wails-draggable").trim() === "drag")
+        api.titleBarDoubleClick().catch(() => {});
+    };
+    window.addEventListener("mousedown", onDown);
     boot().catch(toast);
     return () => {
       stopEvents();
       stopMenu();
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onDown);
     };
   }, []);
 

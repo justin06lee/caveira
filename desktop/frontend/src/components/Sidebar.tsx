@@ -84,7 +84,12 @@ export function Sidebar({ hidden }: { hidden: boolean }) {
 
   return (
     <aside className={`sidebar${hidden ? " hidden" : ""}`}>
+      {/* The brand sits beside the traffic lights, in the strip they are in. */}
       <div className="side-top drag">
+        <div className="brand">
+          <Logo size={18} />
+          <span className="brand-name">caveira</span>
+        </div>
         <button
           className="icon-btn no-drag"
           title={`Hide sidebar (${shortcut("\\")})`}
@@ -94,27 +99,13 @@ export function Sidebar({ hidden }: { hidden: boolean }) {
         </button>
       </div>
 
-      <div className="brand">
-        <Logo size={24} />
-        <span className="brand-name">caveira</span>
-      </div>
-
-      <button className="new-chat" onClick={() => newChat()}>
-        <SquarePen size={15} />
-        New chat
-        <kbd>{shortcut("N")}</kbd>
+      <button className="new-project" onClick={() => setState(() => ({ pickerOpen: true }))}>
+        <FolderPlus size={15} />
+        New project
+        <kbd>{shortcut("O")}</kbd>
       </button>
 
-      <div className="side-label">
-        <span>Projects</span>
-        <button
-          className="icon-btn"
-          title={`Open a project (${shortcut("O")})`}
-          onClick={() => setState(() => ({ pickerOpen: true }))}
-        >
-          <FolderPlus size={14} />
-        </button>
-      </div>
+      <div className="side-label">Projects</div>
       <div className="folders">
         {projects.map((p) => (
           <ProjectFolder
@@ -321,7 +312,10 @@ function FolderMenu(props: { project: Project; at: { x: number; y: number }; onC
 
 // DraftRow is a chat not saved yet: new, or in its first turn.
 function DraftRow(props: { id: string; current: boolean }) {
-  const title = useStore((s) => firstLine(s.chats[props.id]?.items.find((i) => i.kind === "user")?.text));
+  const title = useStore((s) => {
+    const c = s.chats[props.id];
+    return c?.title || firstLine(c?.items.find((i) => i.kind === "user")?.text);
+  });
   const running = useStore((s) => s.chats[props.id]?.running ?? false);
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {

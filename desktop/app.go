@@ -36,10 +36,13 @@ type App struct {
 	sink func(name string, data any)
 	// found is what the last look for other agents' chats found.
 	found []importer.Chat
+	// namer names a new chat from its first message; nil leaves chats
+	// with that message's first line, as the tests do.
+	namer func(ctx context.Context, client *llm.Client, first string) (string, error)
 }
 
 func NewApp(version string) *App {
-	return &App{version: version, prefs: loadPrefs(), chats: map[string]*chat{}}
+	return &App{version: version, prefs: loadPrefs(), chats: map[string]*chat{}, namer: nameChat}
 }
 
 func (a *App) startup(ctx context.Context) { a.ctx = ctx }
@@ -52,6 +55,36 @@ func (a *App) emit(name string, data any) {
 	if a.ctx != nil {
 		runtime.EventsEmit(a.ctx, name, data)
 	}
+}
+
+// TitleBarDoubleClick does what a double-click on a window's title bar
+// does: zooms the window, or back. A Mac set to minimize instead, or to do
+// nothing, gets that.
+func (a *App) TitleBarDoubleClick() {
+	if a.ctx == nil {
+		return
+	}
+	switch doubleClickAction() {
+	case "Minimize":
+		runtime.WindowMinimise(a.ctx)
+	case "None":
+	default:
+		runtime.WindowToggleMaximise(a.ctx)
+	}
+}
+
+// doubleClickAction is the Mac's "Double-click a window's title bar to"
+// setting: Maximize (Zoom), Fill, Minimize, or None; "" when unset, which
+// is Zoom, and elsewhere.
+func doubleClickAction() string {
+	if goruntime.GOOS != "darwin" {
+		return ""
+	}
+	out, err := exec.Command("defaults", "read", "-g", "AppleActionOnDoubleClick").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // Project is a folder caveira works in.

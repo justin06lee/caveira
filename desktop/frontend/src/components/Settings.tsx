@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { PanelLeft } from "lucide-react";
 import { api } from "../lib/bridge";
-import { tokens } from "../lib/format";
+import { effortName, tokens } from "../lib/format";
 import { shortcut } from "../lib/platform";
 import { applyTheme } from "../lib/theme";
 import { getState, inputFrom, refreshChat, setState, toast, useStore } from "../lib/store";
 import type { SettingsInput, Theme } from "../lib/types";
+import { ModelLogos } from "./ModelLogos";
 import { PathPicker } from "./PathPicker";
 import { Plans } from "./Plans";
+import { Select } from "./Select";
 
 // Settings is a page in place of the chat; the sidebar stays, and
 // opening a chat from it, Escape, or Cancel goes back. The plans are
@@ -85,28 +87,40 @@ export function Settings() {
             <h2>Model</h2>
             <div className="row">
               <div className="row-title">Model for new chats</div>
-              <select className="field" value={form.model} onChange={(e) => set("model", e.target.value)}>
-                {!listed && form.model && <option value={form.model}>{form.model}</option>}
-                {!models.length && <option disabled>Loading…</option>}
-                {models.map((m) => (
-                  <option key={m.id} value={m.id} disabled={Boolean(m.unusable)}>
-                    {m.name || m.id}
-                    {m.context ? ` · ${tokens(m.context)} context` : ""}
-                  </option>
-                ))}
-              </select>
+              <Select
+                label="Model for new chats"
+                value={form.model}
+                placeholder="Loading…"
+                onChange={(v) => set("model", v)}
+                options={[
+                  ...(!listed && form.model ? [{ value: form.model, label: form.model }] : []),
+                  ...models.map((m) => ({
+                    value: m.id,
+                    label: (
+                      <>
+                        <ModelLogos logos={m.logos} />
+                        <span>{m.name || m.id}</span>
+                      </>
+                    ),
+                    aside: m.context ? `${tokens(m.context)} context` : undefined,
+                    sub: m.unusable || (m.context ? `${tokens(m.context)} token context` : undefined),
+                    disabled: Boolean(m.unusable),
+                  })),
+                ]}
+              />
             </div>
 
             <div className="row">
               <div className="row-title">Reasoning effort</div>
-              <select className="field" value={form.effort} onChange={(e) => set("effort", e.target.value)}>
-                <option value="">Model default</option>
-                {settings.efforts.map((e) => (
-                  <option key={e} value={e}>
-                    {e}
-                  </option>
-                ))}
-              </select>
+              <Select
+                label="Reasoning effort"
+                value={form.effort}
+                onChange={(v) => set("effort", v)}
+                options={["", ...settings.efforts].map((e) => ({
+                  value: e,
+                  label: e ? effortName(e) : "Model default",
+                }))}
+              />
             </div>
           </section>
 

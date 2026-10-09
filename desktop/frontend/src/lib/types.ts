@@ -165,7 +165,7 @@ export interface TurnStats {
 
 export interface ChatEvent {
   chat: string;
-  type: "item" | "delta" | "remove" | "usage" | "start" | "done";
+  type: "item" | "delta" | "remove" | "usage" | "start" | "done" | "title";
   item?: Item;
   id?: string;
   text?: string;
