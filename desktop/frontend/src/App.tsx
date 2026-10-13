@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import { api, onMenu } from "./lib/bridge";
 import { menuAction } from "./lib/platform";
 import { applyTheme } from "./lib/theme";
-import { boot, getState, listen, newChat, setState, toast, useStore } from "./lib/store";
+import { boot, getState, listen, newChat, refreshAccount, setState, toast, useStore } from "./lib/store";
 import { Sidebar } from "./components/Sidebar";
 import { ChatPane } from "./components/ChatPane";
 import { Welcome } from "./components/Welcome";
@@ -64,12 +64,18 @@ export function App() {
         api.titleBarDoubleClick().catch(() => {});
     };
     window.addEventListener("mousedown", onDown);
+    // Back from the browser, a plan bought or a sign-in made there shows.
+    const onFocus = () => {
+      if (getState().ready) refreshAccount();
+    };
+    window.addEventListener("focus", onFocus);
     boot().catch(toast);
     return () => {
       stopEvents();
       stopMenu();
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
 

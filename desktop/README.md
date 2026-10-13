@@ -14,11 +14,13 @@ The window is a sidebar and a conversation, set in Poppins (code stays monospace
 
 The third chip under the composer is the chat's permissions: Ask permissions, or Bypass permissions (in red), which runs everything without asking. ⇧Tab in the composer flips it, and the choice becomes the default for new chats (Settings has it too). It can be flipped mid-turn: the next tool call goes by it, and bypassing lets through whatever is already waiting. Asking, a command or file change waits in the transcript as a card showing the command, or the lines an edit takes out and puts in, with Deny, Always allow, and Allow.
 
-A chat runs only on a plan: Free (Qwen3.5, a small usage limit), or Lightweight, Middleweight, Heavyweight, and Champion at $20, $50, $100, and $200 a month, which add the GLM models and 2x, 5x, 10x, and 20x Free's usage: every $10 is one Free's worth, which puts $200 at 20x as the labs' $200 plans are. The plans are laid out the way tojibrowser.net's pricing page is: Free across the top, the three middle weights as cards, Champion across the bottom. Without a plan, a message sent stays on screen with the plans under it, and goes once a plan is picked; the same holds for a GLM model on Free. The plans also head the Settings page, where the plan is changed. There is no caveira cloud to pay yet, so the plan picked is kept in `desktop.json` and nothing is charged; `plans.go` is where that check lives.
+A chat runs only on a caveira account. Signing in (Settings, or the card under a held message) opens the caveira site's sign-in page in the browser with a code, which the window shows too ("Finish signing in in your browser · code ABCD-EFGH", with Cancel) until it is connected there; the account then lives in `~/.caveira/auth.json`, shared with the terminal, and chats send their model requests through the site's OpenAI-compatible proxy with its token, so no abliteration.ai key ships in the app. Signed out, a message sent stays on screen with a sign-in under it, and goes once the sign-in does. A token the site stops taking (run out, or revoked) ends the turn with a notice that offers to sign in again, and Settings says so too.
 
-The app runs only on [abliteration.ai](https://abliteration.ai), and the key for it is not one you type in: it comes with caveira, read from the environment (`ABLITERATION_API_KEY`), a `.env` file, or `api_key` in `~/.caveira/config.json`, where caveira's plans will put it once its cloud exists. Without one, sending a message says so. Settings (⌘,), a page in place of the conversation, holds the plan, the default model and effort, the ask-first switch, the workspace, and light, dark, or system appearance.
+An account is on a plan: Free (Qwen3.5, a small usage limit), or Lightweight, Middleweight, Heavyweight, and Champion at $20, $50, $100, and $200 a month, which add the GLM models and 2x, 5x, 10x, and 20x Free's usage: every $10 is one Free's worth, which puts $200 at 20x as the labs' $200 plans are. The plans are laid out the way tojibrowser.net's pricing page is: Free across the top, the three middle weights as cards, Champion across the bottom. A GLM model on Free holds the message with the plans under it. Picking a plan opens its checkout on the caveira site (Stripe) in the browser; the plan is the site's, asked after when the window comes to the front and every five seconds while a message is held (for up to ten minutes), and a held message goes as soon as the account runs it. `plans.go` is where that check lives, and `account.go` the account. The Settings page opens with the account (its email, plan, a bar for this period's usage and when it resets, Manage, which opens the site's account page for billing, and Sign out) and the plans under it.
 
-Chats are the same session files the terminal uses, under `~/.caveira/sessions/`, so a chat started in one opens in the other. The model, effort, and ask-first setting are `~/.caveira/config.json`, shared with the terminal; `.env` files and the environment still win over it. What only the app keeps (recent projects, the workspace, appearance, the plan) is `~/.caveira/desktop.json`.
+The app runs only on [abliteration.ai](https://abliteration.ai) models, and has no field for a key or an endpoint. Signed in, the key is the caveira site's; signed out, an `ABLITERATION_API_KEY` from the environment, a `.env` file, or `api_key` in `~/.caveira/config.json` is still read, but a chat still needs the account to run. Settings (⌘,), a page in place of the conversation, holds the account and the plans, the default model and effort, the ask-first switch, the workspace, and light, dark, or system appearance.
+
+Chats are the same session files the terminal uses, under `~/.caveira/sessions/`, so a chat started in one opens in the other. The model, effort, and ask-first setting are `~/.caveira/config.json`, shared with the terminal; `.env` files and the environment still win over it. What only the app keeps (recent projects, the workspace, appearance) is `~/.caveira/desktop.json`; a plan picked there before accounts existed is let go.
 
 An app opened from the Dock (or GNOME's app grid) does not get your shell's environment, so on launch it asks your login shell for it once, the way editors do: the agent's commands find `go`, `bun`, and whatever else your `PATH` has, and a key exported in your shell profile is seen.
 
@@ -42,7 +44,7 @@ On Linux, `make` installs the binary as `~/.local/bin/caveira-desktop` with a la
 
 ```sh
 wails dev                               # live-reloading window (go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0)
-go test ./...                           # the backend: turns, approvals, transcripts, settings
+go test ./...                           # the backend: turns, approvals, transcripts, settings, the account
 cd frontend && bun run build            # typecheck and bundle the frontend
 ```
 
@@ -53,7 +55,9 @@ cd frontend && bun run build && cd ..
 HOME=/tmp/caveira-home CAVEIRA_HARNESS=localhost:34999 go test -run TestHarness -timeout 0 .
 ```
 
-Setting `HOME` keeps the harness's chats and settings out of your real ones. To try the import on real chats, link `~/.claude`, `~/.codex`, and `~/.local/share/opencode` into that home; the importer only reads them. The frontend is embedded when the test builds, so restart the harness after `bun run build`.
+Setting `HOME` keeps the harness's chats and settings out of your real ones. To try the import on real chats, link `~/.claude`, `~/.codex`, and `~/.local/share/opencode` into that home; the importer only reads them. The frontend is embedded when the test builds, so restart the harness after `bun run build`. Pages the app would open in the browser are only logged.
+
+With `CAVEIRA_HARNESS_SITE=1` the harness makes its own home and runs against a stand-in caveira site, signed out, to look at the account: sign in from the window, then `curl -X POST localhost:34999/site/approve` connects it (`/site/deny`, `/site/wait`, `/site/revoke`, and `/site/plan/lightweight` do what they say).
 
 ## Layout
 
@@ -63,13 +67,14 @@ Setting `HOME` keeps the harness's chats and settings out of your real ones. To 
 - `imports.go` — finding and importing other agents' chats (the reading itself is `core/importer`).
 - `chat.go` — chats: building an agent from the settings, running turns, approvals, and turning agent events into the transcript and the events the window hears.
 - `names.go` — naming a new chat with the small model from its first message.
-- `plans.go` — the plans, which models each runs, and holding a message until a plan runs it; also the models offered on abliteration.ai.
+- `account.go` — the caveira account: signing in through the browser and out, what the site says the plan is, and asking again while a message is held.
+- `plans.go` — the plans, which models each runs, and holding a message until the account runs it; also the models offered on abliteration.ai.
 - `transcript.go` — rebuilding a saved chat's transcript from its messages.
 - `prefs.go` — `~/.caveira/desktop.json`.
 - `shellenv.go` — the login shell's environment for a Dock launch.
 - `harness_test.go` — the browser harness.
 - `frontend/src/lib` — the bridge to Go, the store, theme, formatting, and the rebel lines (`rebel.ts`).
-- `frontend/src/components` — the sidebar, chat pane, transcript, tool rows, composer, settings, the plans (`Plans`), the model makers' marks (`ModelLogos`), the app's own dropdown (`Select`), the working skull (`SkullLoader`), the first run (`Onboarding`, `ImportPanel`), and the folder picker (`PathPicker`, shown by `Welcome` and `OpenProject`).
+- `frontend/src/components` — the sidebar, chat pane, transcript, tool rows, composer, settings with the account, the plans and the sign-in (`Plans`), the model makers' marks (`ModelLogos`), the app's own dropdown (`Select`), the working skull (`SkullLoader`), the first run (`Onboarding`, `ImportPanel`), and the folder picker (`PathPicker`, shown by `Welcome` and `OpenProject`).
 - `frontend/src/styles.css` — the whole look: the icon's off-white and black, and the steps between them.
 - `build/appicon.png` — the classic icon Wails packages, for macOS before 26.
 - `build/linux/caveira.desktop` — the Linux launcher `make` installs, with the binary's path filled in.

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/justin06lee/caveira/core/cloud"
 	"github.com/justin06lee/caveira/core/config"
 	"github.com/justin06lee/caveira/core/importer"
 	"github.com/justin06lee/caveira/core/llm"
@@ -39,10 +40,25 @@ type App struct {
 	// namer names a new chat from its first message; nil leaves chats
 	// with that message's first line, as the tests do.
 	namer func(ctx context.Context, client *llm.Client, first string) (string, error)
+
+	// acct is the caveira account, and signing a sign-in waiting on the
+	// browser (account.go).
+	acct    account
+	signing *signIn
+	// watching says the account is being asked about every watchEvery,
+	// until watchUntil, for the chats holding a message.
+	watching   bool
+	watchUntil time.Time
+	// browse opens a page of the caveira site in the browser; the tests
+	// and the harness only note it.
+	browse func(url string) error
 }
 
 func NewApp(version string) *App {
-	return &App{version: version, prefs: loadPrefs(), chats: map[string]*chat{}, namer: nameChat}
+	a := &App{version: version, prefs: loadPrefs(), chats: map[string]*chat{}, namer: nameChat, browse: cloud.OpenBrowser}
+	// Signed in or not is on disk; the plan comes when the site is asked.
+	a.acct.auth, _ = cloud.Load()
+	return a
 }
 
 func (a *App) startup(ctx context.Context) { a.ctx = ctx }
@@ -103,21 +119,21 @@ type Boot struct {
 	Workspace Workspace    `json:"workspace"`
 	// Onboarded is false until the first-run steps are done.
 	Onboarded bool `json:"onboarded"`
-	// Plan is the plan this install is on, "" for none, and Plans what
-	// there is to pick from.
-	Plan  string `json:"plan"`
-	Plans []Plan `json:"plans"`
+	// Account is the caveira account as this machine knows it, before
+	// the site is asked (Account does that), and Plans what it can be on.
+	Account AccountView `json:"account"`
+	Plans   []Plan      `json:"plans"`
 }
 
 func (a *App) Boot() Boot {
 	waitShellEnv()
 	a.mu.Lock()
 	dirs := a.prefs.existingProjects()
-	ws, onboarded, plan := a.prefs.Workspace, a.prefs.Onboarded, a.prefs.Plan
+	ws, onboarded, acct := a.prefs.Workspace, a.prefs.Onboarded, a.accountView()
 	a.mu.Unlock()
 	return Boot{
 		Version: a.version, Settings: a.Settings(), Projects: projects(dirs), Workspace: workspace(ws),
-		Onboarded: onboarded, Plan: plan, Plans: plans,
+		Onboarded: onboarded, Account: acct, Plans: plans,
 	}
 }
 
@@ -193,9 +209,9 @@ func (a *App) Reveal(dir string) error {
 }
 
 // SettingsView is the settings screen's state. The app runs only on
-// abliteration.ai, and the key is not the user's to set: it comes from
-// the environment, a .env file, or config.json, where caveira's plans
-// will put it.
+// abliteration.ai, and the key is not the user's to set: signed in to a
+// caveira account, requests go through the caveira site, which holds it;
+// otherwise it comes from the environment, a .env file, or config.json.
 type SettingsView struct {
 	Model   string   `json:"model"`
 	Effort  string   `json:"effort"`
@@ -271,15 +287,16 @@ type ModelOption struct {
 	Plan string `json:"plan,omitempty"`
 }
 
-// Models lists the models caveira offers on abliteration.ai. An endpoint
-// set in the environment instead (a test server, say) is asked what it
-// serves, with prices where caveira knows them.
+// Models lists the models caveira offers on abliteration.ai, directly or
+// through the caveira account. An endpoint set in the environment instead
+// (a test server, say) is asked what it serves, with prices where caveira
+// knows them.
 func (a *App) Models() ([]ModelOption, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	home, _ := os.UserHomeDir()
 	cfg, _ := config.Load(home)
-	if isCatalog(cfg.BaseURL) {
+	if isCatalog(cfg) {
 		return catalogOptions(), nil
 	}
 	models, err := llm.New(cfg.BaseURL, cfg.APIKey).Models(ctx)

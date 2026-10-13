@@ -1,16 +1,19 @@
+import type { ReactNode } from "react";
 import { Check, TrendingUp } from "lucide-react";
-import { subscribe, useStore } from "../lib/store";
+import { cancelSignIn, refreshAccount, signIn, subscribe, useStore } from "../lib/store";
 import type { Plan } from "../lib/types";
 
 // Plans is the weight classes, laid out as Toji's pricing page lays out
 // its own: Free across the top, the three middle weights side by side,
-// Champion across the bottom. locked, in a chat, is the model the plan
-// lacks; a plan without it cannot be picked there. held says a message
-// is waiting on the pick.
+// Champion across the bottom. A plan is bought on the caveira site, in the
+// browser. locked, in a chat, is the model the plan lacks; a plan without
+// it cannot be picked there. held says a message is waiting on the pick.
 export function Plans({ locked, held }: { locked?: string; held?: boolean }) {
   const plans = useStore((s) => s.plans);
-  const current = useStore((s) => s.plan);
+  const account = useStore((s) => s.account);
   if (!plans.length) return null;
+  const signedIn = Boolean(account?.signedIn);
+  const current = signedIn ? (account?.plan ?? "") : "";
   const free = plans.find((p) => p.price === 0);
   const top = plans[plans.length - 1];
   const middle = plans.filter((p) => p !== free && p !== top);
@@ -20,6 +23,7 @@ export function Plans({ locked, held }: { locked?: string; held?: boolean }) {
     current: p.id === current,
     runs: !locked || p.large,
     held: Boolean(held),
+    signedIn,
     subscribed: Boolean(current),
     locked,
   });
@@ -33,7 +37,39 @@ export function Plans({ locked, held }: { locked?: string; held?: boolean }) {
         ))}
       </div>
       {top !== free && <WideCard {...state(top)} />}
-      <p className="plans-note">Billing isn&rsquo;t live yet, so no plan charges anything for now.</p>
+    </div>
+  );
+}
+
+// SignIn is the way into a caveira account wherever one is asked for:
+// what signing in is for, and the button. Pressed, it is the code the
+// browser shows too, until signing in goes through or is cancelled.
+export function SignIn({ children, primary }: { children: ReactNode; primary?: boolean }) {
+  const account = useStore((s) => s.account);
+  if (account?.waiting) {
+    return (
+      <div className="sign-in" role="status">
+        <span className="grow">
+          {account.code ? (
+            <>
+              Finish signing in in your browser · code <span className="sign-in-code">{account.code}</span>
+            </>
+          ) : (
+            "Opening your browser…"
+          )}
+        </span>
+        <button className="btn" onClick={cancelSignIn}>
+          Cancel
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="sign-in">
+      <span className="grow">{children}</span>
+      <button className={`btn${primary ? " primary" : ""}`} onClick={signIn}>
+        Sign in
+      </button>
     </div>
   );
 }
@@ -43,6 +79,7 @@ interface CardState {
   current: boolean;
   runs: boolean;
   held: boolean;
+  signedIn: boolean;
   subscribed: boolean;
   locked?: string;
 }
@@ -82,11 +119,11 @@ function Features({ plan }: { plan: Plan }) {
   );
 }
 
-function Action({ plan, current, runs, held, subscribed, locked }: CardState) {
+function Action({ plan, current, runs, held, signedIn, subscribed, locked }: CardState) {
   // The plan already on, when it can run what is held, sends it.
   if (current && held && runs) {
     return (
-      <button className="plan-btn primary" onClick={() => subscribe(plan.id)}>
+      <button className="plan-btn primary" onClick={refreshAccount}>
         Send it
       </button>
     );
@@ -105,8 +142,10 @@ function Action({ plan, current, runs, held, subscribed, locked }: CardState) {
       </button>
     );
   }
+  // Free is an account, so signed out it is a sign-in.
+  const pick = !plan.price && !signedIn ? signIn : () => subscribe(plan.id);
   return (
-    <button className={`plan-btn${plan.popular ? " primary" : ""}`} onClick={() => subscribe(plan.id)}>
+    <button className={`plan-btn${plan.popular ? " primary" : ""}`} onClick={pick}>
       {plan.price ? `Choose ${plan.name}` : subscribed ? "Switch to Free" : "Start free"}
     </button>
   );

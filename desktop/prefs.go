@@ -10,7 +10,9 @@ import (
 
 // prefs is what only the desktop app keeps, in ~/.caveira/desktop.json.
 // The model, effort, and confirm setting live in config.json, which the
-// terminal client reads too.
+// terminal client reads too. A file from before caveira accounts also has
+// the plan picked here, as "plan"; the plan is the account's now, so that
+// is let go.
 type prefs struct {
 	// Projects are folders opened before, most recent first.
 	Projects []string `json:"projects,omitempty"`
@@ -21,8 +23,6 @@ type prefs struct {
 	// Onboarded is set once the first-run steps (import, workspace) are
 	// done or skipped.
 	Onboarded bool `json:"onboarded,omitempty"`
-	// Plan is the caveira plan picked, "" for none (see plans.go).
-	Plan string `json:"plan,omitempty"`
 	// EmptyImports are chats an import found nothing in, by the id they
 	// would have had, so the next look does not offer them again.
 	EmptyImports []string `json:"empty_imports,omitempty"`
