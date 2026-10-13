@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/justin06lee/caveira/core/cloud"
 )
 
 const (
@@ -78,8 +80,24 @@ func Load(workDir string) (Settings, error) {
 	applyEnv(&s, os.Getenv, "environment")
 
 	s.BaseURL = strings.TrimRight(s.BaseURL, "/")
+	// Signed in, model requests go through the caveira account, which
+	// holds the abliteration.ai key. A base URL set on purpose (another
+	// server, a local model) is left alone.
+	if s.BaseURL == DefaultBaseURL {
+		if a, ok := cloud.Load(); ok {
+			s.BaseURL = a.APIBase()
+			s.APIKey = a.Token
+			s.KeySource = AccountSource
+		}
+	}
 	return s, errors.Join(errs...)
 }
+
+// AccountSource is the KeySource of a signed-in caveira account.
+const AccountSource = "caveira account"
+
+// OnAccount says s sends its model requests through the caveira account.
+func (s Settings) OnAccount() bool { return s.KeySource == AccountSource }
 
 func merge(dst *Settings, src Settings, source string) {
 	if src.APIKey != "" {
