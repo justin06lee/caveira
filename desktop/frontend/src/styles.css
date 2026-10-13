@@ -1449,8 +1449,9 @@ kbd {
   animation: fade 0.4s var(--ease);
 }
 /* The title, the project line, and the composer sit the same distance
-   apart. */
-.hero h1 {
+   apart. Only the hero's own children: the composer's menus inside it
+   have a .sub of their own. */
+.hero > h1 {
   font-size: 21px;
   line-height: 27px;
   font-weight: 600;
@@ -1458,7 +1459,7 @@ kbd {
   text-align: center;
   margin: 26px 0 16px;
 }
-.hero .sub {
+.hero > .sub {
   color: var(--muted);
   font-size: 12.5px;
   line-height: 16px;
