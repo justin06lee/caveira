@@ -32,13 +32,14 @@ export function tokens(n: number): string {
 }
 
 // resets says when usage starts again: the time within a day, the date
-// after that.
+// after that. Usage resets on the 1st in UTC, so the date is UTC's, the
+// day the site names too.
 export function resets(iso: string, now = Date.now()): string {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return "";
   const d = new Date(t);
   if (t - now < 86400_000) return `resets at ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
-  return `resets ${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  return `resets ${d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })}`;
 }
 
 export function plural(n: number, word: string): string {
