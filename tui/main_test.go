@@ -40,7 +40,7 @@ func site(t *testing.T) (*httptest.Server, *atomic.Int32) {
 		})
 	})
 	mux.HandleFunc("POST /api/auth/device/poll", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"token":"tok","email":"rebel@caveira.dev"}`))
+		w.Write([]byte(`{"token":"tok","email":"rebel@caveira.ai"}`))
 	})
 	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer tok" {
@@ -48,7 +48,7 @@ func site(t *testing.T) (*httptest.Server, *atomic.Int32) {
 			w.Write([]byte(`{"error":{"message":"Sign in again","type":"caveira","code":"unauthorized"}}`))
 			return
 		}
-		w.Write([]byte(`{"email":"rebel@caveira.dev","plan":{"id":"free","name":"Free"}}`))
+		w.Write([]byte(`{"email":"rebel@caveira.ai","plan":{"id":"free","name":"Free"}}`))
 	})
 	mux.HandleFunc("POST /api/auth/logout", func(w http.ResponseWriter, r *http.Request) {
 		logouts.Add(1)
@@ -73,7 +73,7 @@ func TestLoginAndLogoutCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := srv.URL + "/device?code=WXYZ-1234"
-	for _, want := range []string{"Opening your browser", page, "WXYZ-1234", "Signed in as rebel@caveira.dev"} {
+	for _, want := range []string{"Opening your browser", page, "WXYZ-1234", "Signed in as rebel@caveira.ai"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("login printed\n%s\nmissing %q", out.String(), want)
 		}
@@ -89,13 +89,13 @@ func TestLoginAndLogoutCommands(t *testing.T) {
 	if err := login(&out, open); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out.String(), "Already signed in as rebel@caveira.dev") || len(opened) != 1 {
+	if !strings.HasPrefix(out.String(), "Already signed in as rebel@caveira.ai") || len(opened) != 1 {
 		t.Fatalf("login while signed in printed %q", out.String())
 	}
 
 	// A token the site no longer takes is replaced, and where the browser
 	// cannot open, the page is still there to visit.
-	cloud.Save(cloud.Auth{URL: srv.URL, Token: "stale", Email: "rebel@caveira.dev"})
+	cloud.Save(cloud.Auth{URL: srv.URL, Token: "stale", Email: "rebel@caveira.ai"})
 	out.Reset()
 	if err := login(&out, func(string) error { return os.ErrNotExist }); err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestLoginAndLogoutCommands(t *testing.T) {
 	if err := logout(&out); err != nil {
 		t.Fatal(err)
 	}
-	if out.String() != "Signed out of rebel@caveira.dev\n" || logouts.Load() != 1 {
+	if out.String() != "Signed out of rebel@caveira.ai\n" || logouts.Load() != 1 {
 		t.Fatalf("logout printed %q, site told %d times", out.String(), logouts.Load())
 	}
 	if _, ok := cloud.Load(); ok {
@@ -126,7 +126,7 @@ func TestLoginAndLogoutCommands(t *testing.T) {
 func TestBaseURLFlagNeverGetsTheAccountToken(t *testing.T) {
 	srv, _ := site(t)
 	isolate(t, srv.URL)
-	cloud.Save(cloud.Auth{URL: srv.URL, Token: "tok", Email: "rebel@caveira.dev"})
+	cloud.Save(cloud.Auth{URL: srv.URL, Token: "tok", Email: "rebel@caveira.ai"})
 	var sent atomic.Value
 	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sent.Store(r.Header.Get("Authorization"))

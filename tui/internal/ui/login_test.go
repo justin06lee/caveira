@@ -54,7 +54,7 @@ func newSite(t *testing.T) *fakeSite {
 			w.Write([]byte(`{"error":"access_denied"}`))
 			return
 		}
-		w.Write([]byte(`{"token":"tok","email":"rebel@caveira.dev"}`))
+		w.Write([]byte(`{"token":"tok","email":"rebel@caveira.ai"}`))
 	})
 	mux.HandleFunc("POST /api/auth/logout", func(w http.ResponseWriter, r *http.Request) {
 		s.logouts.Add(1)
@@ -195,7 +195,7 @@ func TestLoginSwitchesTheSessionToTheAccount(t *testing.T) {
 	m.input.Reset()
 
 	settle(m, wait)
-	if it := last(m); it.kind != itemNotice || !strings.HasPrefix(it.text, "Signed in as rebel@caveira.dev") {
+	if it := last(m); it.kind != itemNotice || !strings.HasPrefix(it.text, "Signed in as rebel@caveira.ai") {
 		t.Fatalf("after the browser approved: %+v", it)
 	}
 	if m.login != nil || m.signedOut() {
@@ -207,7 +207,7 @@ func TestLoginSwitchesTheSessionToTheAccount(t *testing.T) {
 	}
 	card := m.rend.render(m.items[0])
 	dump(t, "login-card", card)
-	if !m.cfg.OnAccount() || !strings.Contains(plain(card), "account  rebel@caveira.dev") {
+	if !m.cfg.OnAccount() || !strings.Contains(plain(card), "account  rebel@caveira.ai") {
 		t.Fatal("the session card does not say who is signed in")
 	}
 	if m.items[1].kind != itemUser || len(m.items) <= before {
@@ -287,14 +287,14 @@ func TestLoginSaysWhyItFailed(t *testing.T) {
 func TestLoginWhenSignedInSaysWho(t *testing.T) {
 	site := newSite(t)
 	m, opened := signedOutSession(t, site)
-	if err := cloud.Save(cloud.Auth{URL: site.URL, Token: "tok", Email: "rebel@caveira.dev"}); err != nil {
+	if err := cloud.Save(cloud.Auth{URL: site.URL, Token: "tok", Email: "rebel@caveira.ai"}); err != nil {
 		t.Fatal(err)
 	}
 	m.useSettings()
 	if cmd := m.slash("/login"); cmd != nil || m.login != nil || len(*opened) != 0 {
 		t.Fatal("/login started another login while signed in")
 	}
-	if it := last(m); it.kind != itemNotice || it.text != "Signed in as rebel@caveira.dev\n/logout first to use another account" {
+	if it := last(m); it.kind != itemNotice || it.text != "Signed in as rebel@caveira.ai\n/logout first to use another account" {
 		t.Fatalf("/login signed in: %+v", it)
 	}
 }
@@ -306,7 +306,7 @@ func TestLogoutFallsBackOnWhatIsLeft(t *testing.T) {
 	site := newSite(t)
 	m, _ := signedOutSession(t, site)
 	t.Setenv("CAVEIRA_API_KEY", "dev-key")
-	cloud.Save(cloud.Auth{URL: site.URL, Token: "tok", Email: "rebel@caveira.dev"})
+	cloud.Save(cloud.Auth{URL: site.URL, Token: "tok", Email: "rebel@caveira.ai"})
 	m.useSettings()
 	if m.agent.Client.APIKey != "tok" {
 		t.Fatal("signed in, the account should win over the environment's key")
@@ -327,7 +327,7 @@ func TestLogoutFallsBackOnWhatIsLeft(t *testing.T) {
 	}
 
 	t.Setenv("CAVEIRA_API_KEY", "")
-	cloud.Save(cloud.Auth{URL: site.URL, Token: "tok", Email: "rebel@caveira.dev"})
+	cloud.Save(cloud.Auth{URL: site.URL, Token: "tok", Email: "rebel@caveira.ai"})
 	m.useSettings()
 	settle(m, m.slash("/logout"))
 	if it := last(m); it.text != "Signed out\n/login to sign in again" {
@@ -349,7 +349,7 @@ func TestLogoutFallsBackOnWhatIsLeft(t *testing.T) {
 func TestRejectedTokenPointsToLogin(t *testing.T) {
 	site := newSite(t)
 	m, _ := signedOutSession(t, site)
-	cloud.Save(cloud.Auth{URL: site.URL, Token: "stale", Email: "rebel@caveira.dev"})
+	cloud.Save(cloud.Auth{URL: site.URL, Token: "stale", Email: "rebel@caveira.ai"})
 	m.useSettings()
 
 	settle(m, m.submit("hello"))

@@ -13,7 +13,7 @@
 
 caveira is an agentic coding assistant in the spirit of Claude Code, built to drive abliterated open-weight models, meaning models whose refusal behavior has been removed. You give it a task in your project; it reads and searches the code, edits files, runs commands, checks its own work, and tells you what it did. It does not second-guess what you asked for. The only pushback it gives is technical.
 
-It comes as a terminal client and a desktop app, which share one agent and one set of sessions. The caveira website holds the accounts the clients sign in to, and runs their model requests; hosted sessions come later.
+It comes as a terminal client and a desktop app, which share one agent and one set of sessions. The caveira website, [caveira.ai](https://github.com/justin06lee/caveira.ai), holds the accounts the clients sign in to, and runs their model requests; hosted sessions come later.
 
 ## Quick start
 

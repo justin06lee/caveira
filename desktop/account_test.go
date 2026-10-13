@@ -36,7 +36,7 @@ type site struct {
 
 func newSite(t *testing.T, model http.Handler) *site {
 	t.Helper()
-	s := &site{token: "tok_rebel", email: "rebel@caveira.dev", plan: "free"}
+	s := &site{token: "tok_rebel", email: "rebel@caveira.ai", plan: "free"}
 	siteError := func(w http.ResponseWriter, status int, code, msg string) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -206,7 +206,7 @@ func TestSigningInSendsWhatWasHeld(t *testing.T) {
 	st.set(func(s *site) { s.approved = true })
 
 	acct = ev.account(t, func(v AccountView) bool { return v.SignedIn })
-	if acct.Email != "rebel@caveira.dev" || acct.Plan != "free" || acct.PlanName != "Free" || acct.Used != 0.25 || acct.Waiting {
+	if acct.Email != "rebel@caveira.ai" || acct.Plan != "free" || acct.PlanName != "Free" || acct.Used != 0.25 || acct.Waiting {
 		t.Fatalf("signed in: %+v", acct)
 	}
 	v = waitIdle(t, a, v.ID, func(v ChatView) bool { return !v.Running && kinds(v.Items) != "user user paywall" })
@@ -296,7 +296,7 @@ func TestRevokedSignInAsksAgain(t *testing.T) {
 	}
 	// The turn asks the site after the account once it is over.
 	acct := ev.account(t, func(v AccountView) bool { return v.Expired })
-	if acct.SignedIn || acct.Email != "rebel@caveira.dev" {
+	if acct.SignedIn || acct.Email != "rebel@caveira.ai" {
 		t.Fatalf("account after a 401: %+v", acct)
 	}
 	if started, err := a.Send(v.ID, "and now?"); err != nil || started {

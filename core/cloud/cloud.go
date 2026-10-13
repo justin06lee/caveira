@@ -36,7 +36,7 @@ import (
 )
 
 // DefaultURL is the caveira website.
-const DefaultURL = "https://caveira.dev"
+const DefaultURL = "https://caveira.ai"
 
 // URL is the site to sign in through: CAVEIRA_CLOUD_URL, or DefaultURL.
 func URL() string {

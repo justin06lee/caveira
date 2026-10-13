@@ -33,7 +33,7 @@ caveira runs on your caveira account. Type `/login` in a session: your browser o
 
 The token is kept in `~/.caveira/auth.json`, readable only by you. Model requests go with it to the caveira site's OpenAI-compatible `/api/v1`, which holds the abliteration.ai key, checks your plan and usage, and forwards them; when the site turns a request down (signed out elsewhere, out of usage, a model your plan does not run), its own message is what the transcript shows.
 
-`caveira login` and `caveira logout` do the same without the interface, for a machine reached over SSH or with no screen: `login` prints the page and the code, tries the browser, waits, and prints who it signed in as. Started with neither an account nor a key, caveira opens anyway, and its home screen and any message you send say to `/login`; `caveira -p` fails at once and says to run `caveira login`. `CAVEIRA_CLOUD_URL` points signing in at another caveira site than `https://caveira.dev`.
+`caveira login` and `caveira logout` do the same without the interface, for a machine reached over SSH or with no screen: `login` prints the page and the code, tries the browser, waits, and prints who it signed in as. Started with neither an account nor a key, caveira opens anyway, and its home screen and any message you send say to `/login`; `caveira -p` fails at once and says to run `caveira login`. `CAVEIRA_CLOUD_URL` points signing in at another caveira site than `https://caveira.ai`.
 
 ## Configuration
 
