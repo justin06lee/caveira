@@ -88,6 +88,11 @@ func TestSignedInAccountCarriesTheRequests(t *testing.T) {
 		t.Fatalf("signed in: %+v", s)
 	}
 
+	// Without the account, it is back on its own key.
+	if own := s.WithoutAccount(); own.OnAccount() || own.APIKey != "ak_own" || own.BaseURL != DefaultBaseURL {
+		t.Fatalf("without the account: %+v", own)
+	}
+
 	// A server chosen on purpose is not taken over by the account.
 	t.Setenv("CAVEIRA_BASE_URL", "http://localhost:11434/v1")
 	s, _ = Load(dir)

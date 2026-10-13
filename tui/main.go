@@ -145,7 +145,7 @@ func run() error {
 			// A key or an endpoint given on the command line is used as
 			// given, and the account's token only ever goes to the
 			// caveira site.
-			cfg.BaseURL, cfg.APIKey, cfg.KeySource = config.DefaultBaseURL, "", ""
+			cfg = cfg.WithoutAccount()
 		}
 		if model != "" {
 			cfg.Model = model

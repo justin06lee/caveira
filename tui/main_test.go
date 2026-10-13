@@ -144,6 +144,15 @@ func TestBaseURLFlagNeverGetsTheAccountToken(t *testing.T) {
 	if got, _ := sent.Load().(string); got != "" {
 		t.Fatalf("--base-url got Authorization %q", got)
 	}
+
+	// A key of its own in the environment still goes with it.
+	t.Setenv("ABLITERATION_API_KEY", "ak_own")
+	if err := run(); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := sent.Load().(string); got != "Bearer ak_own" {
+		t.Fatalf("--base-url with an env key got Authorization %q", got)
+	}
 }
 
 // -p with no account and no key fails at once and says to sign in.
