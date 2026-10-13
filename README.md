@@ -13,7 +13,7 @@
 
 caveira is an agentic coding assistant in the spirit of Claude Code, built to drive abliterated open-weight models, meaning models whose refusal behavior has been removed. You give it a task in your project; it reads and searches the code, edits files, runs commands, checks its own work, and tells you what it did. It does not second-guess what you asked for. The only pushback it gives is technical.
 
-It comes as a terminal client and a desktop app, which share one agent and one set of sessions. A website for the cloud side (accounts, hosted sessions) comes later.
+It comes as a terminal client and a desktop app, which share one agent and one set of sessions. The caveira website holds the accounts the clients sign in to, and runs their model requests; hosted sessions come later.
 
 ## Quick start
 
@@ -21,13 +21,14 @@ It comes as a terminal client and a desktop app, which share one agent and one s
 make                                   # builds and installs `caveira` (and `cav`) into ~/.local/bin
                                        # and the app (caveira.app in /Applications on macOS,
                                        # caveira-desktop plus a launcher on Linux), then opens it
-echo 'ABLITERATION_API_KEY=ak_…' > .env.local   # or export it, or put it in ~/.caveira/config.json
-cd your/project && caveira
+cd your/project && caveira             # then /login to sign in to your caveira account
 ```
+
+`/login` opens the caveira site in your browser; once you connect this machine there, the session carries on through your account, with no key to paste anywhere. On a machine you reach over SSH, `caveira login` prints the page and the code instead. For development, an abliteration.ai key still works without an account: put `ABLITERATION_API_KEY=ak_…` in the environment, in a `.env.local` in the project, or in `~/.caveira/config.json`.
 
 In the app, open a folder and type. The app runs on abliteration.ai alone and takes the same key from the same places; it has no field to type one into, since caveira's plans will supply it. A chat there runs on a plan, picked from the app's own plans page.
 
-caveira talks to [abliteration.ai](https://abliteration.ai) out of the box, through its OpenAI-compatible endpoint. Any other endpoint that speaks the same protocol works too; a local Ollama is one flag away:
+Signed in, caveira's model requests go through your caveira account, which runs them on [abliteration.ai](https://abliteration.ai). Any other endpoint that speaks the same OpenAI-compatible protocol works too; a local Ollama is one flag away:
 
 ```sh
 caveira --base-url http://localhost:11434/v1 --model llama3.2:latest

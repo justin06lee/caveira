@@ -5,8 +5,11 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image/color"
+	"maps"
+	"net/http"
 	"strings"
 	"time"
 
@@ -18,6 +21,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 
 	"github.com/justin06lee/caveira/core/agent"
+	"github.com/justin06lee/caveira/core/cloud"
 	"github.com/justin06lee/caveira/core/config"
 	"github.com/justin06lee/caveira/core/llm"
 	"github.com/justin06lee/caveira/core/tools"
@@ -39,6 +43,9 @@ type Options struct {
 	Resumed *agent.Session
 	// Fatal, when set, disables sending and explains why.
 	Fatal error
+	// Reload resolves the settings again, the way startup did, after
+	// /login or /logout. Nil reads them with config.Load.
+	Reload func() (config.Settings, error)
 }
 
 type phase int
@@ -106,6 +113,19 @@ type Model struct {
 	context int
 	notice  string
 	fatal   error
+
+	// account is who requests go out as when they go through a caveira
+	// account, "" when they do not.
+	account string
+	// login is a /login waiting on the browser, if one is.
+	login *pendingLogin
+	// tokenRejected says the account's token came back unauthorized, so
+	// /login signs in again rather than saying who is signed in.
+	tokenRejected bool
+	// reconnect holds a new endpoint or key that came mid-turn until the
+	// turn ends.
+	reconnect bool
+	reload    func() (config.Settings, error)
 
 	history []string
 	histPos int
@@ -216,6 +236,8 @@ func (m *Model) Apply(o Options) {
 		m.version = o.Version
 	}
 	m.fatal = o.Fatal
+	m.reload = o.Reload
+	m.account = accountName(o.Settings)
 	m.initial = o.Initial
 	if o.Agent != nil {
 		m.totals = o.Agent.Totals
@@ -223,8 +245,62 @@ func (m *Model) Apply(o Options) {
 	if o.Resumed != nil {
 		m.pushHeader()
 		m.replay(o.Resumed)
+		if m.signedOut() {
+			m.push(&item{kind: itemNotice, text: signInHint})
+		}
 	}
 	m.booted = true
+}
+
+// useSettings reads the settings again and points the session at what
+// they say now, after /login or /logout: the endpoint and the key change,
+// while the conversation, the model, and the effort stay as they are.
+func (m *Model) useSettings() {
+	reload := m.reload
+	if reload == nil {
+		reload = func() (config.Settings, error) { return config.Load(m.workDir) }
+	}
+	cfg, err := reload()
+	m.cfg.BaseURL, m.cfg.APIKey, m.cfg.KeySource = cfg.BaseURL, cfg.APIKey, cfg.KeySource
+	m.fatal = err
+	m.tokenRejected = false
+	m.account = accountName(m.cfg)
+	if len(m.items) > 0 && m.items[0].kind == itemHeader {
+		m.items[0].header.account = m.account
+		m.items[0].invalidate()
+		m.dirty = true
+	}
+	if m.running {
+		// The turn is using the client; the new one waits for it to end.
+		m.reconnect = true
+		return
+	}
+	m.connect()
+}
+
+// connect gives the agent a client for the current endpoint and key,
+// keeping the headers the session already sends.
+func (m *Model) connect() {
+	if m.agent == nil {
+		return
+	}
+	c := llm.New(m.cfg.BaseURL, m.cfg.APIKey)
+	if old := m.agent.Client; old != nil {
+		maps.Copy(c.Headers, old.Headers)
+	}
+	m.agent.Client = c
+}
+
+// accountName is who requests go out as when s sends them through a
+// caveira account: its email, or "" when s does not.
+func accountName(s config.Settings) string {
+	if !s.OnAccount() {
+		return ""
+	}
+	if a, ok := cloud.Load(); ok && a.Email != "" {
+		return a.Email
+	}
+	return "caveira account"
 }
 
 // replay rebuilds the transcript from a stored session.
@@ -356,7 +432,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
-		if !m.running && !m.hasRunningTool() && (m.picker == nil || !m.picker.loading) {
+		if !m.running && !m.hasRunningTool() && (m.picker == nil || !m.picker.loading) && m.login == nil {
 			m.ticking = false
 			return m, nil
 		}
@@ -396,6 +472,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case clearNoticeMsg:
 		m.notice = ""
+		return m, nil
+
+	case loginCodeMsg:
+		return m, m.loginCode(msg)
+
+	case loginDoneMsg:
+		m.loginDone(msg)
+		return m, nil
+
+	case logoutDoneMsg:
+		m.logoutDone(msg)
 		return m, nil
 	}
 
@@ -517,6 +604,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.input.Value() != "" {
 			m.input.Reset()
 			m.layout()
+		} else if m.login != nil {
+			m.cancelLogin()
 		}
 		return m, nil
 
@@ -671,6 +760,10 @@ func (m *Model) submit(text string) tea.Cmd {
 		m.push(&item{kind: itemError, text: m.fatal.Error()})
 		return nil
 	}
+	if m.signedOut() {
+		m.push(&item{kind: itemError, text: signInHint})
+		return nil
+	}
 	if m.running {
 		m.queued = append(m.queued, text)
 		m.follow = true
@@ -821,7 +914,17 @@ func (m *Model) handleEvent(ev agent.Event) (tea.Model, tea.Cmd) {
 
 	case agent.ErrorEvent:
 		m.turnFailed = true
-		m.push(&item{kind: itemError, text: ev.Err.Error()})
+		text := ev.Err.Error()
+		var apiErr *llm.APIError
+		if m.cfg.OnAccount() && errors.As(ev.Err, &apiErr) && apiErr.Status == http.StatusUnauthorized {
+			// The account's token is no good any more and /login gets a
+			// new one. The site's message says so; in case it does not:
+			m.tokenRejected = true
+			if !strings.Contains(text, "/login") {
+				text += " · /login to sign in again"
+			}
+		}
+		m.push(&item{kind: itemError, text: text})
 
 	case agent.DoneEvent:
 		if ev.Interrupted {
@@ -875,6 +978,10 @@ func (m *Model) turnEnded() (tea.Model, tea.Cmd) {
 	m.dirty = true
 	if m.agent != nil {
 		m.totals = m.agent.Totals
+	}
+	if m.reconnect {
+		m.reconnect = false
+		m.connect()
 	}
 	m.layout()
 	if len(m.queued) > 0 {

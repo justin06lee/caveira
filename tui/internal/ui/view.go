@@ -258,6 +258,13 @@ func (m *Model) renderStatus(width int) string {
 		return oneLineANSI(line, width)
 	case m.notice != "":
 		return th.Muted.Render(m.notice)
+	case m.login != nil:
+		what := "Waiting for you to sign in in the browser"
+		if m.login.code.UserCode == "" {
+			what = "Asking caveira for a login code"
+		}
+		line := th.Accent.Render(m.rend.spinner()) + " " + th.Muted.Render(what+"…") + th.Faint.Render("  esc to cancel")
+		return oneLineANSI(line, width)
 	case !m.follow:
 		return th.Faint.Render("↓ more below · ") + th.Muted.Render("ctrl+end") + th.Faint.Render(" to jump back")
 	}
