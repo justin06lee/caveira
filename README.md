@@ -26,7 +26,7 @@ cd your/project && caveira             # then /login to sign in to your caveira 
 
 `/login` opens the caveira site in your browser; once you connect this machine there, the session carries on through your account, with no key to paste anywhere. On a machine you reach over SSH, `caveira login` prints the page and the code instead. For development, an abliteration.ai key still works without an account: put `ABLITERATION_API_KEY=ak_…` in the environment, in a `.env.local` in the project, or in `~/.caveira/config.json`.
 
-In the app, open a folder and type. The app runs on abliteration.ai alone and takes the same key from the same places; it has no field to type one into, since caveira's plans will supply it. A chat there runs on a plan, picked from the app's own plans page.
+In the app, open a folder, sign in to your caveira account (it opens the caveira site in the browser), and type. The app runs on abliteration.ai's models alone, through the account, so it has no field for a key; a chat there runs on the account's plan, Free or paid, bought on the caveira site.
 
 Signed in, caveira's model requests go through your caveira account, which runs them on [abliteration.ai](https://abliteration.ai). Any other endpoint that speaks the same OpenAI-compatible protocol works too; a local Ollama is one flag away:
 

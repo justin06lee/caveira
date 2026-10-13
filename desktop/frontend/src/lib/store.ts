@@ -3,8 +3,9 @@
 // that arrive while turns run, a frame at a time.
 
 import { useSyncExternalStore } from "react";
-import { api, errorText, onChatEvent } from "./bridge";
+import { api, errorText, onAccount, onChatEvent } from "./bridge";
 import type {
+  AccountView,
   ChatEvent,
   ChatHeader,
   ChatView,
@@ -49,9 +50,9 @@ export interface State {
   workspace: Workspace;
   pickerOpen: boolean;
   importOpen: boolean;
-  // plan is the plan this install is on, "" for none; a chat sent
-  // without one is held under the plans.
-  plan: string;
+  // account is the caveira account, null before boot. A message it cannot
+  // run is held under a sign-in, or under the plans.
+  account: AccountView | null;
   plans: Plan[];
   // catalog is the models on offer, all on abliteration.ai.
   catalog: ModelOption[];
@@ -74,7 +75,7 @@ let state: State = {
   workspace: { path: "", short: "" },
   pickerOpen: false,
   importOpen: false,
-  plan: "",
+  account: null,
   plans: [],
   catalog: [],
 };
@@ -164,10 +165,11 @@ export async function boot(): Promise<void> {
     expanded: loadExpanded() ?? [],
     onboarded: b.onboarded,
     workspace: b.workspace,
-    plan: b.plan,
+    account: b.account,
     plans: b.plans ?? [],
   }));
   refreshCatalog();
+  refreshAccount();
   if (project) await selectProject(project, localStorage.getItem(LAST_CHAT) ?? undefined);
 }
 
@@ -196,12 +198,61 @@ export function refreshCatalog(): void {
     .catch(() => {});
 }
 
-// subscribe puts this install on a plan; what the open chat was holding
-// for one goes if the plan runs it.
+// subscribe opens the plan's checkout on the caveira site in the browser.
+// Go watches the account while a message is held, and sends it once the
+// plan runs it.
 export async function subscribe(plan: string): Promise<void> {
   try {
-    const p = await api.subscribe(plan, getState().chatId ?? "");
-    setState(() => ({ plan: p }));
+    await api.subscribe(plan);
+  } catch (e) {
+    toast(e);
+  }
+}
+
+// setAccount takes in what Go says about the account. Signing in or out
+// changes where chats go, so the models and the open chat are read again.
+function setAccount(a: AccountView): void {
+  const was = getState().account;
+  setState(() => ({ account: a }));
+  if (a.error) toast(a.error);
+  if (was && was.signedIn !== a.signedIn) {
+    refreshCatalog();
+    const id = getState().chatId;
+    if (id) refreshChat(id).catch(() => {});
+  }
+}
+
+// refreshAccount asks the site about the account, as the window comes to
+// the front; what chats were holding goes if it runs them now.
+export async function refreshAccount(): Promise<void> {
+  try {
+    setAccount(await api.account());
+  } catch {
+    // The account stays as it was last known.
+  }
+}
+
+// signIn opens the site's sign-in page in the browser; the window shows
+// its code until it goes through.
+export async function signIn(): Promise<void> {
+  try {
+    setAccount(await api.signIn());
+  } catch (e) {
+    toast(e);
+  }
+}
+
+export async function cancelSignIn(): Promise<void> {
+  try {
+    setAccount(await api.cancelSignIn());
+  } catch (e) {
+    toast(e);
+  }
+}
+
+export async function signOut(): Promise<void> {
+  try {
+    setAccount(await api.signOut());
   } catch (e) {
     toast(e);
   }
@@ -357,8 +408,8 @@ export async function deleteChat(id: string): Promise<void> {
   }
 }
 
-// send sends text in the open chat. Without a plan it is held, and shows
-// as sent with the plans under it.
+// send sends text in the open chat. One the account cannot run is held,
+// and shows as sent with a sign-in or the plans under it.
 export async function send(text: string): Promise<boolean> {
   const id = getState().chatId;
   if (!id) return false;
@@ -385,13 +436,18 @@ let queue: ChatEvent[] = [];
 let scheduled = false;
 
 export function listen(): () => void {
-  return onChatEvent((e) => {
+  const stopChat = onChatEvent((e) => {
     queue.push(e);
     if (!scheduled) {
       scheduled = true;
       requestAnimationFrame(flush);
     }
   });
+  const stopAccount = onAccount(setAccount);
+  return () => {
+    stopChat();
+    stopAccount();
+  };
 }
 
 function flush() {

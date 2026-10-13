@@ -6,7 +6,7 @@ import { useStore, type Chat } from "../lib/store";
 import type { Item } from "../lib/types";
 import { Mark } from "./Logo";
 import { Markdown } from "./Markdown";
-import { Plans } from "./Plans";
+import { Plans, SignIn } from "./Plans";
 import { SkullLoader } from "./SkullLoader";
 import { ToolItem } from "./ToolItem";
 
@@ -109,7 +109,7 @@ function ItemView({ item, chatId }: { item: Item; chatId: string }) {
       return (
         <div className={`notice item${item.tone === "error" ? " error" : ""}`}>
           {item.tone === "error" ? <CircleAlert size={14} /> : <Info size={14} />}
-          <span>{item.text}</span>
+          {item.action === "sign-in" ? <SignIn>{item.text}</SignIn> : <span>{item.text}</span>}
         </div>
       );
   }
@@ -159,11 +159,32 @@ function Working({ started }: { started?: number }) {
   );
 }
 
-// Paywall holds the messages above it until there is a plan that runs
-// them.
+// Paywall holds the messages above it until the account runs them:
+// signed out, until there is one; on a plan without the model, until
+// there is a plan with it.
 function Paywall({ item }: { item: Item }) {
   const plans = useStore((s) => s.plans);
+  const account = useStore((s) => s.account);
   const smallest = plans.find((p) => p.large)?.name ?? "a paid plan";
+  if (!account?.signedIn) {
+    return (
+      <div className="paywall item">
+        <div className="paywall-head">
+          <Mark size={26} />
+          <div>
+            <div className="paywall-title">Join the resistance</div>
+            <div className="paywall-sub">
+              {account?.expired ? "Your sign-in ran out. " : ""}
+              caveira runs on an account. Sign in and your message goes through.
+            </div>
+          </div>
+        </div>
+        <div className="paywall-sign-in">
+          <SignIn primary>Free to start, with Abliterated Qwen3.5. A plan adds GLM.</SignIn>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="paywall item">
       <div className="paywall-head">

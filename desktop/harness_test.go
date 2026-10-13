@@ -21,7 +21,14 @@ import (
 //	CAVEIRA_HARNESS=localhost:34999 go test -run TestHarness -timeout 0 .
 //
 // Methods are called by name through POST /call/<Method>; events stream
-// from /events. Menu actions can be sent with POST /menu/<action>.
+// from /events. Menu actions can be sent with POST /menu/<action>. Pages
+// of the caveira site the app would open in the browser are only logged.
+//
+// With CAVEIRA_HARNESS_SITE=1 the app runs in a home of its own, signed
+// out, against the stand-in caveira site from account_test.go, which is
+// driven with POST /site/approve (which also takes the token back),
+// /site/deny, /site/wait (a sign-in waits again), /site/revoke, and
+// /site/plan/<id>; the real ~/.caveira is not touched.
 func TestHarness(t *testing.T) {
 	addr := os.Getenv("CAVEIRA_HARNESS")
 	if addr == "" {
@@ -30,6 +37,12 @@ func TestHarness(t *testing.T) {
 	dist, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
 		t.Fatal(err)
+	}
+	var st *site
+	if os.Getenv("CAVEIRA_HARNESS_SITE") != "" {
+		t.Setenv("HOME", t.TempDir())
+		st = newSite(t, nil)
+		t.Setenv("CAVEIRA_CLOUD_URL", st.URL)
 	}
 
 	var mu sync.Mutex
@@ -47,8 +60,31 @@ func TestHarness(t *testing.T) {
 	}
 	app := NewApp("harness")
 	app.sink = publish
+	app.browse = func(url string) error {
+		t.Logf("open %s", url)
+		return nil
+	}
 
 	mux := http.NewServeMux()
+	if st != nil {
+		mux.HandleFunc("POST /site/{do}", func(w http.ResponseWriter, r *http.Request) {
+			st.set(func(s *site) {
+				switch r.PathValue("do") {
+				case "approve":
+					s.approved, s.denied, s.revoked = true, false, false
+				case "deny":
+					s.denied = true
+				case "wait":
+					s.approved, s.denied = false, false
+				case "revoke":
+					s.revoked = true
+				}
+			})
+		})
+		mux.HandleFunc("POST /site/plan/{id}", func(w http.ResponseWriter, r *http.Request) {
+			st.set(func(s *site) { s.plan = r.PathValue("id") })
+		})
+	}
 	mux.HandleFunc("/bridge.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript")
 		fmt.Fprint(w, harnessShim)
