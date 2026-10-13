@@ -2,20 +2,21 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/justin06lee/caveira/core/agent"
 	"github.com/justin06lee/caveira/core/config"
 )
 
-// Plan is a caveira subscription. A chat runs only on one: without a
-// plan, a message is held in the chat behind the plans until one is
-// picked.
+// Plan is a caveira subscription. A chat runs only on a caveira account,
+// Free or paid: signed out, a message is held in the chat behind a
+// sign-in until there is one, and a model the plan lacks is held behind
+// the plans.
 //
-// There is no caveira cloud to pay yet, so the plan picked is kept in
-// desktop.json (prefs.Plan) and nothing is charged. Everything that asks
-// whether a chat may run goes through allows, so pointing that at the
-// cloud's answer later changes nothing else.
+// The plan is the account's, as the caveira site reports it (account.go);
+// it is bought there, in the browser. Everything that asks whether a chat
+// may run goes through allows.
 type Plan struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
@@ -88,40 +89,36 @@ func largePlan() Plan {
 	return plans[len(plans)-1]
 }
 
-// allows says whether plan can run model, and if not, why not as the name
-// of the model it cannot.
-func allows(plan, model string) (ok bool, locked string) {
-	p, subscribed := planByID(plan)
-	if !subscribed {
+// allows says whether the account can run model, and if not, why not:
+// the name of the model its plan lacks, or "" when it is signed out.
+// Before the site has said what plan it is on, the site decides when the
+// message reaches it.
+func allows(ac account, model string) (ok bool, locked string) {
+	if !ac.signedIn() {
 		return false, ""
 	}
-	if m, known := catalogEntry(model); known && m.large && !p.Large {
+	if m, known := catalogEntry(model); known && m.large && ac.known && !ac.me.Plan.Large {
 		return false, m.name
 	}
 	return true, ""
 }
 
-// Subscribe puts this install on a plan, then sends what chatID was
-// holding for one, if the plan runs it.
-func (a *App) Subscribe(plan, chatID string) (string, error) {
+// Subscribe opens the plan's checkout on the caveira site in the browser,
+// which signs in there first if need be. What chats were holding goes
+// once the site says the account runs it (see watch).
+func (a *App) Subscribe(plan string) error {
 	if _, ok := planByID(plan); !ok {
-		return "", fmt.Errorf("there is no %q plan", plan)
+		return fmt.Errorf("there is no %q plan", plan)
 	}
 	a.mu.Lock()
-	a.prefs.Plan = plan
-	err := a.prefs.save()
+	site := a.siteLocked()
 	a.mu.Unlock()
-	if err != nil {
-		return "", err
-	}
-	if chatID != "" {
-		a.release(chatID)
-	}
-	return plan, nil
+	a.watch()
+	return a.browse(site + "/pricing?plan=" + url.QueryEscape(plan))
 }
 
-// hold keeps a message the chat's plan cannot run, under the plans. A
-// second one goes with the first. Caller holds App.mu.
+// hold keeps a message the chat cannot run yet, under a sign-in or the
+// plans. A second one goes with the first. Caller holds App.mu.
 func (c *chat) hold(text, locked string) []ChatEvent {
 	var out []ChatEvent
 	if id := c.paywall(); id != "" {
@@ -143,18 +140,37 @@ func (c *chat) paywall() string {
 	return ""
 }
 
-// release sends what a chat was holding once its plan runs it: the
-// messages already on screen go to the model as they are.
+// release sends what a chat was holding once the account runs it: the
+// messages already on screen go to the model as they are. A chat built
+// before a sign-in is built again first, to send through the account.
 func (a *App) release(id string) {
 	a.mu.Lock()
 	c, ok := a.chats[id]
-	if !ok || len(c.held) == 0 || c.cancel != nil || c.problem != "" {
+	if !ok || len(c.held) == 0 || c.cancel != nil {
+		a.mu.Unlock()
+		return
+	}
+	// Signed out nothing runs, so a chat that cannot is left as it is.
+	stale := c.gen != a.gen || c.problem != "" && a.acct.signedIn()
+	a.mu.Unlock()
+	if stale {
+		a.rebuild(c)
+	}
+
+	a.mu.Lock()
+	if len(c.held) == 0 || c.cancel != nil || c.problem != "" {
 		a.mu.Unlock()
 		return
 	}
 	model, _ := c.ag.ModelInfo()
-	if ok, _ := allows(a.prefs.Plan, model); !ok {
+	if ok, locked := allows(a.acct, model); !ok {
+		// Still held, maybe for another reason: signed in since, but on a
+		// plan without the model.
+		out := c.rewall(locked)
 		a.mu.Unlock()
+		for _, e := range out {
+			a.emit("chat", e)
+		}
 		return
 	}
 	var out []ChatEvent
@@ -175,6 +191,32 @@ func (a *App) release(id string) {
 		notes(ag, texts[:len(texts)-1])
 		a.turn(ctx, c, ag, texts[len(texts)-1])
 	}()
+}
+
+// releaseAll sends what every chat was holding that the account runs now.
+func (a *App) releaseAll() {
+	a.mu.Lock()
+	var ids []string
+	for id, c := range a.chats {
+		if len(c.held) > 0 {
+			ids = append(ids, id)
+		}
+	}
+	a.mu.Unlock()
+	for _, id := range ids {
+		a.release(id)
+	}
+}
+
+// rewall gives the paywall the reason the chat is held for now. Caller
+// holds App.mu.
+func (c *chat) rewall(locked string) []ChatEvent {
+	it := c.find(c.paywall())
+	if it == nil || it.Text == locked {
+		return nil
+	}
+	it.Text = locked
+	return []ChatEvent{c.itemEvent(it)}
 }
 
 // notes puts messages sent while the chat was held ahead of the last one,
@@ -207,8 +249,8 @@ func catalogOptions() []ModelOption {
 	return out
 }
 
-// isCatalog says the endpoint is abliteration.ai, whose models are the
-// catalog's.
-func isCatalog(baseURL string) bool {
-	return strings.TrimRight(baseURL, "/") == config.DefaultBaseURL
+// isCatalog says requests go to abliteration.ai, whose models are the
+// catalog's, or through the caveira account, which serves the same ones.
+func isCatalog(cfg config.Settings) bool {
+	return cfg.OnAccount() || strings.TrimRight(cfg.BaseURL, "/") == config.DefaultBaseURL
 }

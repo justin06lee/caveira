@@ -26,7 +26,7 @@ func testModel(t *testing.T, w, h int) *Model {
 	t.Setenv("HOME", t.TempDir())
 	m := New("v0.4.0", nil)
 	ag := agent.New(llm.New("http://localhost:1", ""), config.Settings{Model: "abliterated-model", ReasoningEffort: "high"}, "/tmp/project", "sys")
-	m.Apply(Options{Agent: ag, Settings: config.Settings{Model: "abliterated-model"}, WorkDir: "/tmp/project", Branch: "master"})
+	m.Apply(Options{Agent: ag, Settings: config.Settings{Model: "abliterated-model", APIKey: "test-key"}, WorkDir: "/tmp/project", Branch: "master"})
 	m.width, m.height = w, h
 	m.phase = phaseHero
 	m.layout()
@@ -145,10 +145,10 @@ func TestMonoTerminalGetsOneColourSkull(t *testing.T) {
 
 func TestHomeShowsStartupError(t *testing.T) {
 	m := testModel(t, 110, 40)
-	m.fatal = errors.New("no API key. Put ABLITERATION_API_KEY in your environment or in a .env.local in the project")
+	m.fatal = errors.New("/Users/me/.caveira/config.json: invalid character '}' looking for beginning of object key string")
 	frame, _ := m.renderHome(0)
 	dump(t, "home-fatal", frame)
-	if !strings.Contains(plain(frame), "no API key") {
+	if !strings.Contains(plain(frame), "config.json: invalid character") {
 		t.Fatal("startup error not shown")
 	}
 }

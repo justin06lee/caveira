@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -19,7 +20,8 @@ import (
 type Item struct {
 	ID   string `json:"id"`
 	Kind string `json:"kind"` // user, assistant, tool, notice, paywall
-	// Text is the message, or on a paywall the model the plan lacks.
+	// Text is the message, or on a paywall the model the plan lacks, ""
+	// when the paywall is a sign-in.
 	Text string `json:"text,omitempty"`
 	// Reasoning is the model's thinking before an assistant reply.
 	Reasoning string    `json:"reasoning,omitempty"`
@@ -27,6 +29,8 @@ type Item struct {
 	Tool      *ToolView `json:"tool,omitempty"`
 	// Tone colours a notice: "info" or "error".
 	Tone string `json:"tone,omitempty"`
+	// Action is what a notice offers to do about itself: "sign-in".
+	Action string `json:"action,omitempty"`
 }
 
 // ToolView is one tool call.
@@ -63,7 +67,8 @@ type ChatView struct {
 	Ask   bool   `json:"ask"`
 	Items []Item `json:"items"`
 	// Problem is why this chat cannot run right now; NeedsKey says the
-	// problem is a missing API key.
+	// problem is that there is no key, as there is none signed out: a
+	// message sent waits for a sign-in.
 	Problem  string `json:"problem,omitempty"`
 	NeedsKey bool   `json:"needsKey,omitempty"`
 }
@@ -131,8 +136,8 @@ type chat struct {
 
 	cancel  context.CancelFunc
 	replies map[string]chan<- agent.Decision
-	// held is what was sent while the plan could not run this chat, kept
-	// under the plans until one can.
+	// held is what was sent while the account could not run this chat,
+	// kept under a sign-in or the plans until it can.
 	held []string
 }
 
@@ -275,9 +280,9 @@ func (a *App) DeleteChat(id string) error {
 	return nil
 }
 
-// Send starts a turn, and says whether it did: a message the plan cannot
-// run is held under the plans instead. It returns at once; the turn
-// reports through events.
+// Send starts a turn, and says whether it did: a message the account
+// cannot run is held under a sign-in or the plans instead. It returns at
+// once; the turn reports through events.
 func (a *App) Send(id, text string) (bool, error) {
 	if text == "" {
 		return false, nil
@@ -299,24 +304,28 @@ func (a *App) Send(id, text string) (bool, error) {
 		a.mu.Unlock()
 		return false, errors.New("caveira is still working on the last message")
 	}
-	if c.problem != "" {
+	// Signed out there is no key; allows holds the message under a
+	// sign-in, which brings one.
+	if c.problem != "" && (c.problem != noKeyProblem || a.acct.signedIn()) {
 		p := c.problem
 		a.mu.Unlock()
 		if p == noKeyProblem {
-			return false, errors.New("caveira cannot reach abliteration.ai: there is no key for it on this machine")
+			// Signed in, but sending somewhere other than the account.
+			return false, errors.New("caveira cannot reach the model server it is set to use: there is no key for it on this machine")
 		}
 		return false, errors.New(p)
 	}
 	model, _ := c.ag.ModelInfo()
-	if ok, locked := allows(a.prefs.Plan, model); !ok {
+	if ok, locked := allows(a.acct, model); !ok {
 		out := c.hold(text, locked)
 		a.mu.Unlock()
 		for _, e := range out {
 			a.emit("chat", e)
 		}
+		a.watch()
 		return false, nil
 	} else if len(c.held) > 0 {
-		// A plan came along since: what was held goes with this.
+		// The account runs it since: what was held goes with this.
 		c.held = append(c.held, text)
 		ev := c.push(Item{Kind: "user", Text: text})
 		a.mu.Unlock()
@@ -367,12 +376,17 @@ func (a *App) turn(ctx context.Context, c *chat, ag *agent.Agent, text string) {
 	cost := ag.Totals.CostUSD
 	tools := 0
 	interrupted := false
+	// site says the caveira site turned the turn away: signed out, out of
+	// usage, or a plan without the model. What it says now is asked after.
+	site := false
 	ag.Run(ctx, text, func(ev agent.Event) {
 		switch ev := ev.(type) {
 		case agent.ToolStartEvent:
 			tools++
 		case agent.DoneEvent:
 			interrupted = ev.Interrupted
+		case agent.ErrorEvent:
+			site = site || siteError(ev.Err) != nil
 		}
 		a.mu.Lock()
 		out := c.apply(ev)
@@ -395,6 +409,9 @@ func (a *App) turn(ctx context.Context, c *chat, ag *agent.Agent, text string) {
 	}
 	a.mu.Unlock()
 	a.emit("chat", done)
+	if site {
+		a.refreshAccount()
+	}
 }
 
 // Stop interrupts the turn running in a chat.
@@ -406,9 +423,16 @@ func (a *App) Stop(id string) {
 	}
 }
 
+// stopAll stops everything the app has going, as the window closes: the
+// turns, a sign-in waiting on the browser, and watching the account.
 func (a *App) stopAll() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.watchUntil = time.Time{}
+	if a.signing != nil {
+		a.signing.cancel()
+		a.signing = nil
+	}
 	for _, c := range a.chats {
 		if c.cancel != nil {
 			c.cancel()
@@ -698,6 +722,12 @@ func (c *chat) apply(ev agent.Event) []ChatEvent {
 		return []ChatEvent{c.push(Item{Kind: "notice", Tone: "info", Text: "Earlier messages were summarized to make room."})}
 
 	case agent.ErrorEvent:
+		if e := siteError(ev.Err); e != nil && e.Status == http.StatusUnauthorized {
+			return []ChatEvent{c.push(Item{
+				Kind: "notice", Tone: "error", Action: "sign-in",
+				Text: "Your caveira sign-in ran out or was revoked. Sign in again, then send your message once more.",
+			})}
+		}
 		return []ChatEvent{c.push(Item{Kind: "notice", Tone: "error", Text: ev.Err.Error()})}
 
 	case agent.DoneEvent:

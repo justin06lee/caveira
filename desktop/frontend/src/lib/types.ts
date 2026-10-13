@@ -36,9 +36,35 @@ export interface Boot {
   projects: Project[];
   workspace: Workspace;
   onboarded: boolean;
-  // plan is the plan this install is on, "" for none.
-  plan: string;
+  // account is as this machine knows it, before the site is asked.
+  account: AccountView;
   plans: Plan[];
+}
+
+// AccountView is the caveira account. Signed in, chats go through it and
+// its plan is what they may run.
+export interface AccountView {
+  signedIn: boolean;
+  email?: string;
+  // plan is the plan's id, absent until the site has said, and planName
+  // what it is called.
+  plan?: string;
+  planName?: string;
+  // used is the share of this period's usage spent, 0 to 1, until
+  // resetsAt.
+  used: number;
+  resetsAt?: string;
+  // expired says the site stopped taking this machine's sign-in.
+  expired?: boolean;
+  // waiting says a sign-in has started; code is what the browser shows
+  // too, once the site has given one.
+  waiting?: boolean;
+  code?: string;
+  // site is the caveira website, for its account page.
+  site: string;
+  // error, on the event that ends a sign-in, is why it did not go
+  // through.
+  error?: string;
 }
 
 export interface Plan {
@@ -120,14 +146,17 @@ export interface ToolView {
 
 export interface Item {
   id: string;
-  // A paywall holds the messages above it until there is a plan; its
-  // text is the model the plan lacks, if that is why.
+  // A paywall holds the messages above it until the account runs them;
+  // its text is the model the plan lacks, if that is why, and empty when
+  // signing in comes first.
   kind: "user" | "assistant" | "tool" | "notice" | "paywall";
   text?: string;
   reasoning?: string;
   streaming?: boolean;
   tool?: ToolView;
   tone?: "info" | "error";
+  // action is what a notice offers to do about itself.
+  action?: "sign-in";
 }
 
 export interface ChatView {
@@ -145,6 +174,8 @@ export interface ChatView {
   ask: boolean;
   items: Item[];
   problem?: string;
+  // needsKey says there is no key, as there is none signed out: a
+  // message sent waits for a sign-in.
   needsKey?: boolean;
 }
 

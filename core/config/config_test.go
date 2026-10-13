@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/justin06lee/caveira/core/cloud"
 )
 
 func TestLoadFindsEnvFileUpTheTree(t *testing.T) {
@@ -61,5 +63,40 @@ func TestSpecAndEffort(t *testing.T) {
 	}
 	if !ValidEffort("max") || ValidEffort("turbo") {
 		t.Fatal("effort")
+	}
+}
+
+func TestSignedInAccountCarriesTheRequests(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, v := range append(keyVars, baseURLVars...) {
+		t.Setenv(v, "")
+	}
+	t.Setenv("ABLITERATION_API_KEY", "ak_own")
+	dir := t.TempDir()
+
+	s, _ := Load(dir)
+	if s.OnAccount() || s.APIKey != "ak_own" {
+		t.Fatalf("signed out: %+v", s)
+	}
+
+	if err := cloud.Save(cloud.Auth{URL: "https://site.test", Token: "tok", Email: "a@b.c"}); err != nil {
+		t.Fatal(err)
+	}
+	s, _ = Load(dir)
+	if !s.OnAccount() || s.APIKey != "tok" || s.BaseURL != "https://site.test/api/v1" {
+		t.Fatalf("signed in: %+v", s)
+	}
+
+	// Without the account, it is back on its own key.
+	if own := s.WithoutAccount(); own.OnAccount() || own.APIKey != "ak_own" || own.BaseURL != DefaultBaseURL {
+		t.Fatalf("without the account: %+v", own)
+	}
+
+	// A server chosen on purpose is not taken over by the account.
+	t.Setenv("CAVEIRA_BASE_URL", "http://localhost:11434/v1")
+	s, _ = Load(dir)
+	if s.OnAccount() || s.BaseURL != "http://localhost:11434/v1" {
+		t.Fatalf("own server: %+v", s)
 	}
 }

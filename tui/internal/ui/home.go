@@ -280,8 +280,9 @@ func (m *Model) renderHome(t float64) (string, *tea.Cursor) {
 }
 
 // renderHomeInfo fills in the lines under the box: the model and directory
-// under its edges, the palette or the key tips below, and the startup
-// error if there is one.
+// under its edges, and below them the palette, the startup error, the
+// way to sign in when there is nothing to send messages with, or the key
+// tips.
 func (m *Model) renderHomeInfo(lines []string, f homeFrame) {
 	put := func(y, x int, s string) {
 		if y >= 0 && y < len(lines) {
@@ -307,6 +308,12 @@ func (m *Model) renderHomeInfo(lines []string, f homeFrame) {
 		put(f.infoY, f.boxX+2, left+strings.Repeat(" ", gap)+right)
 	}
 
+	if p := m.renderPalette(f.boxW); p != "" {
+		for i, l := range strings.Split(p, "\n") {
+			put(f.infoY+1+i, f.boxX, l)
+		}
+		return
+	}
 	if m.fatal != nil {
 		msg := lipgloss.Wrap("✗ "+m.fatal.Error(), min(inner-4, f.boxW-4), "")
 		for i, l := range strings.Split(msg, "\n") {
@@ -314,10 +321,13 @@ func (m *Model) renderHomeInfo(lines []string, f homeFrame) {
 		}
 		return
 	}
-	if p := m.renderPalette(f.boxW); p != "" {
-		for i, l := range strings.Split(p, "\n") {
-			put(f.infoY+1+i, f.boxX, l)
+	if m.signedOut() {
+		// Nothing to send messages with yet: signing in comes first.
+		hint := th.Muted.Render("not signed in · ") + th.Accent.Render("/login") + th.Muted.Render(" to sign in to your caveira account")
+		if lipgloss.Width(hint) > inner {
+			hint = th.Accent.Render("/login") + th.Muted.Render(" to sign in")
 		}
+		put(f.tipsY, (inner-lipgloss.Width(hint))/2, hint)
 		return
 	}
 	key := func(k, what string) string { return th.Muted.Render(k) + " " + th.Faint.Render(what) }
@@ -335,7 +345,7 @@ func (m *Model) pushHeader() {
 	if len(m.items) > 0 && m.items[0].kind == itemHeader {
 		return
 	}
-	h := &headerInfo{version: m.version, dir: m.workDir, branch: m.branch, confirm: m.cfg.Confirm}
+	h := &headerInfo{version: m.version, dir: m.workDir, branch: m.branch, confirm: m.cfg.Confirm, account: m.account}
 	if m.agent != nil {
 		h.model, h.effort, h.context = m.agent.Model, m.agent.Effort, m.agent.ContextWindow
 	}

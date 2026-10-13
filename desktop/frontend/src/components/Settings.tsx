@@ -1,19 +1,28 @@
 import { useEffect, useState } from "react";
 import { PanelLeft } from "lucide-react";
-import { api } from "../lib/bridge";
-import { effortName, tokens } from "../lib/format";
+import { api, openURL } from "../lib/bridge";
+import { effortName, resets, tokens } from "../lib/format";
 import { shortcut } from "../lib/platform";
 import { applyTheme } from "../lib/theme";
-import { getState, inputFrom, refreshChat, setState, toast, useStore } from "../lib/store";
+import {
+  getState,
+  inputFrom,
+  refreshAccount,
+  refreshChat,
+  setState,
+  signOut,
+  toast,
+  useStore,
+} from "../lib/store";
 import type { SettingsInput, Theme } from "../lib/types";
 import { ModelLogos } from "./ModelLogos";
 import { PathPicker } from "./PathPicker";
-import { Plans } from "./Plans";
+import { Plans, SignIn } from "./Plans";
 import { Select } from "./Select";
 
 // Settings is a page in place of the chat; the sidebar stays, and
-// opening a chat from it, Escape, or Cancel goes back. The plans are
-// always at the top.
+// opening a chat from it, Escape, or Cancel goes back. The account and
+// the plans are always at the top.
 export function Settings() {
   const settings = useStore((s) => s.settings)!;
   const version = useStore((s) => s.version);
@@ -36,6 +45,11 @@ export function Settings() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  // The plan and its usage as they are now, not as at launch.
+  useEffect(() => {
+    refreshAccount();
+  }, []);
 
   const save = async () => {
     setSaving(true);
@@ -75,6 +89,11 @@ export function Settings() {
       <div className="scroll settings-page">
         <div className="settings-column" role="region" aria-label="Settings">
           <h1>Settings</h1>
+
+          <section className="settings-section">
+            <h2>Account</h2>
+            <Account />
+          </section>
 
           <section className="settings-section">
             <h2>Plan</h2>
@@ -240,5 +259,50 @@ export function Settings() {
         </div>
       </div>
     </>
+  );
+}
+
+// Account is the caveira account, above the plans. Signed out it is the
+// way in; signed in, whose it is, its plan and how much of it is used,
+// and the way out. Its plan and billing are managed on the site.
+function Account() {
+  const account = useStore((s) => s.account);
+  if (!account?.signedIn) {
+    return (
+      <div className="row account">
+        <SignIn primary>
+          {account?.expired
+            ? `The sign-in for ${account.email} ran out. Sign in again to chat.`
+            : "Sign in to your caveira account to chat, on Free or a plan."}
+        </SignIn>
+      </div>
+    );
+  }
+  const used = Math.round(Math.min(1, Math.max(0, account.used)) * 100);
+  return (
+    <div className="row account">
+      <div className="row-head">
+        <div>
+          <div className="row-title">{account.email}</div>
+          <div className="row-hint">{account.planName ? `${account.planName} plan` : "Asking caveira for your plan…"}</div>
+        </div>
+        <div className="row-actions">
+          <button className="btn" onClick={() => openURL(`${account.site}/account`)}>
+            Manage
+          </button>
+          <button className="btn quiet" onClick={signOut}>
+            Sign out
+          </button>
+        </div>
+      </div>
+      {account.planName && (
+        <div className="usage">
+          <div className="usage-bar" role="meter" aria-label="Usage" aria-valuenow={used} aria-valuemin={0} aria-valuemax={100}>
+            <div style={{ width: `${used}%` }} />
+          </div>
+          <span>{[`${used}% used`, account.resetsAt ? resets(account.resetsAt) : ""].filter(Boolean).join(" · ")}</span>
+        </div>
+      )}
+    </div>
   );
 }

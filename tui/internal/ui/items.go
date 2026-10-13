@@ -74,6 +74,9 @@ type headerInfo struct {
 	version, model, effort, dir, branch string
 	confirm                             bool
 	context                             int // the model's window, in tokens
+	// account is who requests go out as through a caveira account, if
+	// they do.
+	account string
 }
 
 // renderer draws items. It carries the state that changes how an item looks
@@ -187,15 +190,22 @@ func (r *renderer) renderHeader(it *item) string {
 	if h.confirm {
 		tip = th.Faint.Render("asks before commands and edits · /help for more")
 	}
-	label := func(s string) string { return th.Faint.Render(fmt.Sprintf("%-7s", s)) }
+	labelW := 7
+	if h.account != "" {
+		labelW = 9
+	}
+	label := func(s string) string { return th.Faint.Render(fmt.Sprintf("%-*s", labelW, s)) }
 	right := []string{
 		title,
 		th.Muted.Render("coding agent for abliterated models"),
 		"",
 		label("model") + model,
 		label("cwd") + dir,
-		tip,
 	}
+	if h.account != "" {
+		right = append(right, label("account")+th.Text.Render(h.account))
+	}
+	right = append(right, tip)
 
 	rightW := 0
 	for _, l := range right {

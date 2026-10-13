@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/justin06lee/caveira/core/cloud"
 )
 
 const (
@@ -36,6 +38,10 @@ type Settings struct {
 	// KeySource says where the API key came from, for the status line and
 	// for error messages when there is none.
 	KeySource string `json:"-"`
+
+	// own is the endpoint and key as they were before a signed-in account
+	// took over, for WithoutAccount.
+	own *Settings
 }
 
 // Dir is ~/.caveira.
@@ -78,7 +84,37 @@ func Load(workDir string) (Settings, error) {
 	applyEnv(&s, os.Getenv, "environment")
 
 	s.BaseURL = strings.TrimRight(s.BaseURL, "/")
+	// Signed in, model requests go through the caveira account, which
+	// holds the abliteration.ai key. A base URL set on purpose (another
+	// server, a local model) is left alone.
+	if s.BaseURL == DefaultBaseURL {
+		if a, ok := cloud.Load(); ok {
+			own := s
+			s.own = &own
+			s.BaseURL = a.APIBase()
+			s.APIKey = a.Token
+			s.KeySource = AccountSource
+		}
+	}
 	return s, errors.Join(errs...)
+}
+
+// AccountSource is the KeySource of a signed-in caveira account.
+const AccountSource = "caveira account"
+
+// OnAccount says s sends its model requests through the caveira account.
+func (s Settings) OnAccount() bool { return s.KeySource == AccountSource }
+
+// WithoutAccount is s with the endpoint and key it would have had signed
+// out, for a run pointed somewhere else on purpose: the account's token
+// only ever goes to the caveira site.
+func (s Settings) WithoutAccount() Settings {
+	if s.own == nil {
+		return s
+	}
+	out := s
+	out.BaseURL, out.APIKey, out.KeySource, out.own = s.own.BaseURL, s.own.APIKey, s.own.KeySource, nil
+	return out
 }
 
 func merge(dst *Settings, src Settings, source string) {

@@ -4,6 +4,8 @@
 //	caveira "add a --json flag"  interactive, with the first message sent
 //	caveira -p "explain main.go" one-shot: run the task, print the reply, exit
 //	caveira -c                   continue the last session for this directory
+//	caveira login                sign in to a caveira account, without the TUI
+//	caveira logout               sign out of it
 package main
 
 import (
@@ -13,15 +15,16 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/justin06lee/caveira/core/agent"
+	"github.com/justin06lee/caveira/core/cloud"
 	"github.com/justin06lee/caveira/core/config"
 	"github.com/justin06lee/caveira/core/llm"
 	"github.com/justin06lee/caveira/core/prompt"
@@ -87,6 +90,16 @@ func run() error {
 		fmt.Println("caveira", version)
 		return nil
 	}
+	// login and logout alone on the line are commands; with more words
+	// after them they are a prompt like any other.
+	if fs.NArg() == 1 {
+		switch fs.Arg(0) {
+		case "login":
+			return login(os.Stdout, cloud.OpenBrowser)
+		case "logout":
+			return logout(os.Stdout)
+		}
+	}
 
 	workDir, err := os.Getwd()
 	if err != nil {
@@ -124,10 +137,16 @@ func run() error {
 		return nil
 	}
 
-	// load does the startup work: settings, system prompt, client, agent,
-	// and the session to continue. The TUI runs it behind its intro.
-	load := func() (ui.Options, error) {
-		cfg, cfgErr := config.Load(workDir)
+	// settings resolves the configuration with the command line laid over
+	// it. The session reads it again after /login and /logout.
+	settings := func() (config.Settings, error) {
+		cfg, err := config.Load(workDir)
+		if cfg.OnAccount() && (baseURL != "" || apiKey != "") {
+			// A key or an endpoint given on the command line is used as
+			// given, and the account's token only ever goes to the
+			// caveira site.
+			cfg = cfg.WithoutAccount()
+		}
 		if model != "" {
 			cfg.Model = model
 		}
@@ -144,20 +163,19 @@ func run() error {
 		if confirm {
 			cfg.Confirm = true
 		}
+		return cfg, err
+	}
+
+	// load does the startup work: settings, system prompt, client, agent,
+	// and the session to continue. The TUI runs it behind its intro.
+	// Signed out with no key, the TUI still starts, and says to /login.
+	load := func() (ui.Options, error) {
+		cfg, cfgErr := settings()
 		if cfg.ReasoningEffort != "" && !config.ValidEffort(cfg.ReasoningEffort) {
 			return ui.Options{}, fmt.Errorf("reasoning effort must be one of %s", strings.Join(config.Efforts, ", "))
 		}
 
 		system := prompt.Build(prompt.Options{WorkDir: workDir, Model: cfg.Model})
-
-		var fatal error
-		if cfgErr != nil {
-			fatal = cfgErr
-		}
-		if cfg.APIKey == "" && !isLocal(cfg.BaseURL) {
-			fatal = errors.New("no API key. Put ABLITERATION_API_KEY in your environment or in a .env.local in the project, " +
-				"or add \"api_key\" to " + config.Path())
-		}
 
 		client := llm.New(cfg.BaseURL, cfg.APIKey)
 		ag := agent.New(client, cfg, workDir, system)
@@ -192,7 +210,8 @@ func run() error {
 			Version:  version,
 			Initial:  initial,
 			Resumed:  resumed,
-			Fatal:    fatal,
+			Fatal:    cfgErr,
+			Reload:   settings,
 		}, nil
 	}
 
@@ -203,6 +222,9 @@ func run() error {
 		}
 		if o.Fatal != nil {
 			return o.Fatal
+		}
+		if ui.KeyMissing(o.Settings) {
+			return errors.New(`not signed in. Run "caveira login" to sign in to your caveira account, then try again`)
 		}
 		if initial == "" || initial == "-" {
 			b, err := io.ReadAll(bufio.NewReader(os.Stdin))
@@ -291,19 +313,75 @@ func gitBranch(dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func isLocal(baseURL string) bool {
-	u, err := url.Parse(baseURL)
-	if err != nil {
-		return false
+// login is /login without the TUI, for a machine reached over SSH or one
+// with no screen: it prints the page and the code, opens the browser if it
+// can, and waits until the page has been approved.
+func login(out io.Writer, open func(string) error) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	if a, ok := cloud.Load(); ok {
+		// A token the site no longer takes is replaced; any other is kept.
+		check, done := context.WithTimeout(ctx, 15*time.Second)
+		_, err := cloud.Me(check, a)
+		done()
+		if !cloud.Unauthorized(err) {
+			fmt.Fprintf(out, "Already signed in as %s. Run \"caveira logout\" first to use another account.\n", a.Email)
+			return nil
+		}
 	}
-	h := u.Hostname()
-	return h == "localhost" || h == "127.0.0.1" || h == "::1" || h == "0.0.0.0"
+
+	site := cloud.URL()
+	code, err := cloud.Start(ctx, site, "tui", cloud.Label())
+	if err != nil {
+		return fmt.Errorf("cannot start the login: %w", err)
+	}
+	lead := "Opening your browser to sign in to caveira. If it didn't open, visit"
+	if open(code.VerifyURL) != nil {
+		lead = "To sign in to caveira, visit"
+	}
+	fmt.Fprintf(out, "%s\n\n  %s\n\nand check the page shows the code %s\n\nWaiting for the browser… (ctrl+c cancels)\n",
+		lead, code.VerifyURL, code.UserCode)
+
+	a, err := cloud.Wait(ctx, site, code)
+	if ctx.Err() != nil {
+		return errors.New("login cancelled")
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "Signed in as", a.Email)
+	return nil
+}
+
+// logout ends the account's session on the caveira site and forgets it
+// on this machine.
+func logout(out io.Writer) error {
+	a, ok := cloud.Load()
+	if !ok {
+		fmt.Fprintln(out, "Not signed in.")
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	err := cloud.Logout(ctx)
+	if _, still := cloud.Load(); still {
+		return fmt.Errorf("cannot sign out: %w", err)
+	}
+	fmt.Fprintln(out, "Signed out of", a.Email)
+	if err != nil {
+		// The token is gone from here; the site may still take it.
+		return fmt.Errorf("the caveira site could not be told: %w", err)
+	}
+	return nil
 }
 
 const usage = `caveira — a coding agent for abliterated models
 
 usage
   caveira [flags] [prompt]      (or cav, the same program)
+  caveira login                 sign in to your caveira account
+  caveira logout                sign out
 
   With no prompt, opens an interactive session in the current directory.
   With a prompt, opens the session and sends it as the first message.
@@ -312,8 +390,9 @@ flags
   -p, --print            run the prompt non-interactively, print the reply, exit
   -m, --model <id>       model to use (default abliterated-model)
       --effort <level>   reasoning effort: none minimal low medium high xhigh max
-      --base-url <url>   OpenAI-compatible endpoint (default https://api.abliteration.ai/v1)
-      --api-key <key>    API key (prefer the environment or a .env.local)
+      --base-url <url>   OpenAI-compatible endpoint (default: your caveira account,
+                         or https://api.abliteration.ai/v1 with an API key)
+      --api-key <key>    API key, used instead of the account (prefer the environment)
   -C, --cwd <dir>        work in this directory instead of the current one
       --confirm          ask before running commands or changing files
   -c, --continue         continue the latest session for this directory
@@ -321,6 +400,13 @@ flags
       --sessions         list saved sessions
       --show-system-prompt
       --version, --help
+
+signing in
+  caveira login (or /login in a session) opens caveira in the browser; once
+  you connect it there, model requests go through your caveira account. It
+  prints the page and the code too, for a machine reached over SSH. For
+  development, an API key in the environment works instead.
+  CAVEIRA_CLOUD_URL points sign-in at another caveira site.
 
 configuration
   Environment: CAVEIRA_API_KEY or ABLITERATION_API_KEY or ABLIT_KEY,

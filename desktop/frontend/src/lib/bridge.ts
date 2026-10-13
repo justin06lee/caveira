@@ -3,6 +3,7 @@
 // on its own and the types stay the ones in types.ts.
 
 import type {
+  AccountView,
   Boot,
   ChatEvent,
   ChatHeader,
@@ -57,20 +58,31 @@ export const api = {
   openChat: (id: string) => call<ChatView>("OpenChat", id),
   chats: (dir: string) => call<ChatHeader[] | null>("Chats", dir),
   deleteChat: (id: string) => call<void>("DeleteChat", id),
-  // send says whether a turn started; without a plan it is held.
+  // send says whether a turn started; one the account cannot run is held.
   send: (id: string, text: string) => call<boolean>("Send", id, text),
   stop: (id: string) => call<void>("Stop", id),
   answer: (id: string, callId: string, decision: "allow" | "always" | "deny") =>
     call<void>("Answer", id, callId, decision),
   setModel: (id: string, model: string, window: number, effort: string) =>
     call<ChatView>("SetModel", id, model, window, effort),
-  subscribe: (plan: string, chatId: string) => call<string>("Subscribe", plan, chatId),
+  // subscribe opens the plan's checkout on the caveira site, in the browser.
+  subscribe: (plan: string) => call<void>("Subscribe", plan),
+  // account asks the site about the account; signIn opens its sign-in
+  // page, and "account" events say how it went.
+  account: () => call<AccountView>("Account"),
+  signIn: () => call<AccountView>("SignIn"),
+  cancelSignIn: () => call<AccountView>("CancelSignIn"),
+  signOut: () => call<AccountView>("SignOut"),
   setPermissions: (id: string, ask: boolean) => call<ChatView>("SetPermissions", id, ask),
   titleBarDoubleClick: () => call<void>("TitleBarDoubleClick"),
 };
 
 export function onChatEvent(cb: (e: ChatEvent) => void): () => void {
   return window.runtime?.EventsOn("chat", (e) => cb(e as ChatEvent)) ?? (() => {});
+}
+
+export function onAccount(cb: (a: AccountView) => void): () => void {
+  return window.runtime?.EventsOn("account", (a) => cb(a as AccountView)) ?? (() => {});
 }
 
 export function onImport(cb: (p: ImportProgress) => void): () => void {

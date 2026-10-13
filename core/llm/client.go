@@ -194,6 +194,10 @@ func parseError(status int, raw []byte) error {
 			e.Message = fmt.Sprintf("HTTP %d %s", status, http.StatusText(status))
 		}
 	}
+	// The caveira site's own errors already say what to do.
+	if e.Type == "caveira" {
+		return e
+	}
 	switch status {
 	case http.StatusUnauthorized:
 		e.Message += " (check your API key)"

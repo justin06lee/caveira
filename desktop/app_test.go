@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/justin06lee/caveira/core/agent"
+	"github.com/justin06lee/caveira/core/cloud"
 	"github.com/justin06lee/caveira/core/config"
 	"github.com/justin06lee/caveira/core/llm"
 )
@@ -51,9 +52,16 @@ func sse(text, callID, name, args string) string {
 // fakeModel answers each request with the next scripted reply.
 func fakeModel(t *testing.T, replies ...string) *httptest.Server {
 	t.Helper()
+	srv := httptest.NewServer(scripted(replies...))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// scripted is fakeModel's answers, for serving behind the stand-in site.
+func scripted(replies ...string) http.Handler {
 	var mu sync.Mutex
 	n := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.ReadAll(r.Body)
 		mu.Lock()
 		i := n
@@ -66,25 +74,36 @@ func fakeModel(t *testing.T, replies ...string) *httptest.Server {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		io.WriteString(w, replies[i])
-	}))
-	t.Cleanup(srv.Close)
-	return srv
+	})
 }
 
 // testApp is an App with its own home, pointed at srv, in a project with
-// one file in it.
+// one file in it, signed in on Free to a stand-in for the caveira site.
 func testApp(t *testing.T, srv *httptest.Server) (*App, string) {
+	t.Helper()
+	base := ""
+	if srv != nil {
+		base = srv.URL
+	}
+	a, dir, _ := appOn(t, base, nil)
+	return a, dir
+}
+
+// appOn is testApp, with the stand-in site to hand. Model requests go to
+// base, or with base "" through the site to model.
+func appOn(t *testing.T, base string, model http.Handler) (*App, string, *site) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("TERM", "test") // no login shell to ask
-	for _, k := range []string{"CAVEIRA_API_KEY", "ABLITERATION_API_KEY", "ABLIT_KEY", "CAVEIRA_MODEL", "CAVEIRA_CONFIRM", "CAVEIRA_REASONING_EFFORT"} {
+	for _, k := range []string{"CAVEIRA_API_KEY", "ABLITERATION_API_KEY", "ABLIT_KEY", "ABLITERATION_BASE_URL", "CAVEIRA_MODEL", "CAVEIRA_CONFIRM", "CAVEIRA_REASONING_EFFORT"} {
 		t.Setenv(k, "")
 	}
-	if srv != nil {
-		t.Setenv("CAVEIRA_BASE_URL", srv.URL)
-	} else {
-		t.Setenv("CAVEIRA_BASE_URL", "")
+	t.Setenv("CAVEIRA_BASE_URL", base)
+	st := newSite(t, model)
+	t.Setenv("CAVEIRA_CLOUD_URL", st.URL)
+	if err := cloud.Save(cloud.Auth{URL: st.URL, Token: st.token, Email: st.email}); err != nil {
+		t.Fatal(err)
 	}
 	dir := filepath.Join(t.TempDir(), "proj")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -94,10 +113,14 @@ func testApp(t *testing.T, srv *httptest.Server) (*App, string) {
 		t.Fatal(err)
 	}
 	a := NewApp("test")
-	a.prefs.Plan = "free"
 	// Naming would take a scripted reply; names_test.go names chats.
 	a.namer = nil
-	return a, dir
+	a.browse = func(string) error { return nil }
+	t.Cleanup(a.stopAll)
+	if v := a.refreshAccount(); v.Plan != "free" {
+		t.Fatalf("not on Free: %+v", v)
+	}
+	return a, dir, st
 }
 
 func waitIdle(t *testing.T, a *App, id string, until func(ChatView) bool) ChatView {
@@ -233,10 +256,14 @@ func TestApprovalWaitsForAnAnswer(t *testing.T) {
 	}
 }
 
-// Without a key the chat says so instead of running; the key is not one
-// the window can set, but one in the environment is picked up.
+// Signed out there is no key, and a message waits under a sign-in instead
+// of running; the key is not one the window can set, but one in the
+// environment is picked up.
 func TestNoKeyIsAProblemNotACrash(t *testing.T) {
 	a, dir := testApp(t, nil)
+	if _, err := a.SignOut(); err != nil {
+		t.Fatal(err)
+	}
 	v, err := a.NewChat(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -244,8 +271,12 @@ func TestNoKeyIsAProblemNotACrash(t *testing.T) {
 	if !v.NeedsKey {
 		t.Fatalf("want NeedsKey: %+v", v)
 	}
-	if _, err := a.Send(v.ID, "hi"); err == nil || !strings.Contains(err.Error(), "no key") {
-		t.Fatalf("send without a key: %v", err)
+	if started, err := a.Send(v.ID, "hi"); err != nil || started {
+		t.Fatalf("send without a key: started %v, %v", started, err)
+	}
+	v, _ = a.OpenChat(v.ID)
+	if got := kinds(v.Items); got != "user paywall" || v.Items[1].Text != "" {
+		t.Fatalf("want it held for a sign-in: %q %+v", got, v.Items)
 	}
 	if a.Settings().Ready {
 		t.Fatal("settings say ready without a key")
