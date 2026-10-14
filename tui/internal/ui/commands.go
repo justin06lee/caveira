@@ -277,12 +277,21 @@ func (m *Model) runCompact() tea.Cmd {
 
 // ---- account ----
 
-// signInHint is what a session with neither an account nor a key says.
+// signInHint is what a session without a caveira account says.
 const signInHint = "not signed in · /login to sign in to your caveira account"
 
-// KeyMissing says s has nothing to send model requests with: no caveira
-// account, no API key, and not a server on this machine, which needs none.
+// KeyMissing says s has nothing to send model requests with.
+// abliteration.ai's models come through a caveira account only, so a key
+// of one's own for them does not count. A server set on purpose with
+// --base-url or CAVEIRA_BASE_URL needs only its own key, and one on this
+// machine none.
 func KeyMissing(s config.Settings) bool {
+	if s.OnAccount() {
+		return false
+	}
+	if strings.TrimRight(s.BaseURL, "/") == config.DefaultBaseURL {
+		return true
+	}
 	if s.APIKey != "" {
 		return false
 	}

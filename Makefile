@@ -4,7 +4,7 @@ BINDIR    ?= $(HOME)/.local/bin
 APPDIR    ?= /Applications
 APP       := caveira.app
 BUNDLE_ID := dev.caveira.desktop
-VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION   := $(shell git describe --tags --match 'v*' --always --dirty 2>/dev/null || echo dev)
 LDFLAGS   := -s -w -X main.version=$(VERSION)
 WAILS     ?= go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
 UNAME     := $(shell uname -s)
@@ -31,7 +31,7 @@ MODULES := core tui desktop
 # The steps of an update run in order, even under make -j.
 .NOTPARALLEL:
 
-.PHONY: all build install update test deps tui desktop place place-tui place-desktop strays quit-desktop reset-permissions launch
+.PHONY: all build install update test dist dmg deps tui desktop place place-tui place-desktop strays quit-desktop reset-permissions launch
 
 # The golden path, and the update: everything new, everywhere caveira is
 # on this machine, then the app opened. Safe to run again at any time.
@@ -78,6 +78,21 @@ test:
 	cd tui && go vet ./... && go test ./...
 	cd desktop && go vet ./... && go test ./...
 
+# The terminal client for each platform install.sh serves, packed the way
+# a GitHub release carries it: a tar.gz each, and their checksums. The
+# release workflow runs this on a version tag.
+DIST_TARGETS := darwin/arm64 darwin/amd64 linux/amd64 linux/arm64
+
+dist:
+	rm -rf dist && mkdir -p dist
+	@for t in $(DIST_TARGETS); do \
+		os=$${t%/*}; arch=$${t#*/}; out=dist/caveira_$${os}_$${arch}; \
+		echo "building $$os/$$arch"; \
+		(cd tui && CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o ../$$out/$(BINARY) .) || exit 1; \
+		COPYFILE_DISABLE=1 tar -czf $$out.tar.gz -C $$out $(BINARY) && rm -rf $$out || exit 1; \
+	done
+	cd dist && { command -v sha256sum >/dev/null && sha256sum *.tar.gz || shasum -a 256 *.tar.gz; } > checksums.txt
+
 tui:
 	cd tui && go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) .
 
@@ -111,15 +126,29 @@ ifeq ($(UNAME),Darwin)
 # paths are absolute because it resolves relative ones in a helper process.
 desktop:
 	cd desktop && CGO_CFLAGS=$(MACOS_MIN) CGO_LDFLAGS=$(MACOS_MIN) \
-		$(WAILS) build -clean -skipbindings -ldflags "$(LDFLAGS)"
-	@if [ -n "$(XCODE_DEV)" ]; then \
+		$(WAILS) build -clean -skipbindings $(if $(WAILS_PLATFORM),-platform $(WAILS_PLATFORM)) -ldflags "$(LDFLAGS)"
+	@if [ -n "$(XCODE_DEV)" ] && \
 		DEVELOPER_DIR="$(XCODE_DEV)" "$(XCODE_DEV)/usr/bin/actool" $(CURDIR)/desktop/build/darwin/caveira.icon --app-icon caveira \
 			--compile $(CURDIR)/desktop/build/bin/$(APP)/Contents/Resources \
 			--platform macosx --target-device mac --minimum-deployment-target 13.0 \
-			--output-partial-info-plist $(CURDIR)/desktop/build/bin/icon.plist >/dev/null && \
+			--output-partial-info-plist $(CURDIR)/desktop/build/bin/icon.plist >/dev/null; then \
 		rm -f desktop/build/bin/$(APP)/Contents/Resources/caveira.icns && \
 		codesign --force --sign - desktop/build/bin/$(APP); \
-	else echo "no Xcode found: the app keeps the classic icon, which the Dock shades with glass"; fi
+	else echo "no Xcode that compiles Icon Composer icons: the app keeps the classic icon, which the Dock shades with glass"; fi
+
+# The app as a disk image to download, for Apple silicon and Intel alike,
+# with a link to Applications to drag it onto. It is signed ad hoc: with
+# no Developer ID to sign and notarize it, macOS asks for Open Anyway in
+# Privacy & Security the first time it opens. Run after make dist, which
+# empties dist/.
+dmg:
+	$(MAKE) desktop WAILS_PLATFORM=darwin/universal
+	codesign --force --deep --sign - desktop/build/bin/$(APP)
+	rm -rf dist/dmg dist/caveira.dmg && mkdir -p dist/dmg
+	ditto desktop/build/bin/$(APP) dist/dmg/$(APP)
+	ln -s /Applications dist/dmg/Applications
+	hdiutil create -volname caveira -srcfolder dist/dmg -fs HFS+ -format UDZO -ov dist/caveira.dmg
+	rm -rf dist/dmg
 
 place-desktop:
 	rm -rf $(APPDIR)/$(APP)

@@ -4,7 +4,7 @@ The terminal client: the coding agent itself, in Go with [Bubble Tea](https://gi
 
 ## What it does
 
-You describe a task; caveira reads and searches the project, edits files, runs commands, and checks its own work, streaming everything to the screen as it happens. Signed in to a caveira account, its model requests go through the account, which runs them on abliteration.ai; for development it talks to any OpenAI-compatible chat completions endpoint as well: abliteration.ai with your own key, or a local Ollama / vLLM / llama.cpp server.
+You describe a task; caveira reads and searches the project, edits files, runs commands, and checks its own work, streaming everything to the screen as it happens. Signed in to a caveira account, its model requests go through the account, which runs them on abliteration.ai; for development it talks to another OpenAI-compatible chat completions endpoint as well, such as a local Ollama / vLLM / llama.cpp server.
 
 ```sh
 caveira                          # interactive session in the current directory
@@ -15,7 +15,7 @@ caveira login                    # sign in to your caveira account (or /login in
 caveira logout                   # sign out
 ```
 
-`cav` is the same program under a shorter name; `make` installs both.
+`cav` is the same program under a shorter name; `curl -fsSL https://caveira.ai/install.sh | sh` installs both, and so does `make` from a clone.
 
 On launch the pixel skull dissolves in and the name types itself in under it while settings, git state, and the previous session load on another goroutine; any key skips the intro. The prompt then appears centred under them, with the model and directory beneath it, in the same place the intro left room for, so nothing moves. The skull is drawn as large as the terminal's height allows, and left out on very small ones. The first prompt slides the box to the bottom as the skull dissolves out, and the transcript opens with a card of the session's model and directory.
 
@@ -29,15 +29,15 @@ Sessions are saved as JSON under `~/.caveira/sessions/` after every turn, so `ca
 
 ## Signing in
 
-caveira runs on your caveira account. Type `/login` in a session: your browser opens the caveira site's sign-in page with a code on it, and while you sign in there and connect this machine, the session waits in the background and you can keep typing. The transcript shows the page's address, in case the browser did not come up, and the code, to check against the page; `esc` or a second `/login` calls the wait off. Once you connect it, the transcript says `Signed in as` your email, the session card shows the account, and the same session, conversation and all, carries on through it without a restart. Already signed in, `/login` only says as whom; `/logout` first to use another account. `/logout` ends the session on the site and on this machine, and the session falls back on whatever API key is configured, or says to `/login` when there is none.
+caveira runs on your caveira account. Type `/login` in a session: your browser opens the caveira site's sign-in page with a code on it, and while you sign in there and connect this machine, the session waits in the background and you can keep typing. The transcript shows the page's address, in case the browser did not come up, and the code, to check against the page; `esc` or a second `/login` calls the wait off. Once you connect it, the transcript says `Signed in as` your email, the session card shows the account, and the same session, conversation and all, carries on through it without a restart. Already signed in, `/login` only says as whom; `/logout` first to use another account. `/logout` ends the session on the site and on this machine, and the session says to `/login` again.
 
 The token is kept in `~/.caveira/auth.json`, readable only by you. Model requests go with it to the caveira site's OpenAI-compatible `/api/v1`, which holds the abliteration.ai key, checks your plan and usage, and forwards them; when the site turns a request down (signed out elsewhere, out of usage, a model your plan does not run), its own message is what the transcript shows.
 
-`caveira login` and `caveira logout` do the same without the interface, for a machine reached over SSH or with no screen: `login` prints the page and the code, tries the browser, waits, and prints who it signed in as. Started with neither an account nor a key, caveira opens anyway, and its home screen and any message you send say to `/login`; `caveira -p` fails at once and says to run `caveira login`. `CAVEIRA_CLOUD_URL` points signing in at another caveira site than `https://caveira.ai`.
+`caveira login` and `caveira logout` do the same without the interface, for a machine reached over SSH or with no screen: `login` prints the page and the code, tries the browser, waits, and prints who it signed in as. Started without an account, caveira opens anyway, but sends nothing: its home screen and any message you send say to `/login`, and `caveira -p` fails at once and says to run `caveira login`. An abliteration.ai key of your own does not stand in for the account. `CAVEIRA_CLOUD_URL` points signing in at another caveira site than `https://caveira.ai`.
 
 ## Configuration
 
-For development, an API key works instead of an account, and an endpoint on localhost needs neither. caveira looks, in order of increasing priority, at `~/.caveira/config.json`, then `.env` and `.env.local` files between the repository root and the working directory, then the environment, then flags:
+For development, `--base-url` or `CAVEIRA_BASE_URL` points caveira at another OpenAI-compatible server, which takes its own API key; one on localhost needs none. abliteration.ai itself, the default endpoint, is reached only through the account. caveira looks, in order of increasing priority, at `~/.caveira/config.json`, then `.env` and `.env.local` files between the repository root and the working directory, then the environment, then flags:
 
 | What | Environment | `config.json` | Flag |
 |---|---|---|---|
@@ -51,7 +51,7 @@ The default endpoint is `https://api.abliteration.ai/v1` and the default model i
 
 A local server works too, with `--base-url` and `--model`.
 
-Signed in, the account takes the place of the default endpoint and of any key from the files or the environment. A `base_url` set on purpose (another server, a local model) is left alone, and `--base-url` or `--api-key` on the command line are used as given: the account's token only ever goes to the caveira site.
+Signed in, the account takes the place of the default endpoint and of any key from the files or the environment, and `--api-key` alone changes nothing. A `base_url` set on purpose (another server, a local model) is left alone, and so is `--base-url` on the command line: the account's token only ever goes to the caveira site.
 
 Project instructions are read from `CAVEIRA.md`, `AGENTS.md`, or `CLAUDE.md` (the first found in each directory from the repository root down to the working directory) and appended to the system prompt. `caveira --show-system-prompt` prints the prompt it would use here.
 

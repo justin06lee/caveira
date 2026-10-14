@@ -141,19 +141,20 @@ func run() error {
 	// it. The session reads it again after /login and /logout.
 	settings := func() (config.Settings, error) {
 		cfg, err := config.Load(workDir)
-		if cfg.OnAccount() && (baseURL != "" || apiKey != "") {
-			// A key or an endpoint given on the command line is used as
-			// given, and the account's token only ever goes to the
-			// caveira site.
+		// abliteration.ai is reached through the account, so a key or an
+		// endpoint for it on the command line changes nothing. Another
+		// endpoint is used as given, and the account's token only ever
+		// goes to the caveira site.
+		if cfg.OnAccount() && baseURL != "" && strings.TrimRight(baseURL, "/") != config.DefaultBaseURL {
 			cfg = cfg.WithoutAccount()
 		}
 		if model != "" {
 			cfg.Model = model
 		}
-		if baseURL != "" {
+		if baseURL != "" && !cfg.OnAccount() {
 			cfg.BaseURL = strings.TrimRight(baseURL, "/")
 		}
-		if apiKey != "" {
+		if apiKey != "" && !cfg.OnAccount() {
 			cfg.APIKey = apiKey
 			cfg.KeySource = "flag"
 		}
@@ -168,7 +169,7 @@ func run() error {
 
 	// load does the startup work: settings, system prompt, client, agent,
 	// and the session to continue. The TUI runs it behind its intro.
-	// Signed out with no key, the TUI still starts, and says to /login.
+	// Signed out, the TUI still starts, and says to /login.
 	load := func() (ui.Options, error) {
 		cfg, cfgErr := settings()
 		if cfg.ReasoningEffort != "" && !config.ValidEffort(cfg.ReasoningEffort) {
@@ -390,9 +391,9 @@ flags
   -p, --print            run the prompt non-interactively, print the reply, exit
   -m, --model <id>       model to use (default abliterated-model)
       --effort <level>   reasoning effort: none minimal low medium high xhigh max
-      --base-url <url>   OpenAI-compatible endpoint (default: your caveira account,
-                         or https://api.abliteration.ai/v1 with an API key)
-      --api-key <key>    API key, used instead of the account (prefer the environment)
+      --base-url <url>   another OpenAI-compatible server, for development
+                         (default: your caveira account)
+      --api-key <key>    the key for that server (prefer the environment)
   -C, --cwd <dir>        work in this directory instead of the current one
       --confirm          ask before running commands or changing files
   -c, --continue         continue the latest session for this directory
@@ -404,8 +405,9 @@ flags
 signing in
   caveira login (or /login in a session) opens caveira in the browser; once
   you connect it there, model requests go through your caveira account. It
-  prints the page and the code too, for a machine reached over SSH. For
-  development, an API key in the environment works instead.
+  prints the page and the code too, for a machine reached over SSH. Without
+  an account caveira does not send messages; a key of your own does not
+  stand in for one. For development, --base-url points it at another server.
   CAVEIRA_CLOUD_URL points sign-in at another caveira site.
 
 configuration
