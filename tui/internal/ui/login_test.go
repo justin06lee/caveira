@@ -299,10 +299,10 @@ func TestLoginWhenSignedInSaysWho(t *testing.T) {
 	}
 }
 
-// /logout ends the session on the site and here, and the session falls
-// back on the key the environment has, or says to /login when there is
-// none.
-func TestLogoutFallsBackOnWhatIsLeft(t *testing.T) {
+// /logout ends the session on the site and here. A key of one's own for
+// abliteration.ai does not stand in for the account, so the session then
+// says to /login, and so does any message sent.
+func TestLogoutSaysToLoginAgain(t *testing.T) {
 	site := newSite(t)
 	m, _ := signedOutSession(t, site)
 	t.Setenv("CAVEIRA_API_KEY", "dev-key")
@@ -313,34 +313,44 @@ func TestLogoutFallsBackOnWhatIsLeft(t *testing.T) {
 	}
 
 	settle(m, m.slash("/logout"))
-	if it := last(m); it.kind != itemNotice || it.text != "Signed out\nrequests now use the API key from the environment" {
+	if it := last(m); it.kind != itemNotice || it.text != "Signed out\n/login to sign in again" {
 		t.Fatalf("after /logout: %+v", it)
 	}
 	if site.logouts.Load() != 1 {
 		t.Fatal("the site was not told")
 	}
-	if c := m.agent.Client; c.BaseURL != config.DefaultBaseURL || c.APIKey != "dev-key" {
-		t.Fatalf("client after sign-out: %s with %q", c.BaseURL, c.APIKey)
-	}
 	if m.items[0].header.account != "" {
 		t.Fatal("the session card still names the account")
 	}
-
-	t.Setenv("CAVEIRA_API_KEY", "")
-	cloud.Save(cloud.Auth{URL: site.URL, Token: "tok", Email: "rebel@caveira.ai"})
-	m.useSettings()
-	settle(m, m.slash("/logout"))
-	if it := last(m); it.text != "Signed out\n/login to sign in again" {
-		t.Fatalf("after /logout with no key left: %+v", it)
-	}
 	m.submit("hello?")
 	if it := last(m); it.kind != itemError || it.text != signInHint {
-		t.Fatalf("a message with no key left: %+v", it)
+		t.Fatalf("a message signed out, with a key of its own: %+v", it)
 	}
 
 	m.slash("/logout")
 	if it := last(m); it.text != "not signed in" {
 		t.Fatalf("/logout signed out: %+v", it)
+	}
+}
+
+// Only the account reaches abliteration.ai; a server set on purpose needs
+// its own key, or none on this machine.
+func TestKeyMissing(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		s       config.Settings
+		missing bool
+	}{
+		{"own key for abliteration.ai", config.Settings{BaseURL: config.DefaultBaseURL, APIKey: "own"}, true},
+		{"nothing", config.Settings{BaseURL: config.DefaultBaseURL}, true},
+		{"account", config.Settings{BaseURL: "https://caveira.ai/api/v1", APIKey: "tok", KeySource: config.AccountSource}, false},
+		{"another server with its key", config.Settings{BaseURL: "https://models.example/v1", APIKey: "own"}, false},
+		{"another server without one", config.Settings{BaseURL: "https://models.example/v1"}, true},
+		{"a server on this machine", config.Settings{BaseURL: "http://localhost:11434/v1"}, false},
+	} {
+		if got := KeyMissing(c.s); got != c.missing {
+			t.Errorf("%s: KeyMissing = %v, want %v", c.name, got, c.missing)
+		}
 	}
 }
 
