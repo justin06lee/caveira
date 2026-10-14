@@ -18,13 +18,13 @@ It comes as a terminal client and a desktop app, which share one agent and one s
 ## Quick start
 
 ```sh
-make                                   # builds and installs `caveira` (and `cav`) into ~/.local/bin
-                                       # and the app (caveira.app in /Applications on macOS,
-                                       # caveira-desktop plus a launcher on Linux), then opens it
-cd your/project && caveira             # then /login to sign in to your caveira account
+curl -fsSL https://caveira.ai/install.sh | sh   # installs `caveira` (and `cav`) into ~/.local/bin
+cd your/project && caveira                       # then /login to sign in to your caveira account
 ```
 
-`/login` opens the caveira site in your browser; once you connect this machine there, the session carries on through your account, with no key to paste anywhere. On a machine you reach over SSH, `caveira login` prints the page and the code instead. For development, an abliteration.ai key still works without an account: put `ABLITERATION_API_KEY=ak_…` in the environment, in a `.env.local` in the project, or in `~/.caveira/config.json`.
+The script downloads the latest release built for your machine (macOS or Linux, Apple silicon/arm64 or x86-64), checks it against the release's checksums, and puts it in `~/.local/bin`; run it again to update. `CAVEIRA_VERSION=v0.2.0` installs a given release and `CAVEIRA_INSTALL_DIR` another folder. From a clone, `make` builds and installs both clients instead, the app included (see below).
+
+`/login` opens the caveira site in your browser; once you connect this machine there, the session carries on through your account, with no key to paste anywhere. On a machine you reach over SSH, `caveira login` prints the page and the code instead. Without an account the terminal client sends nothing; an abliteration.ai key of your own does not stand in for one. For development, `--base-url` (or `CAVEIRA_BASE_URL`) points it at another OpenAI-compatible server, a local model say, with that server's own key.
 
 In the app, open a folder, sign in to your caveira account (it opens the caveira site in the browser), and type. The app runs on abliteration.ai's models alone, through the account, so it has no field for a key; a chat there runs on the account's plan, Free or paid, bought on the caveira site.
 
@@ -54,6 +54,8 @@ Conversations are saved after every turn under `~/.caveira/sessions/`, and when 
 - `assets/` holds the app icon: a softly rounded, pure-black skull eye socket on an off-white (`#F8F7F2`) squircle.
 
 `make` (or `make update`, the same thing) brings every caveira on this machine up to date: it builds both clients first, so a build that fails leaves the installed ones working, then quits the app, swaps in `caveira` with a `cav` link beside it and the app, points any older copy of caveira on your `PATH` (an old `go install` in `~/go/bin`, say) at the new one, and opens the app. A Go module cache that something has emptied part of is repaired on the way. `make install` does all that but opening the app, `make build` only builds, and `make test` runs the Go tests of all three modules. Set `BINDIR` to install the terminal client somewhere other than `~/.local/bin`, and `APPDIR` for the macOS app.
+
+Pushing a tag like `v0.2.0` runs the release workflow (`.github/workflows/release.yml`): it tests `core` and `tui`, builds the terminal client for macOS and Linux on arm64 and x86-64 with `make dist`, and publishes a GitHub release with a `caveira_<os>_<arch>.tar.gz` for each and a `checksums.txt`, which is what `install.sh` downloads; then a macOS runner builds the app with `make dmg`, for Apple silicon and Intel in one, and attaches `caveira.dmg`, which [caveira.ai/download/macos](https://caveira.ai/download/macos) hands out. `make dist dmg` builds the same files into `dist/` locally. The app is signed ad hoc, not with a Developer ID, so the first time it opens macOS asks for Open Anyway in System Settings → Privacy & Security.
 
 ## Linux
 

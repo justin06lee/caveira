@@ -1,0 +1,62 @@
+name: release
+
+# Pushing a tag like v0.2.0 publishes a GitHub release with the terminal
+# client for macOS and Linux, which install.sh downloads, and the app as
+# caveira.dmg, which caveira.ai/download/macos hands out.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  tui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The whole history, so the version comes from the tag.
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: tui/go.mod
+          cache-dependency-path: |
+            core/go.sum
+            tui/go.sum
+      - name: Test
+        run: |
+          cd core && go test ./...
+          cd ../tui && go test ./...
+      - name: Build
+        run: make dist
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+
+  app:
+    # The release the disk image joins is made by the tui job.
+    needs: tui
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: |
+            core/go.sum
+            desktop/go.sum
+      - uses: oven-sh/setup-bun@v2
+      # The newest Xcode on the runner, whose actool may compile the Icon
+      # Composer icon; without one that can, the app keeps the classic icon.
+      - name: Use the newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+      - name: Build
+        run: make dmg
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/caveira.dmg --clobber
