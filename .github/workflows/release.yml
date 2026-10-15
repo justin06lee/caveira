@@ -50,6 +50,8 @@ jobs:
             core/go.sum
             desktop/go.sum
       - uses: oven-sh/setup-bun@v2
+      # make dmg lays the window out with dmgbuild, through uvx.
+      - uses: astral-sh/setup-uv@v6
       # The newest Xcode on the runner, whose actool may compile the Icon
       # Composer icon; without one that can, the app keeps the classic icon.
       - name: Use the newest Xcode

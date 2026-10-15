@@ -1,0 +1,108 @@
+<!doctype html>
+<!--
+  The disk image's window background, 660x420. make dmg uses the
+  background.png and background@2x.png rendered from this page; after
+  changing it, render it again: a 2x browser screenshot cropped to #bg
+  from the top-left corner (sips -c crops from the centre, which shifts
+  the picture in Finder), and that scaled to 660x420. Keep the icon spots
+  in settings.py in step with the arrow. The fonts come from the
+  frontend's node_modules.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @font-face {
+        font-family: Poppins;
+        font-weight: 400;
+        src: url(../../../frontend/node_modules/@fontsource/poppins/files/poppins-latin-400-normal.woff2);
+      }
+      @font-face {
+        font-family: Poppins;
+        font-weight: 500;
+        src: url(../../../frontend/node_modules/@fontsource/poppins/files/poppins-latin-500-normal.woff2);
+      }
+      @font-face {
+        font-family: Poppins;
+        font-weight: 600;
+        src: url(../../../frontend/node_modules/@fontsource/poppins/files/poppins-latin-600-normal.woff2);
+      }
+      html,
+      body {
+        margin: 0;
+        background: #000;
+      }
+      #bg {
+        position: relative;
+        width: 660px;
+        height: 420px;
+        overflow: hidden;
+        font-family: Poppins, sans-serif;
+        background: radial-gradient(120% 90% at 50% 70%, #eee6da 0%, #e6dccd 70%, #ddd1c0 100%);
+      }
+      /* The burning forest across the top, eased out into the paper. */
+      .painting {
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 200px;
+        background: url(forest.webp) 50% 58% / cover;
+        -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 52%, rgb(0 0 0 / 0.55) 74%, transparent 100%);
+      }
+      .painting::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to bottom, rgb(12 8 6 / 0.55), rgb(12 8 6 / 0.25) 60%, transparent);
+      }
+      .head {
+        position: absolute;
+        top: 30px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        color: #f3ebe2;
+      }
+      .head img {
+        width: 52px;
+        height: 52px;
+        filter: drop-shadow(0 4px 12px rgb(0 0 0 / 0.45));
+      }
+      .head h1 {
+        margin: 8px 0 0;
+        font-size: 17px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        text-shadow: 0 1px 10px rgb(0 0 0 / 0.6);
+      }
+      .arrow {
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+      .hint {
+        position: absolute;
+        bottom: 22px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 11px;
+        line-height: 1.5;
+        color: #8a7a6e;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bg">
+      <div class="painting"></div>
+      <div class="head">
+        <img src="../../../../assets/caveira-icon.svg" alt="" />
+        <h1>Drag caveira into Applications</h1>
+      </div>
+      <svg class="arrow" width="660" height="420" viewBox="0 0 660 420">
+        <path d="M262 252 C 300 232, 360 232, 398 252" fill="none" stroke="#e5622a" stroke-width="2.5" stroke-linecap="round" />
+        <path d="M386 240 L 399 253 L 382 258" fill="none" stroke="#e5622a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <div class="hint">If macOS won&rsquo;t open it the first time: System Settings &rsaquo; Privacy &amp; Security &rsaquo; Open Anyway</div>
+    </div>
+  </body>
+</html>

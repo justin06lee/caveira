@@ -136,19 +136,19 @@ desktop:
 		codesign --force --sign - desktop/build/bin/$(APP); \
 	else echo "no Xcode that compiles Icon Composer icons: the app keeps the classic icon, which the Dock shades with glass"; fi
 
-# The app as a disk image to download, for Apple silicon and Intel alike,
-# with a link to Applications to drag it onto. It is signed ad hoc: with
-# no Developer ID to sign and notarize it, macOS asks for Open Anyway in
-# Privacy & Security the first time it opens. Run after make dist, which
-# empties dist/.
+# The app as a disk image to download, for Apple silicon and Intel alike:
+# its window shows the app, an arrow and Applications on the background
+# in desktop/build/darwin/dmg, laid out by dmgbuild (through uvx), which
+# writes Finder's settings itself rather than scripting Finder. The app is
+# signed ad hoc: with no Developer ID to sign and notarize it, macOS asks
+# for Open Anyway in Privacy & Security the first time it opens. Run after
+# make dist, which empties dist/.
 dmg:
 	$(MAKE) desktop WAILS_PLATFORM=darwin/universal
 	codesign --force --deep --sign - desktop/build/bin/$(APP)
-	rm -rf dist/dmg dist/caveira.dmg && mkdir -p dist/dmg
-	ditto desktop/build/bin/$(APP) dist/dmg/$(APP)
-	ln -s /Applications dist/dmg/Applications
-	hdiutil create -volname caveira -srcfolder dist/dmg -fs HFS+ -format UDZO -ov dist/caveira.dmg
-	rm -rf dist/dmg
+	mkdir -p dist && rm -f dist/caveira.dmg
+	uvx dmgbuild -s desktop/build/darwin/dmg/settings.py -D app=desktop/build/bin/$(APP) \
+		-D dir=desktop/build/darwin/dmg caveira dist/caveira.dmg
 
 place-desktop:
 	rm -rf $(APPDIR)/$(APP)
